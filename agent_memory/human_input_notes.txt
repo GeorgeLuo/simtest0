@@ -1,0 +1,2 @@
+The repository includes a `human_input/` directory for human-provided files.
+Agents should treat this area as read-only unless explicitly instructed to modify it.
