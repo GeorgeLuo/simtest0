@@ -1,1 +1,3 @@
-Source code now resides under the `code/` directory, containing `ecs/` and test files.
+Source code now resides under the `src/` directory. The ECS primitives are split into
+`src/ecs/entity/` and `src/ecs/components/`. Tests live under the top-level `tests/`
+directory.
