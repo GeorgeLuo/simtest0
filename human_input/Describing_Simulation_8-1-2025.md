@@ -193,10 +193,8 @@ project/
 │   │   │   ├── ComponentType.ts
 │   │   │   ├── ComponentManager.ts
 │   │   │   └── implementations/
-`│   │   │       ├── ``TimeComponent.ts`
-
-`│   │   │       ├── ``OutboundMessageComponent.ts`
-
+│   │   │       ├── TimeComponent.ts
+│   │   │       ├── OutboundMessageComponent.ts
 │   │   │       ├── LifecycleComponent.ts
 │   │   │       ├── ExitConditionComponent.ts
 │   │   │       ├── StatusComponent.ts
@@ -207,6 +205,7 @@ project/
 │   │   ├── systems/
 │   │   │   ├── System.ts
 │   │   │   └── implementations/
+│   │   │       ├── OutboundMessageSystem.ts
 │   │   │       ├── TimeSystem.ts
 │   │   │       ├── SnapshotSystem.ts
 │   │   │       ├── ExitConditionSystem.ts
