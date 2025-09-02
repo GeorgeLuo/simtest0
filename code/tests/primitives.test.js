@@ -63,3 +63,38 @@ test('ComponentManager queries and removes components', () => {
   cm.removeEntity(2);
   assert.strictEqual(cm.getComponents(2).size, 0);
 });
+
+test('EntityManager removing non-existent entity is a no-op', () => {
+  const cm = new ComponentManager();
+  const em = new EntityManager(cm);
+  em.removeEntity(999);
+  assert.strictEqual(em.allEntities().size, 0);
+});
+
+test('EntityManager allEntities returns a copy', () => {
+  const cm = new ComponentManager();
+  const em = new EntityManager(cm);
+  const e = em.createEntity();
+  const all = em.allEntities();
+  all.clear();
+  assert.ok(em.hasEntity(e));
+});
+
+test('ComponentManager overwrites duplicate components', () => {
+  const cm = new ComponentManager();
+  const type = new ComponentType('dup', {});
+  cm.addComponent(1, type, { value: 1 });
+  cm.addComponent(1, type, { value: 2 });
+  assert.deepStrictEqual(cm.getComponent(1, type), { value: 2 });
+});
+
+test('ComponentType duplicate name throws', () => {
+  new ComponentType('uniqueName', {});
+  assert.throws(() => new ComponentType('uniqueName', {}));
+});
+
+test('ComponentManager validates schema keys', () => {
+  const cm = new ComponentManager();
+  const type = new ComponentType('pos', { x: 'number', y: 'number' });
+  assert.throws(() => cm.addComponent(1, type, { x: 1 }));
+});
