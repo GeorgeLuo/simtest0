@@ -1,7 +1,14 @@
 /** ComponentType primitive */
 
-class ComponentType {
-  constructor(name, schema) {
+export type ComponentSchema = Record<string, unknown>;
+
+export class ComponentType {
+  static registry: Set<string> = new Set();
+
+  name: string;
+  schema: ComponentSchema;
+
+  constructor(name: string, schema: ComponentSchema) {
     if (ComponentType.registry.has(name)) {
       throw new Error('ComponentType name must be unique');
     }
@@ -10,7 +17,3 @@ class ComponentType {
     ComponentType.registry.add(name);
   }
 }
-
-ComponentType.registry = new Set();
-
-module.exports = { ComponentType };

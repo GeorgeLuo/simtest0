@@ -1,11 +1,17 @@
 /** ComponentManager primitive */
 
-class ComponentManager {
+import { ComponentType } from './ComponentType.js';
+
+export type Component = Record<string, any>;
+
+export class ComponentManager {
+  private components: Map<number, Map<string, Component>>;
+
   constructor() {
     this.components = new Map(); // Map<entity, Map<compType.name, component>>
   }
 
-  addComponent(entity, compType, component) {
+  addComponent(entity: number, compType: ComponentType, component: Component): void {
     if (compType.schema) {
       for (const key of Object.keys(compType.schema)) {
         if (!(key in component)) {
@@ -16,22 +22,22 @@ class ComponentManager {
     if (!this.components.has(entity)) {
       this.components.set(entity, new Map());
     }
-    const entityMap = this.components.get(entity);
+    const entityMap = this.components.get(entity)!;
     entityMap.set(compType.name, component);
   }
 
-  getComponent(entity, compType) {
+  getComponent(entity: number, compType: ComponentType): Component | undefined {
     const entityMap = this.components.get(entity);
     return entityMap ? entityMap.get(compType.name) : undefined;
   }
 
-  getComponents(entity) {
+  getComponents(entity: number): Map<string, Component> {
     const entityMap = this.components.get(entity);
     return entityMap ? new Map(entityMap) : new Map();
   }
 
-  getEntitiesWithComponent(compType) {
-    const result = new Set();
+  getEntitiesWithComponent(compType: ComponentType): Set<number> {
+    const result = new Set<number>();
     for (const [entity, comps] of this.components.entries()) {
       if (comps.has(compType.name)) {
         result.add(entity);
@@ -40,7 +46,7 @@ class ComponentManager {
     return result;
   }
 
-  removeComponent(entity, compType) {
+  removeComponent(entity: number, compType: ComponentType): void {
     const entityMap = this.components.get(entity);
     if (entityMap) {
       entityMap.delete(compType.name);
@@ -50,9 +56,7 @@ class ComponentManager {
     }
   }
 
-  removeEntity(entity) {
+  removeEntity(entity: number): void {
     this.components.delete(entity);
   }
 }
-
-module.exports = { ComponentManager };

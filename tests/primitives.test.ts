@@ -1,8 +1,8 @@
-const test = require('node:test');
-const assert = require('assert');
-const { EntityManager } = require('../src/ecs/entity/EntityManager.js');
-const { ComponentManager } = require('../src/ecs/components/ComponentManager.js');
-const { ComponentType } = require('../src/ecs/components/ComponentType.js');
+import test from 'node:test';
+import assert from 'node:assert';
+import { EntityManager } from '../src/ecs/entity/EntityManager.js';
+import { ComponentManager } from '../src/ecs/components/ComponentManager.js';
+import { ComponentType } from '../src/ecs/components/ComponentType.js';
 
 // EntityManager - createEntity returns unique Entity
 // EntityManager - removeEntity deletes entity and its components
