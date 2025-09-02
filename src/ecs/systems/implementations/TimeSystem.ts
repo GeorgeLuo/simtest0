@@ -1,8 +1,8 @@
 /** TimeSystem increments global time each update */
-import { System } from '../system/System.js';
-import { EntityManager } from '../entity/EntityManager.js';
-import { ComponentManager } from '../components/ComponentManager.js';
-import { TimeComponent } from './TimeComponent.js';
+import { System } from '../System.js';
+import { EntityManager } from '../../entity/EntityManager.js';
+import { ComponentManager } from '../../components/ComponentManager.js';
+import { TimeComponent } from '../../components/implementations/TimeComponent.js';
 
 export class TimeSystem extends System {
   private timeEntity!: number;

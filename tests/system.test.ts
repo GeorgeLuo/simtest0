@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { EntityManager } from '../src/ecs/entity/EntityManager.js';
 import { ComponentManager } from '../src/ecs/components/ComponentManager.js';
 import { ComponentType } from '../src/ecs/components/ComponentType.js';
-import { System } from '../src/ecs/system/System.js';
+import { System } from '../src/ecs/systems/System.js';
 
 test('System requires update implementation', () => {
   const sys = new System();
