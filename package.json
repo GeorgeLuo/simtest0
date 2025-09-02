@@ -1,0 +1,12 @@
+{
+  "name": "simtest0",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/tests"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
