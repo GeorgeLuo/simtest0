@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { EntityManager } from '../src/ecs/entity/EntityManager.js';
 import { ComponentManager } from '../src/ecs/components/ComponentManager.js';
-import { TimeComponent } from '../src/ecs/time/TimeComponent.js';
-import { TimeSystem } from '../src/ecs/time/TimeSystem.js';
+import { TimeComponent } from '../src/ecs/components/implementations/TimeComponent.js';
+import { TimeSystem } from '../src/ecs/systems/implementations/TimeSystem.js';
 
 // TimeSystem creates a time entity with an initial time of 0 on init
 // TimeSystem increments the time component on each update
