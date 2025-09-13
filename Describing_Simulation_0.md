@@ -418,11 +418,23 @@ The following are instructions for the reader towards implementation of the desc
 
 ### Tools
 
-Actions taken are to be expressed through a repository. A directory called tools will be used to aid in artifact generation. If the directory does not exist, create it. A file within tools will serve as an index of tools within the directory, with a description of what tools do. For each of the following sections, concretize tools (in the form of scripts) which will aid future implementers.
+Actions taken are to be expressed through a repository. A directory called *tools* will be used to aid in artifact generation. If the directory does not exist, create it. A file within tools will serve as an index of tools within the directory, with a description of what tools do. For each of the following sections, concretize tools (in the form of scripts) which will aid future implementers.
+
+Tools may be thought of as shortcuts for the actions taken during a task that can be effectively captured as deterministic scripts. This is said to convey why the directory might be visited.
 
 ### Workspaces
 
-This document serves as the nexus for autonomous production of code. If a directory named workspaces is not defined. create the directory. The filename of this document will serve as the name of the workspace for this attempt at generating the artifact. If a directory with the filename of this document does not exist in the workspaces directory, create the directory.
+This document serves as the nexus for autonomous production of code. If a directory named *workspaces* is not defined, create the directory. The filename of this document will serve as the name of the workspace for this attempt at generating the artifact. If a directory with the filename of this document does not exist in the workspaces directory, create the directory.
+
+### Memory
+
+Progress on the artifact as well as bootstrapping processes should be cataloged in an accessible way in a directory named memory. There are two types of memories, records in a directory named *records* under the memory directory, and ways memories in a directory named *ways* (create all directories if they do not yet exist).
+
+Ways memories capture assumptions extracted from this document that went into the decisioning of implementations. They shape future decisions in a global way, a reshaping of the document’s concepts as artifacts are constructed. Beyond best-practices, they inform future contributors of how to approach task framing. Ways are text files with filenames (in snakecase) that convey the contained content and are write-delete only. They may not be updated for reasons of mitigating concurrent touches.
+
+Records are text files of the changes to be concretized. The filename should be a timestamp prepending a short title of changes. They are write-only.
+
+Conceptually ways are long-term memories that should shape decisions and records are short-term memories which inform what might be more pertinent to the present. Again, this is said to convey when memories might be visited.
 
 ### Test-driven Development
 
