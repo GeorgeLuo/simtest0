@@ -188,8 +188,7 @@ project/
 │   ├── ecs/
 │   │   ├── entity/
 │   │   │   ├── EntityManager.ts
-`│   │   │   └── ``Entity.ts`
-
+│   │   │   └── Entity.ts
 │   │   │
 │   │   ├── components/
 │   │   │   ├── ComponentType.ts
@@ -199,8 +198,7 @@ project/
 │   │   │       └── plugins/
 │   │   │           └── (agent-defined components live here)
 │   │   ├── systems/
-`│   │   │   ├── ``System.ts`
-
+│   │   │   ├── System.ts
 │   │   │   ├── SystemManager.ts
 │   │   │   └── implementations/
 │   │   │       ├── TimeSystem.ts
@@ -212,12 +210,10 @@ project/
 │   │   │   ├── MessageHandler.ts
 │   │   │   └── handlers/
 │   │   │       ├── inbound/
-`│   │   │       │   ├── ``InboundHandlerRegistry.ts`
-
+│   │   │       │   ├── InboundHandlerRegistry.ts
 │   │   │       │   └── implementations/
 │   │   │       │       ├── Start.ts
-`│   │   │       │       ├── ``Pause.ts`
-
+│   │   │       │       ├── Pause.ts
 │   │   │       │       ├── Stop.ts
 │   │   │       │       ├── InjectEntity.ts
 │   │   │       │       └── plugins/
@@ -225,8 +221,7 @@ project/
 │   │   │       │
 │   │   │       └── outbound/
 │   │   │           └── implementations/
-`│   │   │               ├── ``Acknowledgement.ts`
-
+│   │   │               ├── Acknowledgement.ts
 │   │   │               ├── Frame.ts
 │   │   │               └── plugins/
 │   │   │                   └── (agent-defined outbound handlers live here)
