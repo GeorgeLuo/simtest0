@@ -1,3 +1,0 @@
-Repository uses TypeScript compiled via `tsc` to the `dist` directory.
-Run tests with `npm test`, which builds and executes Node's test runner on compiled files.
-Custom type declarations for Node modules live in `types/node.d.ts`.

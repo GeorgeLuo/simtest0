@@ -1,6 +1,0 @@
-The repository's layout follows `human_input/Describing_Simulation_8-1-2025.md` (or its latest version). Consult that document before adjusting directories.
-Source code resides under the `src/` directory. The ECS primitives are split into
-`src/ecs/entity/`, `src/ecs/components/`, and `src/ecs/systems/`. Built-in component
-and system implementations live under their respective `implementations/` directories,
-with additional extensions in `plugins/`. Tests live under the top-level `tests/`
-directory.
