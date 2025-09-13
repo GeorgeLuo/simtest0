@@ -472,6 +472,6 @@ Stage 5: Validate
 
 To be clear, this document upon delivery to you, the reader, should provide logic that is compilable to code.
 
-### Memory
+### Master Prompt
 
 Given the above context, unless a more specific prompt is given, you, the reader, should assume your next task is amorphously to examine the current state of the workspace, derived from the filename of this document, and memories, and to determine what is the course of action to implement the simulation service as described.
