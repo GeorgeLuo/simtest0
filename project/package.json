@@ -1,0 +1,8 @@
+{
+  "name": "describing-simulation-0",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc --pretty false",
+    "test": "npm run build && node dist/tests/runTests.js"
+  }
+}
