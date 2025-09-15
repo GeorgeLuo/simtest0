@@ -511,7 +511,7 @@ Ways memories capture assumptions extracted from this document that went into th
 
 #### Records
 
-Records are text files of the changes to be concretized. The filename should be a timestamp prepending a short title of changes. They are write-only.
+Records are text files of the changes to be concretized. The filename should be a timestamp prepending a short title of changes. They are write-only. Records should be thought of as compression of the description of the state of the implementation, with more information density towards recent developments. In this way, a sequence of records should indicate the path towards completeness.
 
 ## Master Prompt
 
