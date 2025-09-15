@@ -458,22 +458,20 @@ This document will serve as the source of truth for task generation. For context
 
 - Bootstraps section to a file with a name formed from the name of this document appended with *_bootstraps*
 
+- Master Prompt section to a file with a name formed from the name of this document appended with *_master_prompt* 
+
 - Codifying Simulations section to a file with a name formed from the name of this document appended with *_codifying_simulations*
 
 - The text portion from the beginning of this document to the beginning of Codifying Simulations to a file with a name formed from the name of this document appended with *_theory*
 
 Review and create an index for the *instruction_documents* directory describing the contents of the directory.
 
-Create instructions for future visitors to review the latest version of this document in a high visibility location (eg. Agents.md). We can begin to see that bootstrapping is a process that is independent of generation of the artifact itself; practically the schedule of work is simply:
-
-1. Bootstrapping
-
-2. Artifact Generation
+Create instructions for future visitors to review the latest version of this document in a high visibility location (eg. AGENTS.md). We can see that bootstrapping is a process that is independent of generation of the artifact itself. To be clear, the term artifact refers to the manifestation of the descriptions within Codifying Simulations.
 
 ```
 /
 ├── <this document's file name>.md
-├── Agents.md
+├── AGENTS.md
 ├── instruction_documents/
 │   ├── <this document's file name>_theory.md
 │   ├── <this document's file name>_bootstraps.md
@@ -487,7 +485,7 @@ Create instructions for future visitors to review the latest version of this doc
     ├── ways/
     └── records/
 ```
-Using the above as a guide for bootstrapping we’ll enumerate how the layout is constructed.
+Using the above as a guide for bootstrapping, we’ll enumerate how the layout is constructed.
 
 ### Tools
 
@@ -499,16 +497,54 @@ Tools may be thought of as shortcuts for the actions taken during a task that ca
 
 This document serves as the nexus for autonomous production of code. If a directory named *workspaces* is not defined, create the directory. The filename of this document will serve as the name of the workspace for this attempt at generating the artifact. If a directory with the filename of this document does not exist in the workspaces directory, create the directory.
 
+Practically, after bootstrapping, all source code of the implementation of the artifact will be written in workspaces corresponding to the most recent revision of this document.
+
 ### Memory
 
 Progress on the artifact as well as bootstrapping processes should be cataloged in an accessible way in a directory named memory. There are two types of memories, records in a directory named *records* under the memory directory, and ways memories in a directory named *ways* (create all directories if they do not yet exist).
 
+Conceptually, ways are long-term memories that should shape decisions and records are short-term memories which inform what might be more pertinent to the present and near future. Again, this is said to convey when memories might be visited (before beginning a task) and when to write memories (after the work of a task is completed).
+
+#### Ways
+
 Ways memories capture assumptions extracted from this document that went into the decisioning of implementations. They shape future decisions in a global way, a reshaping of the document’s concepts as artifacts are constructed. Beyond best-practices, they inform future contributors of how to approach task framing. Ways are text files with filenames (in snakecase) that convey the contained content and are write-delete only. They may not be updated for reasons of mitigating concurrent touches.
+
+#### Records
 
 Records are text files of the changes to be concretized. The filename should be a timestamp prepending a short title of changes. They are write-only.
 
-Conceptually ways are long-term memories that should shape decisions and records are short-term memories which inform what might be more pertinent to the present. Again, this is said to convey when memories might be visited (before beginning a task) and when to write memories (after the work of a task is completed).
+## Master Prompt
 
-### Master Prompt
+When you are responsible for determining the next steps open-endedly, examine the state of the present revision workspace and memories and enumerate tasks that forward the state of artifact construction, with as much context regarding development patterns and best practices as needed (prioritizing file references to instruction documents over literal conveyance).
 
-Given the above context, unless a more specific prompt is given, you, the reader, should assume your next task is amorphously to examine the current state of the workspace, derived from the filename of this document, and memories, and to determine what is the course of action to implement the simulation service as described.
+Phase 1 — Bootstrapping
+
+- Prepare repository structure as described in **Bootstraps**.
+
+- Split this document into component instruction files.
+
+- Create or update index.md and AGENTS.md for visibility.
+
+- Ensure tools/, workspaces/, and memory/ directories exist.
+
+Phase 2 — Artifact Creation
+
+- Enter the workspace for the current revision.
+
+- Proceed through checkpoints in order.
+
+- Each checkpoint represents a coherent milestone, building on prior ones.
+
+- For each checkpoint:
+
+- Define skeletons (structure, empty methods).
+
+- Write test intents (comment-only).
+
+- Codify tests from intents.
+
+- Implement logic to satisfy tests.
+
+- Validate until all tests pass.
+
+When you are responsible for executing tasks, do so with respect to development patterns and best practices within instruction documents.

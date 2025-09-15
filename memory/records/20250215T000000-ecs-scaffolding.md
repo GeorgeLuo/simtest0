@@ -1,3 +1,0 @@
-- Set up initial ECS scaffolding under `project/src/ecs/` with entity, entity manager, component type, and component manager implementations.
-- Added custom TypeScript test harness and tests covering entity creation/removal and component attachment/query semantics.
-- Configured project TypeScript build and npm scripts to compile and execute the new test suite without external dependencies.
