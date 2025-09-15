@@ -1,0 +1,21 @@
+{
+  "name": "describing_simulation_0",
+  "version": "1.0.0",
+  "description": "This workspace now houses the initial scaffolding for an entity-component-system (ECS) simulation engine. The intent is to provide strongly typed extension points that future agents can implement without redefining the overall structure.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "ts-node tests/components.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.2"
+  }
+}
