@@ -48,6 +48,13 @@ Plugin directories intentionally contain a `.gitkeep` file to preserve the folde
 
 ## Testing Conventions
 
-The `tests/` directory contains comment-only specifications that describe the behaviors we expect from entities, components,
-and systems. These serve as prompts for future test implementations following the staged workflow outlined in the codifying
-document.
+The `tests/` directory contains Jest specifications that exercise the concrete implementations used during staged development.
+Install dependencies and execute the suite with:
+
+```bash
+npm install
+npm test
+```
+
+Run the commands from the `workspaces/Describing_Simulation_0` directory so that Jest can locate the TypeScript sources and
+helpers.
