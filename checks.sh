@@ -66,6 +66,11 @@ if [ -d "$WORKSPACE_PROJECT_DIR" ] && [ -f "$WORKSPACE_PROJECT_DIR/package.json"
     run_step "npm test (workspaces/Describing_Simulation_0/project)" \
       bash -lc "cd \"$WORKSPACE_PROJECT_DIR\" && npm test"
     steps_run=$((steps_run + 1))
+
+    # Type-check the workspace project TypeScript sources
+    run_step "TypeScript type check (workspaces/Describing_Simulation_0/project)" \
+      bash -lc "cd \"$WORKSPACE_PROJECT_DIR\" && npx tsc -p tsconfig.json --noEmit"
+    steps_run=$((steps_run + 1))
   else
     echo
     echo "Skipping npm test for workspaces/Describing_Simulation_0/project: npm not available on PATH."
