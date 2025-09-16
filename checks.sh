@@ -60,6 +60,18 @@ if [ -f "package.json" ]; then
   fi
 fi
 
+WORKSPACE_PROJECT_DIR="$ROOT_DIR/workspaces/Describing_Simulation_0/project"
+if [ -d "$WORKSPACE_PROJECT_DIR" ] && [ -f "$WORKSPACE_PROJECT_DIR/package.json" ]; then
+  if command -v npm >/dev/null 2>&1; then
+    run_step "npm test (workspaces/Describing_Simulation_0/project)" \
+      bash -lc "cd \"$WORKSPACE_PROJECT_DIR\" && npm test"
+    steps_run=$((steps_run + 1))
+  else
+    echo
+    echo "Skipping npm test for workspaces/Describing_Simulation_0/project: npm not available on PATH."
+  fi
+fi
+
 # pnpm tests
 if [ -f "pnpm-lock.yaml" ]; then
   if command -v pnpm >/dev/null 2>&1; then
