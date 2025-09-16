@@ -1,22 +1,5 @@
 # Describing Simulation
 
-The detailed instructions that previously lived in this document have been partitioned for easier reference. Each major section is now available in the `instruction_documents/` directory.
-
-## Repository Guideposts
-
-- Start with the high-level [index](index.md) for a summary of the repository's purpose and layout.
-- Review the contributor [conventions](AGENTS.md) before editing or extending any documentation.
-
-## Instruction Documents
-
-- [Theory](instruction_documents/Describing_Simulation_0_theory.md)
-- [Codifying Simulations](instruction_documents/Describing_Simulation_0_codifying_simulations.md)
-- [Bootstraps](instruction_documents/Describing_Simulation_0_bootstraps.md)
-- [Master Prompt](instruction_documents/Describing_Simulation_0_master_prompt.md)
-
-Refer to the linked files for the complete content of each section.
-# Describing Simulation
-
 Suppose we were to define an agent responsible for solving hypotheticals with quantitative approaches. The general strategy would be to model the relevant systems, determine the values to set in the systems, and compute the result.
 
 This paper seeks to define an approach to build such simulations from natural language prompts, from validation to intent extraction, to codification. We define a specific methodology of building simulations for a specific problem space. The intent is not to address the universe of open-ended questions, but hopefully will address some problems worth solving.
@@ -205,8 +188,7 @@ project/
 │   ├── ecs/
 │   │   ├── entity/
 │   │   │   ├── EntityManager.ts
-`│   │   │   └── ``Entity.ts`
-
+│   │   │   └── Entity.ts
 │   │   │
 │   │   ├── components/
 │   │   │   ├── ComponentType.ts
@@ -216,8 +198,7 @@ project/
 │   │   │       └── plugins/
 │   │   │           └── (agent-defined components live here)
 │   │   ├── systems/
-`│   │   │   ├── ``System.ts`
-
+│   │   │   ├── System.ts
 │   │   │   ├── SystemManager.ts
 │   │   │   └── implementations/
 │   │   │       ├── TimeSystem.ts
@@ -229,12 +210,10 @@ project/
 │   │   │   ├── MessageHandler.ts
 │   │   │   └── handlers/
 │   │   │       ├── inbound/
-`│   │   │       │   ├── ``InboundHandlerRegistry.ts`
-
+│   │   │       │   ├── InboundHandlerRegistry.ts
 │   │   │       │   └── implementations/
 │   │   │       │       ├── Start.ts
-`│   │   │       │       ├── ``Pause.ts`
-
+│   │   │       │       ├── Pause.ts
 │   │   │       │       ├── Stop.ts
 │   │   │       │       ├── InjectEntity.ts
 │   │   │       │       └── plugins/
@@ -242,8 +221,7 @@ project/
 │   │   │       │
 │   │   │       └── outbound/
 │   │   │           └── implementations/
-`│   │   │               ├── ``Acknowledgement.ts`
-
+│   │   │               ├── Acknowledgement.ts
 │   │   │               ├── Frame.ts
 │   │   │               └── plugins/
 │   │   │                   └── (agent-defined outbound handlers live here)
@@ -488,8 +466,8 @@ Create instructions for future visitors to review the latest version of this doc
 ```
 /
 ├── <this document's file name>.md
-├── verifier.sh
 ├── AGENTS.md
+├── checks.sh
 ├── instruction_documents/
 │   ├── <this document's file name>_theory.md
 │   ├── <this document's file name>_bootstraps.md
@@ -499,6 +477,7 @@ Create instructions for future visitors to review the latest version of this doc
 │   └── index.md
 ├── workspaces/
 │   └── <this document's file name>/
+├── verifications/
 └── memory/
     ├── ways/
     └── records/
@@ -531,9 +510,9 @@ Ways memories capture assumptions extracted from this document that went into th
 
 Records are text files of the changes to be concretized. The filename should be a timestamp prepending a short title of changes. They are write-only. Records should be thought of as compression of the description of the state of the implementation, with more information density towards recent developments. In this way, a sequence of records should indicate the path towards completeness.
 
-### Verifier
+### Checks
 
-The verifier is a script that resides in the root directory (create this file if it does not exist). This is the access point to testing of the present artifact. All testing should be linked to the execution of the verifier script. Running the script should validate the setup of the repository as well as artifact implementation, with an resultant output file written to a verifications directory (create if this does not exist). Each verification file should be named with a timestamp.
+The verifier is a script (*checks.sh*) that resides in the root directory (create this file if it does not exist). This is the access point to testing of the present artifact. All testing should be linked to the execution of the verifier script, taking care of the relative path to the workspace. Running the script should validate the setup of the repository as well as artifact implementation, with an resultant output file written to a verifications directory (create if this does not exist). Each verification output file should be named with a timestamp.
 
 ## Master Prompt
 
@@ -583,7 +562,7 @@ Generally, individual tasks should touch one of:
 
 - Test code of implementation files
 
-When generating a collection of tasks, organize them sequentially such that tasks will not cause merge conflicts, as it should be assumed tasks run in parallel. This can mean generating fewer tasks or stubbing files to arrive at a point where more complexity can be implemented.
+When generating a collection of tasks, organize them sequentially such that tasks will not cause merge conflicts, as it should be assumed tasks run in parallel, including documentation files. This can mean generating fewer tasks or stubbing files to arrive at a point where more complexity can be implemented.
 
 ### Implementer
 
