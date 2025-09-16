@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { SystemManager } from '../../src/ecs/systems/SystemManager.js';
 import type { System, SystemUpdateContext } from '../../src/ecs/systems/System.js';
@@ -9,6 +9,21 @@ const createSystem = (
 ): System => ({
   id,
   update: onUpdate,
+});
+
+const createLifecycleSystem = (
+  id: string,
+  initializeOrder: string[],
+  shutdownOrder: string[],
+): System => ({
+  id,
+  update: vi.fn(),
+  initialize: vi.fn(() => {
+    initializeOrder.push(id);
+  }),
+  shutdown: vi.fn(() => {
+    shutdownOrder.push(id);
+  }),
 });
 
 describe('SystemManager', () => {
@@ -69,5 +84,39 @@ describe('SystemManager', () => {
       expect(history.map((entry) => entry.deltaTime)).toEqual([0.25, 0.5]);
       expect(history.map((entry) => entry.elapsedTime)).toEqual([0.25, 0.75]);
     }
+  });
+
+  it('initializes systems in their registration order', async () => {
+    const manager = new SystemManager();
+    const initializeOrder: string[] = [];
+    const shutdownOrder: string[] = [];
+
+    manager.register(createLifecycleSystem('alpha', initializeOrder, shutdownOrder));
+    manager.register(createLifecycleSystem('beta', initializeOrder, shutdownOrder));
+    manager.register(createLifecycleSystem('gamma', initializeOrder, shutdownOrder));
+
+    await manager.initializeAll();
+
+    expect(initializeOrder).toEqual(['alpha', 'beta', 'gamma']);
+    expect(shutdownOrder).toEqual([]);
+  });
+
+  it('shuts down systems in reverse registration order', async () => {
+    const manager = new SystemManager();
+    const initializeOrder: string[] = [];
+    const shutdownOrder: string[] = [];
+
+    manager.register(createLifecycleSystem('alpha', initializeOrder, shutdownOrder));
+    manager.register(createLifecycleSystem('beta', initializeOrder, shutdownOrder));
+    manager.register(createLifecycleSystem('gamma', initializeOrder, shutdownOrder));
+
+    await manager.initializeAll();
+    expect(initializeOrder).toEqual(['alpha', 'beta', 'gamma']);
+    expect(shutdownOrder).toEqual([]);
+
+    await manager.shutdownAll();
+
+    expect(shutdownOrder).toEqual(['gamma', 'beta', 'alpha']);
+    expect(initializeOrder).toEqual(['alpha', 'beta', 'gamma']);
   });
 });
