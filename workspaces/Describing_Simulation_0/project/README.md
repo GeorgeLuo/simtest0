@@ -25,7 +25,11 @@ deeper material collected in the [instruction documents index](../../../instruct
 
 - `src/` – TypeScript source organized by subsystem (for example, the `ecs/` folder scaffolds the entity-component-system
   experiments described in the instructions).
+  - `ecs/messaging/` – Strongly typed message bus utilities that let systems publish
+    and subscribe to structured payloads without losing type safety.
 - `tests/` – Vitest suites that encode the behaviors promised in the design notes; mirrors the `src/` structure for clarity.
+  - `ecs/messaging/` – Specifications verifying handler registration, dispatch, and
+    the compile-time payload guarantees offered by the messaging utilities.
 - `package.json` / `package-lock.json` – Dependency manifest and the lockfile that ensures reproducible installs for the
   workspace.
 - `tsconfig.json` – TypeScript compiler configuration tuned for authoring modular simulation components.
