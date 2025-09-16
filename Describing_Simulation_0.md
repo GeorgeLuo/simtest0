@@ -2,6 +2,11 @@
 
 The detailed instructions that previously lived in this document have been partitioned for easier reference. Each major section is now available in the `instruction_documents/` directory.
 
+## Repository Guideposts
+
+- Start with the high-level [index](index.md) for a summary of the repository's purpose and layout.
+- Review the contributor [conventions](AGENTS.md) before editing or extending any documentation.
+
 ## Instruction Documents
 
 - [Theory](instruction_documents/Describing_Simulation_0_theory.md)
