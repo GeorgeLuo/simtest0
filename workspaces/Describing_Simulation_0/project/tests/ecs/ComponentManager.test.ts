@@ -4,6 +4,16 @@ import { createComponentType } from '../../src/ecs/components/ComponentType.js';
 
 type PositionComponent = { x: number; y: number };
 type VelocityComponent = { vx: number; vy: number };
+type RenderComponent = {
+  style: {
+    color: {
+      primary: string;
+      secondary: string;
+    };
+    opacity: number;
+  };
+  visible: boolean;
+};
 
 const positionType = createComponentType<PositionComponent>({
   id: 'position',
@@ -33,6 +43,28 @@ const velocityType = createComponentType<VelocityComponent>({
     vy: {
       description: 'Vertical axis velocity.',
       defaultValue: 0,
+    },
+  },
+});
+
+const renderType = createComponentType<RenderComponent>({
+  id: 'render',
+  name: 'Render Settings',
+  description: 'Configures how an entity is drawn.',
+  schema: {
+    style: {
+      description: 'Styling information for rendering.',
+      defaultValue: {
+        color: {
+          primary: '#ffffff',
+          secondary: '#000000',
+        },
+        opacity: 1,
+      },
+    },
+    visible: {
+      description: 'Whether the entity should be visible.',
+      defaultValue: true,
     },
   },
 });
@@ -139,5 +171,56 @@ describe('ComponentManager', () => {
     expect(manager.getComponent(entityB, positionType)).toEqual({ x: 0, y: 0 });
     expect(manager.getEntitiesWith(positionType)).toEqual([entityB]);
     expect(manager.getEntitiesWith(velocityType)).toEqual([]);
+  });
+
+  it('merges nested component updates deeply', () => {
+    const manager = new ComponentManager();
+    const entityId = 31;
+    const initial: RenderComponent = {
+      style: {
+        color: {
+          primary: '#111111',
+          secondary: '#222222',
+        },
+        opacity: 0.75,
+      },
+      visible: true,
+    };
+
+    manager.registerType(renderType);
+    manager.attachComponent(entityId, renderType, initial);
+
+    const updated = manager.updateComponent(
+      entityId,
+      renderType,
+      {
+        style: {
+          color: {
+            primary: '#ff0000',
+          },
+        },
+      } as Partial<RenderComponent>,
+    );
+
+    expect(updated).toEqual({
+      style: {
+        color: {
+          primary: '#ff0000',
+          secondary: '#222222',
+        },
+        opacity: 0.75,
+      },
+      visible: true,
+    });
+    expect(manager.getComponent(entityId, renderType)).toEqual({
+      style: {
+        color: {
+          primary: '#ff0000',
+          secondary: '#222222',
+        },
+        opacity: 0.75,
+      },
+      visible: true,
+    });
   });
 });

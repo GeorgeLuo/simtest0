@@ -116,18 +116,47 @@ export class ComponentManager {
       return current as Partial<T>;
     }
 
-    if (
-      typeof current === 'object' &&
-      current !== null &&
-      typeof updated === 'object' &&
-      updated !== null
-    ) {
-      return {
-        ...(current as Record<string, unknown>),
-        ...(updated as Record<string, unknown>),
-      } as Partial<T>;
+    if (this.isPlainObject(current) && this.isPlainObject(updated)) {
+      return this.mergeRecords(
+        current as Record<string, unknown>,
+        updated as Record<string, unknown>,
+      ) as Partial<T>;
     }
 
     return updated;
+  }
+
+  private mergeRecords(
+    current: Record<string, unknown>,
+    updated: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    const keys = new Set([...Object.keys(current), ...Object.keys(updated)]);
+
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(updated, key)) {
+        const currentValue = current[key];
+        const updatedValue = updated[key];
+
+        if (this.isPlainObject(currentValue) && this.isPlainObject(updatedValue)) {
+          result[key] = this.mergeRecords(
+            currentValue as Record<string, unknown>,
+            updatedValue as Record<string, unknown>,
+          );
+          continue;
+        }
+
+        result[key] = updatedValue;
+        continue;
+      }
+
+      result[key] = current[key];
+    }
+
+    return result;
+  }
+
+  private isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }
