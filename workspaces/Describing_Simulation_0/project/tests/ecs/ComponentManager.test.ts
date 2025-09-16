@@ -39,7 +39,7 @@ const velocityType = createComponentType<VelocityComponent>({
 
 describe('ComponentManager', () => {
   it('requires registration before attachments and allows attachments once registered', () => {
-    const manager = new ComponentManager() as any;
+    const manager = new ComponentManager();
     const entityId = 42;
     const initialPosition: PositionComponent = { x: 5, y: -3 };
 
@@ -54,7 +54,7 @@ describe('ComponentManager', () => {
   });
 
   it('propagates updates to the owning entity without affecting others', () => {
-    const manager = new ComponentManager() as any;
+    const manager = new ComponentManager();
     const entityA = 1;
     const entityB = 2;
     const initialA: PositionComponent = { x: 0, y: 0 };
@@ -73,7 +73,7 @@ describe('ComponentManager', () => {
   });
 
   it('can attach components using type defaults when no overrides are provided', () => {
-    const manager = new ComponentManager() as any;
+    const manager = new ComponentManager();
     const entityId = 99;
 
     manager.registerType(positionType);
@@ -85,7 +85,7 @@ describe('ComponentManager', () => {
   });
 
   it('returns the identifiers of entities with a component attached for a type', () => {
-    const manager = new ComponentManager() as any;
+    const manager = new ComponentManager();
     const entityA = 5;
     const entityB = 6;
     const entityC = 7;
@@ -102,7 +102,7 @@ describe('ComponentManager', () => {
   });
 
   it('removes a specific component without affecting other entities', () => {
-    const manager = new ComponentManager() as any;
+    const manager = new ComponentManager();
     const entityA = 11;
     const entityB = 12;
     const initialA: PositionComponent = { x: 2, y: 3 };
@@ -121,7 +121,7 @@ describe('ComponentManager', () => {
   });
 
   it('clears all components for an entity across registered types', () => {
-    const manager = new ComponentManager() as any;
+    const manager = new ComponentManager();
     const entityA = 21;
     const entityB = 22;
 
