@@ -9,12 +9,23 @@ import {
   type InboundMessage,
   type OutboundMessage,
 } from '../../../../src/ecs/messaging/IOPlayer.js';
-import type { FrameMessage } from '../../../../src/ecs/messaging/handlers/Frame.js';
-import type { AcknowledgementMessage } from '../../../../src/ecs/messaging/handlers/Acknowledgement.js';
-import type { InjectEntityMessage } from '../../../../src/ecs/messaging/handlers/InjectEntity.js';
-import type { PauseMessage } from '../../../../src/ecs/messaging/handlers/Pause.js';
-import type { StartMessage } from '../../../../src/ecs/messaging/handlers/Start.js';
-import type { StopMessage } from '../../../../src/ecs/messaging/handlers/Stop.js';
+import type { SnapshotEntity } from '../../../../src/ecs/Player.js';
+import type { FrameMessage } from '../../../../src/ecs/messaging/handlers/outbound/implementations/Frame.js';
+import type {
+  AcknowledgementMessage,
+} from '../../../../src/ecs/messaging/handlers/outbound/implementations/Acknowledgement.js';
+import type {
+  InjectEntityMessage,
+} from '../../../../src/ecs/messaging/handlers/inbound/implementations/InjectEntity.js';
+import type {
+  PauseMessage,
+} from '../../../../src/ecs/messaging/handlers/inbound/implementations/Pause.js';
+import type {
+  StartMessage,
+} from '../../../../src/ecs/messaging/handlers/inbound/implementations/Start.js';
+import type {
+  StopMessage,
+} from '../../../../src/ecs/messaging/handlers/inbound/implementations/Stop.js';
 import { SystemManager } from '../../../../src/ecs/systems/SystemManager.js';
 import { TimeSystem } from '../../../../src/ecs/systems/implementations/TimeSystem.js';
 
@@ -197,7 +208,9 @@ describe('IOPlayer messaging handlers', () => {
     const latestFrame = framesAfterStart.at(-1);
     expect(latestFrame?.payload.tick).toBeGreaterThanOrEqual(3);
 
-    const entitySnapshot = latestFrame?.payload.entities.find((entity) => entity.id === entityId);
+    const entitySnapshot = latestFrame?.payload.entities.find(
+      (entity: SnapshotEntity) => entity.id === entityId,
+    );
     expect(entitySnapshot?.components[timeComponentType.id]).toEqual({
       ticks: latestFrame?.payload.tick,
       deltaPerUpdate: 1,
