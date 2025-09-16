@@ -23,6 +23,18 @@ export class ComponentManager {
     });
   }
 
+  unregisterType<T>(type: ComponentType<T>): boolean {
+    const record = this.registry.get(type.id);
+
+    if (!record) {
+      return false;
+    }
+
+    record.instances.clear();
+    this.registry.delete(type.id);
+    return true;
+  }
+
   attachComponent<T>(
     entityId: number,
     type: ComponentType<T>,

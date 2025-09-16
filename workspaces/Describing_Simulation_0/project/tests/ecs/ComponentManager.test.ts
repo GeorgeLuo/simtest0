@@ -223,4 +223,60 @@ describe('ComponentManager', () => {
       visible: true,
     });
   });
+
+  it('unregisters component types and clears stored instances', () => {
+    const manager = new ComponentManager();
+    const entityA = 41;
+    const entityB = 42;
+
+    manager.registerType(positionType);
+    manager.attachComponent(entityA, positionType, { x: 12, y: 8 });
+    manager.attachComponent(entityB, positionType, { x: -5, y: 3 });
+
+    const removed = manager.unregisterType(positionType);
+
+    expect(removed).toBe(true);
+    expect(() => manager.getComponent(entityA, positionType)).toThrow(
+      'Component type "position" is not registered',
+    );
+
+    manager.registerType(positionType);
+
+    expect(manager.getComponent(entityA, positionType)).toBeUndefined();
+    expect(manager.getEntitiesWith(positionType)).toEqual([]);
+
+    const reattached = manager.attachComponent(entityA, positionType, { x: 1, y: 2 });
+
+    expect(reattached).toEqual({ x: 1, y: 2 });
+    expect(manager.getComponent(entityA, positionType)).toEqual({ x: 1, y: 2 });
+  });
+
+  it('rejects component operations once a type is unregistered until it is registered again', () => {
+    const manager = new ComponentManager();
+    const entityId = 51;
+
+    manager.registerType(positionType);
+    manager.attachComponent(entityId, positionType, { x: 4, y: 7 });
+
+    manager.unregisterType(positionType);
+
+    const expectUnregisteredError = (action: () => unknown) => {
+      expect(action).toThrow('Component type "position" is not registered');
+    };
+
+    expectUnregisteredError(() =>
+      manager.attachComponent(entityId, positionType, { x: 0, y: 0 }),
+    );
+    expectUnregisteredError(() => manager.getComponent(entityId, positionType));
+    expectUnregisteredError(() =>
+      manager.updateComponent(entityId, positionType, { x: 9 }),
+    );
+    expectUnregisteredError(() => manager.removeComponent(entityId, positionType));
+    expectUnregisteredError(() => manager.getEntitiesWith(positionType));
+
+    manager.registerType(positionType);
+
+    expect(manager.getComponent(entityId, positionType)).toBeUndefined();
+    expect(() => manager.attachComponent(entityId, positionType, { x: 5, y: 6 })).not.toThrow();
+  });
 });
