@@ -1,14 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { ComponentManager } from '../../src/ecs/components/ComponentManager.js';
+import { createComponentType } from '../../src/ecs/components/ComponentType.js';
 
 type PositionComponent = { x: number; y: number };
 
-const positionType = {
+const positionType = createComponentType<PositionComponent>({
   id: 'position',
-  create(initial: PositionComponent) {
-    return { ...initial };
+  name: 'Position',
+  description: 'Tracks entity coordinates in 2D space.',
+  schema: {
+    x: {
+      description: 'Horizontal axis position.',
+      defaultValue: 0,
+    },
+    y: {
+      description: 'Vertical axis position.',
+      defaultValue: 0,
+    },
   },
-};
+});
 
 describe('ComponentManager', () => {
   it('requires registration before attachments and allows attachments once registered', () => {
@@ -37,11 +47,23 @@ describe('ComponentManager', () => {
     manager.attachComponent(entityA, positionType, initialA);
     manager.attachComponent(entityB, positionType, initialB);
 
-    const updatedA: PositionComponent = { x: 3, y: 4 };
+    const updatedA: Partial<PositionComponent> = { x: 3 };
     const result = manager.updateComponent(entityA, positionType, updatedA);
 
-    expect(result).toEqual(updatedA);
-    expect(manager.getComponent(entityA, positionType)).toEqual(updatedA);
+    expect(result).toEqual({ x: 3, y: 0 });
+    expect(manager.getComponent(entityA, positionType)).toEqual({ x: 3, y: 0 });
     expect(manager.getComponent(entityB, positionType)).toEqual(initialB);
+  });
+
+  it('can attach components using type defaults when no overrides are provided', () => {
+    const manager = new ComponentManager() as any;
+    const entityId = 99;
+
+    manager.registerType(positionType);
+
+    const component = manager.attachComponent(entityId, positionType);
+
+    expect(component).toEqual({ x: 0, y: 0 });
+    expect(manager.getComponent(entityId, positionType)).toEqual({ x: 0, y: 0 });
   });
 });

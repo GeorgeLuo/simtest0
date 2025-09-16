@@ -26,7 +26,7 @@ export class ComponentManager {
   attachComponent<T>(
     entityId: number,
     type: ComponentType<T>,
-    initial: T,
+    initial?: Partial<T>,
   ): T {
     const record = this.requireRecord(type);
 
@@ -66,17 +66,22 @@ export class ComponentManager {
   updateComponent<T>(
     entityId: number,
     type: ComponentType<T>,
-    updated: T,
+    updated?: Partial<T>,
   ): T {
     const record = this.requireRecord(type);
 
-    if (!record.instances.has(entityId)) {
+    const current = record.instances.get(entityId);
+
+    if (current === undefined) {
       throw new Error(
         `Entity ${entityId} does not have an attached component of type "${type.id}"`,
       );
     }
 
-    const component = this.instantiate(type, updated);
+    const component = this.instantiate(
+      type,
+      this.mergeComponent(current, updated),
+    );
     record.instances.set(entityId, component);
     return component;
   }
@@ -102,7 +107,27 @@ export class ComponentManager {
     return record as ComponentRecord<T>;
   }
 
-  private instantiate<T>(type: ComponentType<T>, initial: T): T {
-    return type.create ? type.create(initial) : initial;
+  private instantiate<T>(type: ComponentType<T>, overrides?: Partial<T>): T {
+    return type.create(overrides);
+  }
+
+  private mergeComponent<T>(current: T, updated?: Partial<T>): Partial<T> {
+    if (updated === undefined) {
+      return current as Partial<T>;
+    }
+
+    if (
+      typeof current === 'object' &&
+      current !== null &&
+      typeof updated === 'object' &&
+      updated !== null
+    ) {
+      return {
+        ...(current as Record<string, unknown>),
+        ...(updated as Record<string, unknown>),
+      } as Partial<T>;
+    }
+
+    return updated;
   }
 }
