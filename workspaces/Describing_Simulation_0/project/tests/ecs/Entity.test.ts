@@ -80,4 +80,79 @@ describe('Entity', () => {
       instance: otherVelocity,
     });
   });
+
+  it('manages components through the component manager lifecycle', () => {
+    const componentManager = new ComponentManager();
+    const entity = new Entity();
+    const otherEntity = new Entity();
+
+    type StatsComponent = { health: number; mana: number };
+
+    const statsType = createComponentType<StatsComponent>({
+      id: 'stats',
+      name: 'Stats',
+      description: 'Tracks combat-related values for an entity.',
+      schema: {
+        health: {
+          description: 'Hit points remaining for the entity.',
+          defaultValue: 100,
+        },
+        mana: {
+          description: 'Energy used for abilities.',
+          defaultValue: 50,
+        },
+      },
+    });
+
+    componentManager.registerType(statsType);
+
+    const attached = entity.attachComponent(componentManager, statsType, {
+      health: 80,
+    });
+
+    expect(attached).toEqual({
+      health: 80,
+      mana: 50,
+    });
+    expect(componentManager.getComponent(entity.id, statsType)).toBe(attached);
+    expect(componentManager.getEntitiesWith(statsType)).toEqual([
+      entity.id,
+    ]);
+
+    const retrieved = entity.getComponent(componentManager, statsType);
+
+    expect(retrieved).toBe(attached);
+    expect(componentManager.getComponent(entity.id, statsType)).toBe(attached);
+
+    const removed = entity.removeComponent(componentManager, statsType);
+
+    expect(removed).toBe(true);
+    expect(componentManager.getComponent(entity.id, statsType)).toBeUndefined();
+    expect(componentManager.getEntitiesWith(statsType)).toEqual([]);
+
+    const reattached = entity.attachComponent(componentManager, statsType);
+    const otherAttached = componentManager.attachComponent(
+      otherEntity.id,
+      statsType,
+      {
+        mana: 70,
+      },
+    );
+
+    expect(reattached).toEqual({
+      health: 100,
+      mana: 50,
+    });
+    expect(componentManager.getEntitiesWith(statsType)).toEqual(
+      expect.arrayContaining([entity.id, otherEntity.id]),
+    );
+
+    entity.removeAllComponents(componentManager);
+
+    expect(componentManager.getComponent(entity.id, statsType)).toBeUndefined();
+    expect(componentManager.getComponent(otherEntity.id, statsType)).toBe(
+      otherAttached,
+    );
+    expect(componentManager.getEntitiesWith(statsType)).toEqual([otherEntity.id]);
+  });
 });
