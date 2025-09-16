@@ -26,6 +26,7 @@
 
 ## Documentation Hygiene
 - Update `index.md`, `AGENTS.md`, and any instruction indices when the directory layout or development practices evolve.
+- Surface new engine orchestration or messaging interfaces (for example, Player loops and IO buses) in `index.md` and `instruction_documents/index.md` so contributors can quickly locate control-path documentation.
 - Use clear, dated commit messages and reference the relevant records in `memory/` when adding or modifying instruction
   artifacts.
 

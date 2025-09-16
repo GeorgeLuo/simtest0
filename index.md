@@ -7,6 +7,7 @@ textual specifications into executable models.
 ## Directory Layout
 
 - `Describing_Simulation_0.md` – master instruction document outlining the simulation-building approach and agent roles.
+- `instruction_documents/` – modular excerpts of the master instructions, including the latest guidance on the Player loop, messaging buses, and IO Player orchestration for simulation state visibility.
 - `verifications/` – timestamped logs of verification or testing runs (for example, outputs produced by `checks.sh`).
 - `index.md` – quick-reference overview of the repository structure and intent (this file).
 
