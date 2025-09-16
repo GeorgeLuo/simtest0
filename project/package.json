@@ -1,0 +1,7 @@
+{
+  "name": "simulation-project",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Scaffolding for the simulation ECS project.",
+  "scripts": {}
+}
