@@ -119,4 +119,40 @@ describe('SystemManager', () => {
     expect(shutdownOrder).toEqual(['gamma', 'beta', 'alpha']);
     expect(initializeOrder).toEqual(['alpha', 'beta', 'gamma']);
   });
+
+  it('unregisters systems and reports whether a removal occurred', () => {
+    const manager = new SystemManager();
+    const alpha = createSystem('alpha', vi.fn());
+    const beta = createSystem('beta', vi.fn());
+
+    manager.register(alpha);
+    manager.register(beta);
+
+    expect(manager.unregister('alpha')).toBe(true);
+    expect(manager.has('alpha')).toBe(false);
+    expect(manager.get('alpha')).toBeUndefined();
+    expect(manager.getAll()).toEqual([beta]);
+
+    expect(manager.unregister('alpha')).toBe(false);
+    expect(manager.unregister('missing')).toBe(false);
+  });
+
+  it('does not execute unregistered systems during updates', async () => {
+    const manager = new SystemManager();
+    const activeUpdate = vi.fn();
+    const removedUpdate = vi.fn();
+
+    manager.register(createSystem('active', activeUpdate));
+    manager.register(createSystem('removed', removedUpdate));
+
+    await manager.update(1);
+    expect(activeUpdate).toHaveBeenCalledTimes(1);
+    expect(removedUpdate).toHaveBeenCalledTimes(1);
+
+    expect(manager.unregister('removed')).toBe(true);
+
+    await manager.update(0.5);
+    expect(activeUpdate).toHaveBeenCalledTimes(2);
+    expect(removedUpdate).toHaveBeenCalledTimes(1);
+  });
 });

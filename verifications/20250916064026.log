@@ -1,0 +1,34 @@
+Starting verification run at 2025-09-16T06:40:26+00:00
+Writing log to /workspace/simtest0/verifications/20250916064026.log
+
+==== Repository root ====
+/workspace/simtest0
+
+==== npm test (workspaces/Describing_Simulation_0/project) ====
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> describing-simulation-project@0.1.0 test
+> vitest run --passWithNoTests
+
+
+ RUN  v1.6.1 /workspace/simtest0/workspaces/Describing_Simulation_0/project
+
+ ✓ tests/ecs/SystemManager.test.ts  (6 tests) 20ms
+ ✓ tests/ecs/Entity.test.ts  (2 tests) 20ms
+ ✓ tests/ecs/ComponentManager.test.ts  (7 tests) 27ms
+ ✓ tests/ecs/EntityManager.test.ts  (3 tests) 24ms
+ ✓ tests/ecs/TimeComponent.test.ts  (2 tests) 7ms
+ ✓ tests/ecs/TimeSystem.test.ts  (1 test) 5ms
+ ✓ tests/ecs/ComponentType.test.ts  (2 tests) 7ms
+
+ Test Files  7 passed (7)
+      Tests  23 passed (23)
+   Start at  06:40:28
+   Duration  1.89s (transform 639ms, setup 1ms, collect 910ms, tests 110ms, environment 3ms, prepare 1.58s)
+
+
+==== TypeScript type check (workspaces/Describing_Simulation_0/project) ====
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+All checks completed successfully.
+Verification log: /workspace/simtest0/verifications/20250916064026.log
