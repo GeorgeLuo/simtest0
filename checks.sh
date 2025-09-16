@@ -67,8 +67,8 @@ if [ -d "$WORKSPACE_PROJECT_DIR" ] && [ -f "$WORKSPACE_PROJECT_DIR/package.json"
       bash -lc "cd \"$WORKSPACE_PROJECT_DIR\" && npm test"
     steps_run=$((steps_run + 1))
 
-    run_step "Vitest messaging handlers (workspaces/Describing_Simulation_0/project)" \
-      bash -lc "cd \"$WORKSPACE_PROJECT_DIR\" && npx vitest run tests/ecs/messaging/handlers"
+    run_step "Vitest messaging suite (workspaces/Describing_Simulation_0/project)" \
+      bash -lc "cd \"$WORKSPACE_PROJECT_DIR\" && npx vitest run tests/ecs/messaging"
     steps_run=$((steps_run + 1))
 
     # Type-check the workspace project TypeScript sources
