@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERIFICATIONS_DIR="$ROOT_DIR/verifications"
+mkdir -p "$VERIFICATIONS_DIR"
+
+TIMESTAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
+LOG_FILE="$VERIFICATIONS_DIR/verification-$TIMESTAMP.log"
+
+if [ "$#" -gt 0 ]; then
+  CMD=("$@")
+  PLACEHOLDER=false
+else
+  CMD=("echo" "Running tests (placeholder). Replace the command in ./verifier with your project's test suite.")
+  PLACEHOLDER=true
+fi
+
+{
+  echo "== Verification Run =="
+  echo "Timestamp (UTC): $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  echo "Working directory: $ROOT_DIR"
+  echo "Command: ${CMD[*]}"
+  if [ "$PLACEHOLDER" = true ]; then
+    echo "Note: Update ./verifier to run the real test command for this project."
+  fi
+  echo
+
+  "${CMD[@]}"
+} | tee "$LOG_FILE"
+EXIT_CODE=${PIPESTATUS[0]}
+
+if [ $EXIT_CODE -eq 0 ]; then
+  echo "Verification finished successfully. Log saved to $LOG_FILE"
+else
+  echo "Verification failed with exit code $EXIT_CODE. See $LOG_FILE for details." >&2
+fi
+
+exit $EXIT_CODE
