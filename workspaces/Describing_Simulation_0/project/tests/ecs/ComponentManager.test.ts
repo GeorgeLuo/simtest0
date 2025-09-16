@@ -3,6 +3,7 @@ import { ComponentManager } from '../../src/ecs/components/ComponentManager.js';
 import { createComponentType } from '../../src/ecs/components/ComponentType.js';
 
 type PositionComponent = { x: number; y: number };
+type VelocityComponent = { vx: number; vy: number };
 
 const positionType = createComponentType<PositionComponent>({
   id: 'position',
@@ -15,6 +16,22 @@ const positionType = createComponentType<PositionComponent>({
     },
     y: {
       description: 'Vertical axis position.',
+      defaultValue: 0,
+    },
+  },
+});
+
+const velocityType = createComponentType<VelocityComponent>({
+  id: 'velocity',
+  name: 'Velocity',
+  description: 'Tracks entity velocity in 2D space.',
+  schema: {
+    vx: {
+      description: 'Horizontal axis velocity.',
+      defaultValue: 0,
+    },
+    vy: {
+      description: 'Vertical axis velocity.',
       defaultValue: 0,
     },
   },
@@ -65,5 +82,62 @@ describe('ComponentManager', () => {
 
     expect(component).toEqual({ x: 0, y: 0 });
     expect(manager.getComponent(entityId, positionType)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('returns the identifiers of entities with a component attached for a type', () => {
+    const manager = new ComponentManager() as any;
+    const entityA = 5;
+    const entityB = 6;
+    const entityC = 7;
+
+    manager.registerType(positionType);
+
+    manager.attachComponent(entityA, positionType, { x: 1, y: 1 });
+    manager.attachComponent(entityC, positionType, { x: -4, y: 2 });
+
+    const entities = manager.getEntitiesWith(positionType);
+
+    expect(entities).toEqual([entityA, entityC]);
+    expect(entities).not.toContain(entityB);
+  });
+
+  it('removes a specific component without affecting other entities', () => {
+    const manager = new ComponentManager() as any;
+    const entityA = 11;
+    const entityB = 12;
+    const initialA: PositionComponent = { x: 2, y: 3 };
+    const initialB: PositionComponent = { x: 4, y: 6 };
+
+    manager.registerType(positionType);
+    manager.attachComponent(entityA, positionType, initialA);
+    manager.attachComponent(entityB, positionType, initialB);
+
+    const removed = manager.removeComponent(entityA, positionType);
+
+    expect(removed).toBe(true);
+    expect(manager.getComponent(entityA, positionType)).toBeUndefined();
+    expect(manager.getComponent(entityB, positionType)).toEqual(initialB);
+    expect(manager.getEntitiesWith(positionType)).toEqual([entityB]);
+  });
+
+  it('clears all components for an entity across registered types', () => {
+    const manager = new ComponentManager() as any;
+    const entityA = 21;
+    const entityB = 22;
+
+    manager.registerType(positionType);
+    manager.registerType(velocityType);
+
+    manager.attachComponent(entityA, positionType, { x: 9, y: 9 });
+    manager.attachComponent(entityA, velocityType, { vx: 3, vy: 4 });
+    manager.attachComponent(entityB, positionType, { x: 0, y: 0 });
+
+    manager.removeAllComponents(entityA);
+
+    expect(manager.getComponent(entityA, positionType)).toBeUndefined();
+    expect(manager.getComponent(entityA, velocityType)).toBeUndefined();
+    expect(manager.getComponent(entityB, positionType)).toEqual({ x: 0, y: 0 });
+    expect(manager.getEntitiesWith(positionType)).toEqual([entityB]);
+    expect(manager.getEntitiesWith(velocityType)).toEqual([]);
   });
 });
