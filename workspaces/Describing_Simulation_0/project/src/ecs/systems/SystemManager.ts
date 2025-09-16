@@ -19,6 +19,22 @@ export class SystemManager {
     this.systemsById.set(system.id, system);
   }
 
+  unregister(id: string): boolean {
+    const system = this.systemsById.get(id);
+    if (!system) {
+      return false;
+    }
+
+    this.systemsById.delete(id);
+
+    const index = this.systems.indexOf(system);
+    if (index >= 0) {
+      this.systems.splice(index, 1);
+    }
+
+    return true;
+  }
+
   has(systemId: string): boolean {
     return this.systemsById.has(systemId);
   }
