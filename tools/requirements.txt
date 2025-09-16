@@ -1,0 +1,4 @@
+# Python packages installed into the local virtual environment.
+# Extend this list as the simulation tooling grows.
+pytest>=7.4
+rich>=13.7
