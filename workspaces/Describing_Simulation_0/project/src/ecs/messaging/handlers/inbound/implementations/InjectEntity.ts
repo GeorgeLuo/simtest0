@@ -1,11 +1,11 @@
 import type {
   EntityBlueprint,
   Player,
-} from '../../Player.js';
+} from '../../../../Player.js';
 import type {
   Message,
   MessageHandler,
-} from '../MessageHandler.js';
+} from '../../../MessageHandler.js';
 
 export type InjectEntityMessage = Message<'inject-entity', EntityBlueprint>;
 

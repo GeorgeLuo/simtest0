@@ -1,4 +1,4 @@
-import type { Message } from '../MessageHandler.js';
+import type { Message } from '../../../MessageHandler.js';
 
 export type AcknowledgementStatus = 'success' | 'error';
 

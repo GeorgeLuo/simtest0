@@ -1,15 +1,19 @@
 import { Player, type PlayerOptions, type PlayerSnapshot } from '../Player.js';
 import { Bus } from './Bus.js';
 import {
+  InboundHandlerRegistry,
+  type InboundMessageHandler,
+} from './handlers/inbound/InboundHandlerRegistry.js';
+import { InjectEntityHandler, type InjectEntityMessage } from './handlers/inbound/implementations/InjectEntity.js';
+import { PauseHandler, type PauseMessage } from './handlers/inbound/implementations/Pause.js';
+import { StartHandler, type StartMessage } from './handlers/inbound/implementations/Start.js';
+import { StopHandler, type StopMessage } from './handlers/inbound/implementations/Stop.js';
+import {
   createErrorAcknowledgement,
   createSuccessAcknowledgement,
   type AcknowledgementMessage,
-} from './handlers/Acknowledgement.js';
-import { createFrameMessage, type FrameMessage } from './handlers/Frame.js';
-import { InjectEntityHandler, type InjectEntityMessage } from './handlers/InjectEntity.js';
-import { PauseHandler, type PauseMessage } from './handlers/Pause.js';
-import { StartHandler, type StartMessage } from './handlers/Start.js';
-import { StopHandler, type StopMessage } from './handlers/Stop.js';
+} from './handlers/outbound/implementations/Acknowledgement.js';
+import { createFrameMessage, type FrameMessage } from './handlers/outbound/implementations/Frame.js';
 
 export type InboundMessage =
   | StartMessage
@@ -19,23 +23,18 @@ export type InboundMessage =
 
 export type OutboundMessage = AcknowledgementMessage | FrameMessage;
 
-type InboundMessageType = InboundMessage['type'];
-
-type HandlerExecutor = (message: InboundMessage) => Promise<void>;
-
-type PlayerCommandHandler<TMessage extends InboundMessage = InboundMessage> = {
-  readonly type: TMessage['type'];
-  handle(message: TMessage, player: Player): Promise<void> | void;
-};
+type PlayerInboundHandler<TMessage extends InboundMessage = InboundMessage> =
+  InboundMessageHandler<TMessage, Player>;
 
 export interface IOPlayerOptions extends PlayerOptions {
-  handlers?: PlayerCommandHandler[];
+  handlers?: ReadonlyArray<PlayerInboundHandler>;
+  handlerRegistry?: InboundHandlerRegistry<InboundMessage, Player>;
 }
 
 export class IOPlayer extends Player {
   private readonly inputBus: Bus<InboundMessage>;
   private readonly outputBus: Bus<OutboundMessage>;
-  private readonly handlerExecutors = new Map<InboundMessageType, HandlerExecutor>();
+  private readonly inboundHandlerRegistry: InboundHandlerRegistry<InboundMessage, Player>;
   private unsubscribeInput?: () => void;
 
   constructor(
@@ -51,22 +50,27 @@ export class IOPlayer extends Player {
     this.inputBus = inputBus;
     this.outputBus = outputBus;
 
-    const handlers: PlayerCommandHandler[] = options.handlers ?? [
-      new StartHandler(),
-      new PauseHandler(),
-      new StopHandler(),
-      new InjectEntityHandler(),
-    ];
+    const inboundHandlerRegistry =
+      options.handlerRegistry ?? new InboundHandlerRegistry<InboundMessage, Player>();
 
-    for (const handler of handlers) {
-      if (this.handlerExecutors.has(handler.type)) {
-        throw new Error(`Duplicate handler registered for type "${handler.type}"`);
+    const handlersToRegister =
+      options.handlers ??
+      (!options.handlerRegistry
+        ? [
+            new StartHandler(),
+            new PauseHandler(),
+            new StopHandler(),
+            new InjectEntityHandler(),
+          ]
+        : undefined);
+
+    if (handlersToRegister) {
+      for (const handler of handlersToRegister) {
+        inboundHandlerRegistry.register(handler);
       }
-
-      this.handlerExecutors.set(handler.type, async (message: InboundMessage) => {
-        await handler.handle(message as never, this);
-      });
     }
+
+    this.inboundHandlerRegistry = inboundHandlerRegistry;
 
     this.unsubscribeInput = this.inputBus.subscribe((message) => this.handleInbound(message));
   }
@@ -89,9 +93,9 @@ export class IOPlayer extends Player {
   }
 
   private async handleInbound(message: InboundMessage): Promise<void> {
-    const executor = this.handlerExecutors.get(message.type);
+    const handler = this.inboundHandlerRegistry.resolve(message.type);
 
-    if (!executor) {
+    if (!handler) {
       await this.outputBus.publish(
         createErrorAcknowledgement(
           message.id,
@@ -102,7 +106,7 @@ export class IOPlayer extends Player {
     }
 
     try {
-      await executor(message);
+      await handler.handle(message, this);
       await this.outputBus.publish(createSuccessAcknowledgement(message.id));
       await this.emitFrame();
     } catch (error) {

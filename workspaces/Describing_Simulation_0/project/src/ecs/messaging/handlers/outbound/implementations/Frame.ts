@@ -1,5 +1,5 @@
-import type { PlayerSnapshot } from '../../Player.js';
-import type { Message } from '../MessageHandler.js';
+import type { PlayerSnapshot } from '../../../../Player.js';
+import type { Message } from '../../../MessageHandler.js';
 
 export type FramePayload = PlayerSnapshot;
 

@@ -1,8 +1,8 @@
-import type { Player } from '../../Player.js';
+import type { Player } from '../../../../Player.js';
 import type {
   Message,
   MessageHandler,
-} from '../MessageHandler.js';
+} from '../../../MessageHandler.js';
 
 export type StopMessage = Message<'stop', Record<string, never>>;
 
