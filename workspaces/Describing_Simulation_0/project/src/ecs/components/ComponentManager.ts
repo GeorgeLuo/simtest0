@@ -23,6 +23,16 @@ export class ComponentManager {
     });
   }
 
+  getTypeById<T>(typeId: string): ComponentType<T> | undefined {
+    const record = this.registry.get(typeId);
+
+    if (!record) {
+      return undefined;
+    }
+
+    return record.type as ComponentType<T>;
+  }
+
   unregisterType<T>(type: ComponentType<T>): boolean {
     const record = this.registry.get(type.id);
 
