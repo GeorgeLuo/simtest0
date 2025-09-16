@@ -90,4 +90,38 @@ describe('EntityManager', () => {
     expect(manager.has(created.id)).toBe(false);
     expect(manager.getAll()).toEqual([]);
   });
+
+  it('destroyAll tears down every entity and removes their components', () => {
+    const componentManager = new ComponentManager();
+    const entityManager = new EntityManager(componentManager);
+
+    componentManager.registerType(healthType);
+
+    const first = entityManager.create();
+    const second = entityManager.create();
+    const third = entityManager.create();
+
+    componentManager.attachComponent(first.id, healthType, { value: 50 });
+    componentManager.attachComponent(second.id, healthType);
+    componentManager.attachComponent(third.id, healthType, { value: 5 });
+
+    const removeAllSpy = vi.spyOn(componentManager, 'removeAllComponents');
+
+    try {
+      entityManager.destroyAll();
+
+      expect(entityManager.getAll()).toEqual([]);
+
+      expect(removeAllSpy).toHaveBeenCalledTimes(3);
+      expect(removeAllSpy).toHaveBeenCalledWith(first.id);
+      expect(removeAllSpy).toHaveBeenCalledWith(second.id);
+      expect(removeAllSpy).toHaveBeenCalledWith(third.id);
+
+      expect(componentManager.getComponent(first.id, healthType)).toBeUndefined();
+      expect(componentManager.getComponent(second.id, healthType)).toBeUndefined();
+      expect(componentManager.getComponent(third.id, healthType)).toBeUndefined();
+    } finally {
+      removeAllSpy.mockRestore();
+    }
+  });
 });
