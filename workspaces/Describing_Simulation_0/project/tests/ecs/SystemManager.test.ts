@@ -86,6 +86,14 @@ describe('SystemManager', () => {
     }
   });
 
+  it('throws when updated with a negative delta time', async () => {
+    const manager = new SystemManager();
+
+    await expect(manager.update(-0.1)).rejects.toThrowError(
+      'deltaTime must be a non-negative number',
+    );
+  });
+
   it('initializes systems in their registration order', async () => {
     const manager = new SystemManager();
     const initializeOrder: string[] = [];
