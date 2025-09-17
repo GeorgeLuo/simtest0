@@ -1,0 +1,242 @@
+IOPlayer outbound stream log
+Created at 2025-09-16T21:25:34.756Z
+
+[2025-09-16T21:25:34.761Z] ACKNOWLEDGEMENT
+{
+  "type": "acknowledgement",
+  "payload": {
+    "status": "success",
+    "messageId": "start-message"
+  }
+}
+
+[2025-09-16T21:25:34.761Z] FRAME
+{
+  "type": "frame",
+  "payload": {
+    "tick": 0,
+    "elapsedTime": 0,
+    "entities": []
+  }
+}
+
+[2025-09-16T21:25:34.761Z] ACKNOWLEDGEMENT
+{
+  "type": "acknowledgement",
+  "payload": {
+    "status": "success",
+    "messageId": "inject-colony"
+  }
+}
+
+[2025-09-16T21:25:34.761Z] FRAME
+{
+  "type": "frame",
+  "payload": {
+    "tick": 0,
+    "elapsedTime": 0,
+    "entities": [
+      {
+        "id": 1,
+        "components": {
+          "food-resource": {
+            "currentFood": 100,
+            "decayPerTick": 10,
+            "minimumFood": 0
+          },
+          "population": {
+            "currentPopulation": 20,
+            "perCapitaFoodNeed": 4,
+            "starvationRate": 0.5,
+            "minimumPopulation": 1
+          }
+        }
+      }
+    ]
+  }
+}
+
+[2025-09-16T21:25:35.761Z] FRAME
+{
+  "type": "frame",
+  "payload": {
+    "tick": 1,
+    "elapsedTime": 1,
+    "entities": [
+      {
+        "id": 1,
+        "components": {
+          "time": {
+            "ticks": 1,
+            "deltaPerUpdate": 1
+          },
+          "food-resource": {
+            "currentFood": 90,
+            "decayPerTick": 10,
+            "minimumFood": 0
+          },
+          "population": {
+            "currentPopulation": 20,
+            "perCapitaFoodNeed": 4,
+            "starvationRate": 0.5,
+            "minimumPopulation": 1
+          }
+        }
+      }
+    ]
+  }
+}
+
+[2025-09-16T21:25:36.761Z] FRAME
+{
+  "type": "frame",
+  "payload": {
+    "tick": 2,
+    "elapsedTime": 2,
+    "entities": [
+      {
+        "id": 1,
+        "components": {
+          "time": {
+            "ticks": 2,
+            "deltaPerUpdate": 1
+          },
+          "food-resource": {
+            "currentFood": 80,
+            "decayPerTick": 10,
+            "minimumFood": 0
+          },
+          "population": {
+            "currentPopulation": 20,
+            "perCapitaFoodNeed": 4,
+            "starvationRate": 0.5,
+            "minimumPopulation": 1
+          }
+        }
+      }
+    ]
+  }
+}
+
+[2025-09-16T21:25:37.761Z] FRAME
+{
+  "type": "frame",
+  "payload": {
+    "tick": 3,
+    "elapsedTime": 3,
+    "entities": [
+      {
+        "id": 1,
+        "components": {
+          "time": {
+            "ticks": 3,
+            "deltaPerUpdate": 1
+          },
+          "food-resource": {
+            "currentFood": 70,
+            "decayPerTick": 10,
+            "minimumFood": 0
+          },
+          "population": {
+            "currentPopulation": 18.75,
+            "perCapitaFoodNeed": 4,
+            "starvationRate": 0.5,
+            "minimumPopulation": 1
+          }
+        }
+      }
+    ]
+  }
+}
+
+[2025-09-16T21:25:38.761Z] FRAME
+{
+  "type": "frame",
+  "payload": {
+    "tick": 4,
+    "elapsedTime": 4,
+    "entities": [
+      {
+        "id": 1,
+        "components": {
+          "time": {
+            "ticks": 4,
+            "deltaPerUpdate": 1
+          },
+          "food-resource": {
+            "currentFood": 60,
+            "decayPerTick": 10,
+            "minimumFood": 0
+          },
+          "population": {
+            "currentPopulation": 16.875,
+            "perCapitaFoodNeed": 4,
+            "starvationRate": 0.5,
+            "minimumPopulation": 1
+          }
+        }
+      }
+    ]
+  }
+}
+
+[2025-09-16T21:25:39.761Z] FRAME
+{
+  "type": "frame",
+  "payload": {
+    "tick": 5,
+    "elapsedTime": 5,
+    "entities": [
+      {
+        "id": 1,
+        "components": {
+          "time": {
+            "ticks": 5,
+            "deltaPerUpdate": 1
+          },
+          "food-resource": {
+            "currentFood": 50,
+            "decayPerTick": 10,
+            "minimumFood": 0
+          },
+          "population": {
+            "currentPopulation": 14.6875,
+            "perCapitaFoodNeed": 4,
+            "starvationRate": 0.5,
+            "minimumPopulation": 1
+          }
+        }
+      }
+    ]
+  }
+}
+
+[2025-09-16T21:25:39.761Z] FRAME
+{
+  "type": "frame",
+  "payload": {
+    "tick": 0,
+    "elapsedTime": 0,
+    "entities": []
+  }
+}
+
+[2025-09-16T21:25:39.761Z] ACKNOWLEDGEMENT
+{
+  "type": "acknowledgement",
+  "payload": {
+    "status": "success",
+    "messageId": "stop-message"
+  }
+}
+
+[2025-09-16T21:25:39.761Z] FRAME
+{
+  "type": "frame",
+  "payload": {
+    "tick": 0,
+    "elapsedTime": 0,
+    "entities": []
+  }
+}
+
