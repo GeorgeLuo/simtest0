@@ -6,14 +6,27 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ComponentManager } from '../../src/ecs/components/ComponentManager.js';
+import { timeComponentType } from '../../src/ecs/components/implementations/TimeComponent.js';
+import {
+  foodResourceComponentType,
+  type FoodResourceComponent,
+} from '../../src/ecs/components/implementations/plugins/FoodResourceComponent.js';
+import {
+  populationComponentType,
+  type PopulationComponent,
+} from '../../src/ecs/components/implementations/plugins/PopulationComponent.js';
 import { EntityManager } from '../../src/ecs/entity/EntityManager.js';
 import { SystemManager } from '../../src/ecs/systems/SystemManager.js';
+import { TimeSystem } from '../../src/ecs/systems/implementations/TimeSystem.js';
+import { FoodDecaySystem } from '../../src/ecs/systems/implementations/plugins/FoodDecaySystem.js';
+import { PopulationResponseSystem } from '../../src/ecs/systems/implementations/plugins/PopulationResponseSystem.js';
 import { Bus } from '../../src/ecs/messaging/Bus.js';
 import {
   IOPlayer,
   type InboundMessage,
   type OutboundMessage,
 } from '../../src/ecs/messaging/IOPlayer.js';
+import type { SnapshotEntity } from '../../src/ecs/Player.js';
 
 const testFilePath = fileURLToPath(import.meta.url);
 const testDirectory = path.dirname(testFilePath);
@@ -66,6 +79,20 @@ describe('IOPlayer end-to-end example', () => {
       const entityManager = new EntityManager(componentManager);
       const systemManager = new SystemManager();
 
+      const colonyEntityId = 1;
+
+      componentManager.registerType(timeComponentType);
+      componentManager.registerType(foodResourceComponentType);
+      componentManager.registerType(populationComponentType);
+
+      const timeSystem = new TimeSystem(componentManager, colonyEntityId);
+      const foodDecaySystem = new FoodDecaySystem(componentManager);
+      const populationResponseSystem = new PopulationResponseSystem(componentManager);
+
+      systemManager.register(timeSystem);
+      systemManager.register(foodDecaySystem);
+      systemManager.register(populationResponseSystem);
+
       const inboundBus = new Bus<InboundMessage>();
       const outboundBus = new Bus<OutboundMessage>();
 
@@ -94,6 +121,35 @@ describe('IOPlayer end-to-end example', () => {
 
       await inboundBus.publish({ id: 'start-message', type: 'start', payload: {} });
 
+      const injectEntityMessage: InboundMessage = {
+        id: 'inject-colony',
+        type: 'inject-entity',
+        payload: {
+          id: colonyEntityId,
+          components: [
+            {
+              typeId: foodResourceComponentType.id,
+              values: {
+                currentFood: 100,
+                decayPerTick: 10,
+                minimumFood: 0,
+              },
+            },
+            {
+              typeId: populationComponentType.id,
+              values: {
+                currentPopulation: 20,
+                perCapitaFoodNeed: 4,
+                starvationRate: 0.5,
+                minimumPopulation: 1,
+              },
+            },
+          ],
+        },
+      };
+
+      await inboundBus.publish(injectEntityMessage);
+
       await vi.advanceTimersByTimeAsync(5_000);
 
       await inboundBus.publish({ id: 'stop-message', type: 'stop', payload: {} });
@@ -118,9 +174,9 @@ describe('IOPlayer end-to-end example', () => {
       );
 
       expect(frameMessages.length).toBeGreaterThan(0);
-      expect(acknowledgementMessages).toHaveLength(2);
+      expect(acknowledgementMessages).toHaveLength(3);
       expect(acknowledgementIds).toEqual(
-        expect.arrayContaining(['start-message', 'stop-message']),
+        expect.arrayContaining(['start-message', 'inject-colony', 'stop-message']),
       );
       expect(acknowledgementMessages.every((message) => message.payload.status === 'success')).toBe(
         true,
@@ -131,11 +187,54 @@ describe('IOPlayer end-to-end example', () => {
         .map((call) => call[1]);
 
       expect(loggedTypes).toContain('frame');
-      expect(loggedTypes.filter((type) => type === 'acknowledgement').length).toBeGreaterThanOrEqual(2);
+      expect(loggedTypes.filter((type) => type === 'acknowledgement').length).toBeGreaterThanOrEqual(3);
+
+      const colonySnapshots = frameMessages
+        .map((message) =>
+          message.payload.entities.find((entity) => entity.id === colonyEntityId),
+        )
+        .filter((entity): entity is SnapshotEntity => Boolean(entity));
+
+      expect(colonySnapshots.length).toBeGreaterThan(0);
+
+      const foodReadings = colonySnapshots
+        .map(
+          (snapshot) =>
+            snapshot.components[foodResourceComponentType.id] as
+              | FoodResourceComponent
+              | undefined,
+        )
+        .filter(
+          (component): component is FoodResourceComponent => component !== undefined,
+        );
+
+      const populationReadings = colonySnapshots
+        .map(
+          (snapshot) =>
+            snapshot.components[populationComponentType.id] as
+              | PopulationComponent
+              | undefined,
+        )
+        .filter(
+          (component): component is PopulationComponent => component !== undefined,
+        );
+
+      expect(foodReadings.length).toBeGreaterThan(0);
+      expect(populationReadings.length).toBeGreaterThan(0);
+
+      const firstFood = foodReadings[0]?.currentFood ?? 0;
+      const lastFood = foodReadings.at(-1)?.currentFood ?? 0;
+      expect(lastFood).toBeLessThan(firstFood);
+
+      const firstPopulation = populationReadings[0]?.currentPopulation ?? 0;
+      const lastPopulation = populationReadings.at(-1)?.currentPopulation ?? 0;
+      expect(lastPopulation).toBeLessThan(firstPopulation);
 
       const outboundStreamLog = await readFile(logFilePath, 'utf-8');
       expect(outboundStreamLog).toContain('"type": "frame"');
       expect(outboundStreamLog).toContain('"type": "acknowledgement"');
+      expect(outboundStreamLog).toContain(`"${foodResourceComponentType.id}"`);
+      expect(outboundStreamLog).toContain(`"${populationComponentType.id}"`);
     } finally {
       await ensureLogStreamClosed();
     }
