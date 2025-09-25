@@ -25,16 +25,11 @@ Phase 2 — Artifact Creation
 - Each checkpoint represents a coherent milestone, building on prior ones.
 
 - For each checkpoint:
-
-- Define skeletons (structure, empty methods).
-
-- Write test intents (comment-only).
-
-- Codify tests from intents.
-
-- Implement logic to satisfy tests.
-
-- Validate until all tests pass.
+    1. Define skeletons (structure, empty methods).
+    2. Write test intents (comment-only).
+    3. Codify tests from intents.
+    4. Implement logic to satisfy tests.
+    5. Validate until all tests pass.
 
 ### Task Staging
 
