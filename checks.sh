@@ -25,7 +25,7 @@ printf 'Running repository checks at %s\n\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 overall_status=0
 
 declare -A required_paths=(
-  ["instruction_documents/_theory.md"]="file"
+  ["instruction_documents/Describing_Simulation_0_theory.md"]="file"
   ["tools/index.md"]="file"
   ["workspaces/Describing_Simulation_0"]="dir"
   ["memory/ways"]="dir"
