@@ -477,20 +477,15 @@ This is a flow we will revisit at various points when enough information has bee
 Descriptions
 
 ├─► Stage 1: Skeletons (structure, empty methods)
-
-└─► Stage 2: Test Intents (comment-only requirements)
-
-Stage 3: Codify Tests
-
-└─ Join (Skeletons + Test Intents) → Actual tests
-
-Stage 4: Implement Logic
-
-└─ Fill skeletons to satisfy tests
-
-Stage 5: Validate
-
-└─ Run tests → Errors → Iterate until green
+│   └─► Draft the file layout and placeholder methods
+├─► Stage 2: Test Intents (comment-only requirements)
+│   └─► Capture desired behaviors as descriptive comments
+├─► Stage 3: Codify Tests
+│   └─► Join Skeletons + Test Intents → Actual tests
+├─► Stage 4: Implement Logic
+│   └─► Fill skeletons to satisfy tests
+└─► Stage 5: Validate
+    └─► Run tests → Errors → Iterate until green
 
 To be clear, this document upon delivery to you, the reader, should provide logic that is compilable to code.
 
