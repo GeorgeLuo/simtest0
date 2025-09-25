@@ -42,7 +42,7 @@ The following sections serve as guidelines for code layout and principles for im
 
 ### Structure
 
-```
+```text
 project/
 ├── src/
 │   ├── core/
@@ -52,52 +52,40 @@ project/
 │   │   │   ├── SimulationPlayer.ts
 │   │   │   └── operations/
 │   │   │       ├── Start.ts
-`│   │   │       ├── ``Pause.ts`
-
+│   │   │       ├── Pause.ts
 │   │   │       ├── Stop.ts
 │   │   │       └── InjectSystem.ts
-│   │   │
 │   │   ├── evalplayer/
 │   │   │   ├── EvaluationPlayer.ts
 │   │   │   └── operations/
 │   │   │       └── InjectFrame.ts
-│   │   │
 │   │   ├── entity/
 │   │   │   ├── EntityManager.ts
 │   │   │   └── Entity.ts
-│   │   │
 │   │   ├── components/
 │   │   │   ├── ComponentType.ts
 │   │   │   ├── ComponentManager.ts
 │   │   │   └── TimeComponent.ts
-│   │   │
 │   │   ├── systems/
 │   │   │   ├── System.ts
 │   │   │   ├── SystemManager.ts
 │   │   │   └── TimeSystem.ts
-│   │   │
 │   │   └── messaging/
 │   │       ├── Bus.ts
 │   │       ├── outbound/
-`│   │       │   ├── ``Frame.ts`
-
+│   │       │   ├── Frame.ts
 │   │       │   ├── FrameFilter.ts
 │   │       │   └── Acknowledgement.ts
-│   │       │
 │   │       └── inbound/
 │   │           ├── Operation.ts
 │   │           ├── MessageHandler.ts
 │   │           └── InboundHandlerRegistry.ts
-│   │
-│   │
 │   ├── routes/
 │   │   ├── apiRoutes.ts
 │   │   ├── controls.ts
 │   │   └── evaluations.ts
-│   │
 │   ├── server.ts
 │   └── main.ts
-│
 ├── plugins/
 │   ├── simulation/
 │   │   ├── components/
@@ -106,7 +94,6 @@ project/
 │   │   │   └── (agent-defined systems)
 │   │   └── operations/
 │   │       └── (agent-defined handlers)
-│   │
 │   └── evaluation/
 │       ├── components/
 │       │   └── (agent-defined evaluation components)
@@ -114,7 +101,6 @@ project/
 │       │   └── (agent-defined evaluation systems)
 │       └── operations/
 │           └── (agent-defined evaluation handlers)
-│
 ├── package.json
 └── README.md
 ```
