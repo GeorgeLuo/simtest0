@@ -527,6 +527,7 @@ Create instructions for future visitors to review the latest version of this doc
 │   ├── <this document's file name>_theory.md
 │   ├── <this document's file name>_bootstraps.md
 │   ├── <this document's file name>_codifying_simulations.md
+│   ├── <this document's file name>_master_prompt.md
 │   └── index.md
 ├── tools/
 │   └── index.md
