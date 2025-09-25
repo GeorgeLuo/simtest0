@@ -14,3 +14,8 @@
 - Directs how to establish the repository structure, split instruction sections, and document their contents for discoverability.
 - Specifies supporting directories—tools, workspaces, memory, and verifications—and the expectations for their maintenance.
 - Outlines the purpose of long-term "ways" and short-term "records" memories alongside the checks.sh entry point for validations.
+
+## `_master_prompt.md`
+- Captures the canonical division of responsibilities between the task-generating and task-implementing agent roles.
+- Enumerates phased bootstrapping and artifact creation expectations, including checkpoint sequencing and validation practices.
+- Advises on staging strategies that minimize conflicts while keeping documentation explicit about workspace context.
