@@ -1,8 +1,8 @@
-## Master Prompt
+# Master Prompt
 
 There are two roles for an agent to exclusively execute upon. One who generates tasks, and one who implements tasks.
 
-### Tasker
+## Tasker
 
 When you are responsible for determining the next steps open-endedly, examine the state of the present revision workspace and memories and enumerate tasks that forward the state of artifact construction, referencing pertinent instruction documents as guidelines including guidance towards a review of the master prompt.
 
@@ -36,7 +36,7 @@ Phase 2 — Artifact Creation
 
 - Validate until all tests pass.
 
-### Task Staging
+## Task Staging
 
 Generally, individual tasks should touch one of:
 
@@ -50,6 +50,6 @@ When generating a collection of tasks, organize them sequentially such that task
 
 As implementers heavily bias the tasks generated, be verbose in relevant documents for review and explicit regarding workspace location.
 
-### Implementer
+## Implementer
 
 When you are responsible for executing tasks, do so with respect to development patterns and best practices within instruction documents.
