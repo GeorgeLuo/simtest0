@@ -58,4 +58,18 @@ else
   printf '\nAll required paths are present.\n'
 fi
 
+printf '\nRunning workspace tests...\n'
+if npm test --prefix "$ROOT_DIR/workspaces/Describing_Simulation_0"; then
+  printf '[PASS] Workspace tests completed successfully.\n'
+else
+  printf '[FAIL] Workspace tests encountered errors.\n'
+  overall_status=1
+fi
+
+if [[ "$overall_status" -eq 0 ]]; then
+  printf '\nAll checks completed successfully.\n'
+else
+  printf '\nOne or more checks failed.\n'
+fi
+
 exit "$overall_status"
