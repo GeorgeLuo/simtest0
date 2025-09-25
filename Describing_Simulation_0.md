@@ -1,52 +1,5 @@
 # Describing Simulation
 
-Key reference sections are now maintained in [instruction_documents/index.md](instruction_documents/index.md).
-
-## Test-driven Development
-
-When aggregate descriptions are sufficient to codify we will follow these steps:
-
-1. Generate the skeleton of the files (without implementing business logic) from the descriptions
-
-2. Given the descriptions, generate test files of comments only, capturing intent of the test to be implemented
-
-3. Codify a test for each comment, importing the finished skeleton
-
-4. Implement the business logic in the skeleton
-
-5. Run tests and resolve errors until no errors
-
-This is a flow we will revisit at various points when enough information has been provided for incremental codification with minimal assumptions about the larger codebase. The purpose of this orientation is to separately capture intent through testing and intent through implementation. In fact, step 1 and 2 may be conducted in parallel by two actors. Synthesis in step 3 validates sufficiency in signals and joins the two contexts for the rest of the sequence.
-
-Descriptions
-
-├─► Stage 1: Skeletons (structure, empty methods)
-
-└─► Stage 2: Test Intents (comment-only requirements)
-
-Stage 3: Codify Tests
-
-└─ Join (Skeletons + Test Intents) → Actual tests
-
-Stage 4: Implement Logic
-
-└─ Fill skeletons to satisfy tests
-
-Stage 5: Validate
-
-└─ Run tests → Errors → Iterate until green
-
-To be clear, this document upon delivery to you, the reader, should provide logic that is compilable to code.
-
-# Agentic Instructions
-
-Why do we spend more time producing more text than code that actually runs? Re-writable artifacts translate to interfaces and business logic with some but minimal variation. Our base assumption is implementation tooling (including LLM assistance) and hardware improves, while human operators have relatively static capabilities in understanding code and algorithmic efficiency is fundamentally unchanging. 
-
-The human operator is responsible for intuiting where bottlenecks in memory and computation occur. The complete artifact can only be comprehended by the originator until it is manifested.
-
-The following are instructions for the reader towards implementation of the descriptions of the body of code above. We will describe a generic process, but expect this document to be consumed by agent operators. The proceduralist, mechanistic nature of the instructions are intended to reduce errors and provide traceability of decisions, which will aid revisions of this document; it is imperative to follow as outlined.
-# Describing Simulation
-
 Suppose we were to define an agent responsible for solving hypotheticals with quantitative approaches. The general strategy would be to model the relevant systems, determine the values to set in the systems, and compute the result.
 
 This paper seeks to define an approach to build such simulations from natural language prompts, from validation to intent extraction, to codification. We define a specific methodology of building simulations for a specific problem space. The intent is not to address the universe of open-ended questions, but hopefully will address some problems worth solving.
@@ -215,8 +168,6 @@ In summary, a metrics aggregator should be considered part of scaffolding, as we
 
 The temporal nature of the engine lends to playback controls of starting, pausing, and ending.
 
-The api should also support engine changes. Hot-swapping systems, entity injection, and component mutations should be possible through an engine manager.
-
 An engine controller with an event bus outside of the system evaluation loop should suffice to support real-time communication. An api defines supported meta commands.
 
 ### Server
@@ -232,7 +183,23 @@ The following sections serve as guidelines for code layout and principles for im
 ```
 project/
 ├── src/
-│   ├── ecs/
+│   ├── core/
+│   │   ├── Player.ts
+│   │   ├── IOPlayer.ts
+│   │   ├── simplayer/
+│   │   │   ├── SimulationPlayer.ts
+│   │   │   └── operations/
+│   │   │       ├── Start.ts
+`│   │   │       ├── ``Pause.ts`
+
+│   │   │       ├── Stop.ts
+│   │   │       └── InjectSystem.ts
+│   │   │
+│   │   ├── evalplayer/
+│   │   │   ├── EvaluationPlayer.ts
+│   │   │   └── operations/
+│   │   │       └── InjectFrame.ts
+│   │   │
 │   │   ├── entity/
 │   │   │   ├── EntityManager.ts
 │   │   │   └── Entity.ts
@@ -240,56 +207,51 @@ project/
 │   │   ├── components/
 │   │   │   ├── ComponentType.ts
 │   │   │   ├── ComponentManager.ts
-│   │   │   └── implementations/
-│   │   │       ├── TimeComponent.ts
-│   │   │       └── plugins/
-│   │   │           └── (agent-defined components live here)
+│   │   │   └── TimeComponent.ts
+│   │   │
 │   │   ├── systems/
 │   │   │   ├── System.ts
 │   │   │   ├── SystemManager.ts
-│   │   │   └── implementations/
-│   │   │       ├── TimeSystem.ts
-│   │   │       └── plugins/
-│   │   │           └── (agent-defined systems live here)
+│   │   │   └── TimeSystem.ts
 │   │   │
-│   │   ├── messaging/
-│   │   │   ├── Bus.ts
-│   │   │   ├── MessageHandler.ts
-│   │   │   └── handlers/
-│   │   │       ├── inbound/
-│   │   │       │   ├── InboundHandlerRegistry.ts
-│   │   │       │   └── implementations/
-│   │   │       │       ├── Start.ts
-│   │   │       │       ├── Pause.ts
-│   │   │       │       ├── Stop.ts
-│   │   │       │       ├── InjectEntity.ts
-│   │   │       │       └── plugins/
-│   │   │       │           └── (agent-defined outbound handlers live here)
-│   │   │       │
-│   │   │       └── outbound/
-│   │   │           └── implementations/
-│   │   │               ├── Acknowledgement.ts
-│   │   │               ├── Frame.ts
-│   │   │               └── plugins/
-│   │   │                   └── (agent-defined outbound handlers live here)
-│   │   └── Player.ts
+│   │   └── messaging/
+│   │       ├── Bus.ts
+│   │       ├── outbound/
+`│   │       │   ├── ``Frame.ts`
+
+│   │       │   ├── FrameFilter.ts
+│   │       │   └── Acknowledgement.ts
+│   │       │
+│   │       └── inbound/
+│   │           ├── Operation.ts
+│   │           ├── MessageHandler.ts
+│   │           └── InboundHandlerRegistry.ts
 │   │
-│   ├── evaluator/
-│   │   └── ConditionEvaluator.ts
-│   │       └── implementations/
-│   │           ├── ThresholdConditionEvaluator.ts
-│   │           └── plugins/
-│   │               └── (agent-defined evaluators live here)
 │   │
 │   ├── routes/
 │   │   ├── apiRoutes.ts
 │   │   ├── controls.ts
-│   │   ├── metrics.ts
-│   │   └── plugins/
-│   │       └── (agent-defined routes live here)
+│   │   └── evaluations.ts
 │   │
 │   ├── server.ts
 │   └── main.ts
+│
+├── plugins/
+│   ├── simulation/
+│   │   ├── components/
+│   │   │   └── (agent-defined components)
+│   │   ├── systems/
+│   │   │   └── (agent-defined systems)
+│   │   └── operations/
+│   │       └── (agent-defined handlers)
+│   │
+│   └── evaluation/
+│       ├── components/
+│       │   └── (agent-defined evaluation components)
+│       ├── systems/
+│       │   └── (agent-defined evaluation systems)
+│       └── operations/
+│           └── (agent-defined evaluation handlers)
 │
 ├── package.json
 └── README.md
@@ -388,7 +350,7 @@ Note configuration is not a part of scaffolding and it is still our intention to
 
 #### SystemManager
 
-The system manager, provided an entity and component manager, retrieves, creates, and removes systems used within the simulation engine. The manager enumerates the order of execution of the systems and is responsible for triggering lifecycle hooks of each system.
+The system manager, provided an entity and component manager, retrieves, creates, and removes systems used within the simulation engine. The manager tracks the order of execution of the systems and is responsible for triggering lifecycle hooks of each system. Adding and removing systems involves inserting based on the index of execution.
 
 #### Player
 
@@ -406,33 +368,27 @@ This lightweight file describes a bus with a callback register and send function
 
 Messages on the bus need typing in order to trigger specific reactions (for example, pause messages sent to the player), and handlers need to be defined for each type.
 
-#### MessageHandler
-
-The MessageHandler file defines the base message and message handler structures. A message is defined with an optional identifier, the type of the message, and the structure of the payload of the message. The message handler is declared for a specific message type. Every message handler contains the corresponding type of message under its responsibility and a function for how to process the message.
-
 ### VI. IO Player
 
 In this checkpoint we will define an extension of the base player that accepts commands through an input bus, actions based on the command, and returns an acknowledgement through the output bus. Additionally the output bus sends a continuous stream of simulation state.
 
-#### Start
-
-The start file defines the message handler to call the start function of the player.
-
-#### Pause
-
-The pause file defines the message handler to call the pause function of the player.
-
-#### Stop
-
-The stop file defines the message handler to call the stop function of the player.
-
-#### InjectEntity
-
-This file defines a handler to create an entity from the values provided from an inbound message and inserts it into the simulation using the entity manager.
+The operations defined in this section serve as controllers mappable within an inbound message handler registry for the player. Operations are the most narrow functions of the player and the registry allows recombination of operations for complex controller processes.
 
 #### InboundHandlerRegistry
 
-The inbound handler registry maps inbound message types to the message handlers of the player. Practically, in order to pause the engine, an inbound message of type pause will trigger the engine to pause.
+The inbound handler registry maps inbound message types to the message handlers of the player. Practically, in order to pause the engine, an inbound message of type pause to the player will cause a lookup for the handler for what sequence of operations to execute.
+
+#### MessageHandler
+
+The MessageHandler file defines a sequence of operations for execution, returning an acknowledgement.
+
+#### Operation
+
+The operation file defines the base interface for discrete actions of players. An operation’s execution is invoked with a player and message data.
+
+#### InjectSystem
+
+The inject system file defines the operation to add a system through the system manager of a player.
 
 #### Acknowledgement
 
@@ -442,13 +398,79 @@ The acknowledgement file defines the responses to inbound messages. Acknowledgem
 
 The frame file defines the shape of a snapshot of the simulation including all the present entities with their component values with an identifier for the tick of the frame.
 
+#### FrameFilter
+
+A frame filter is used to process frame objects to disclude components prior to outbound bus publication.
+
 #### IOPlayer
 
-The input-output player synthesizes the above for an extension of the player that is responsive to bus commands and outputs the state of the simulation on every cycle as frames.
+The input-output player synthesizes the above for an extension of the player that accepts inbound messages and outputs the state of the simulation on every cycle as frames.
 
-### V. Condition Evaluation
+The input-output player is intended as the base version for multi-player use cases. The following simulation player builds on top of the IOPlayer by simply concretizing operations suited for simulations. Extensions of the IOPlayer simply define data protocols; new components define signals, new systems produce the components, and consumers decide how to extract value from the components.
 
-### VI. Simulation Management
+### VII. Simulation Player
+
+#### Start
+
+The start file defines the operation to call the start function of the player, returning an acknowledgement.
+
+#### Pause
+
+The pause file defines the operation to call the pause function of the player, returning an acknowledgement.
+
+#### Stop
+
+The stop file defines the operation to call the stop function of the player, returning an acknowledgement.
+
+#### SimulationPlayer
+
+The simulation player synthesizes the above for an extension of the input-output player that is responsive to bus commands to manipulate simulation playback and outputs the state of the simulation on every cycle as frames.
+
+### VIII. Evaluation Player
+
+By this point, the input-output player can be initialized and controlled, producing a flow of simulation data. This works well enough for general observation or producing time-series volumes for analysis.
+
+In this section we will define the evaluation player, an extension of the input-output player with operations to catalog frames. The player is useful for building derivations or signals such as condition evaluations.
+
+#### InjectFrame
+
+The inject frame file defines the operation to create an entity with a frame component containing frame data. Each frame is stored within the engine as a separate entity.
+
+#### EvaluationPlayer
+
+The evaluation player extends the input-output player, passively accepting frames from the inbound bus and publishing evaluation of conditions. The player hides historical frames using the frame filter before publishing to outbound.
+
+We conclude this checkpoint by stating derivation logic is intended to be captured ad-hoc to serve specific use cases, rather than concretely defining condition checking. Generally, what can work is injection of systems which produce entities with actionable components and listening for those components from the outbound bus.
+
+# Serving Simulations
+
+By this point, we have pieces to run simulations from static definitions; we can script a simulation and collect evaluations.
+
+In this section we will define interoperability between the players with a server control surface. By the end, we should be able to support this flow:
+
+1. On program start, evaluation and simulation players are initialized, piping simulation outbound frames to evaluation inbound bus, server is listening
+
+2. Upload a system plugin and component plugin for the simulation player
+
+3. Upload a system plugin and component plugin for the evaluation player
+
+4. Start simulation
+
+5. Fetch most recent frame of the evaluation player
+
+#### Main
+
+The main file is the entrypoint to start the server.
+
+#### Server
+
+The server
+
+#### ApiRoutes
+
+#### Controls
+
+#### Evaluations
 
 ## Test-driven Development
 
@@ -611,8 +633,8 @@ Generally, individual tasks should touch one of:
 
 When generating a collection of tasks, organize them sequentially such that tasks will not cause merge conflicts, as it should be assumed tasks run in parallel, including documentation files. Staging around this can mean generating fewer tasks or stubbing files to arrive at a point where more complexity can be implemented.
 
-Be explicit regarding workspace location.
+As implementers heavily bias the tasks generated, be verbose in relevant documents for review and explicit regarding workspace location.
 
 ### Implementer
 
-When you are responsible for executing tasks, do so with respect to development patterns and best practices within instruction documents. The instruction documents should take precedence over even the prompt in terms of implementation scope.
+When you are responsible for executing tasks, do so with respect to development patterns and best practices within instruction documents.
