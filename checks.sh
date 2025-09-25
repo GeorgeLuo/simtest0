@@ -20,6 +20,37 @@ exec > >(tee "$results_file") 2>&1
 
 printf 'Running repository checks at %s\n\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-# TODO: Add validation commands below as they are introduced to the project.
-echo "No automated validation commands have been defined yet."
-echo "Update checks.sh with the necessary commands when validations are added."
+# Track whether any of the checks fail so we can exit with a non-zero status
+# code while still reporting the status of each individual check.
+overall_status=0
+
+declare -A required_paths=(
+  ["instruction_documents/_theory.md"]="file"
+  ["tools/index.md"]="file"
+  ["workspaces/Describing_Simulation_0"]="dir"
+  ["memory/ways"]="dir"
+  ["memory/records"]="dir"
+  ["verifications"]="dir"
+)
+
+for path in "${!required_paths[@]}"; do
+  expected_type="${required_paths[$path]}"
+  full_path="$ROOT_DIR/$path"
+
+  if [[ "$expected_type" == "file" && -f "$full_path" ]]; then
+    printf '[PASS] Required file present: %s\n' "$path"
+  elif [[ "$expected_type" == "dir" && -d "$full_path" ]]; then
+    printf '[PASS] Required directory present: %s\n' "$path"
+  else
+    printf '[FAIL] Missing required %s: %s\n' "$expected_type" "$path"
+    overall_status=1
+  fi
+done
+
+if [[ "$overall_status" -ne 0 ]]; then
+  printf '\nOne or more required paths are missing.\n'
+else
+  printf '\nAll required paths are present.\n'
+fi
+
+exit "$overall_status"
