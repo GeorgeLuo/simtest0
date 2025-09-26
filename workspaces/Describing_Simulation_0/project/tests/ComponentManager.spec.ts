@@ -59,11 +59,16 @@ describe('ComponentManager', () => {
     expect(playerComponents.size).toBe(2);
     expect(playerComponents.get(health)).toEqual({ hp: 12 });
     expect(playerComponents.get(position)).toEqual({ x: 5, y: 6 });
+    expect(componentManager.getComponentTypeNamesForEntity(player.id)).toEqual([
+      'health',
+      'position',
+    ]);
 
     const npcComponents = componentManager.getComponentsForEntity(npc.id);
     expect(npcComponents.size).toBe(1);
     expect(npcComponents.get(health)).toEqual({ hp: 3 });
     expect(npcComponents.has(position)).toBe(false);
+    expect(componentManager.getComponentTypeNamesForEntity(npc.id)).toEqual(['health']);
   });
 
   it('lists entity ids storing a specific component type', () => {
@@ -106,6 +111,37 @@ describe('ComponentManager', () => {
     expect(componentManager.removeAllComponents(entity.id)).toBe(true);
     expect(componentManager.hasComponent(entity.id, health)).toBe(false);
     expect(componentManager.hasComponent(entity.id, position)).toBe(false);
+    expect(componentManager.getComponentTypeNamesForEntity(entity.id)).toEqual([]);
     expect(componentManager.removeAllComponents(entity.id)).toBe(false);
+  });
+
+  it('maintains per-entity component caches as components change', () => {
+    const entityManager = new EntityManager();
+    const componentManager = new ComponentManager();
+    const alpha = new ComponentType<{ value: number }>('alpha');
+    const beta = new ComponentType<{ value: number }>('beta');
+
+    componentManager.register(alpha);
+    componentManager.register(beta);
+
+    const entity = entityManager.create('player');
+
+    componentManager.setComponent(entity.id, beta, { value: 1 });
+    expect(componentManager.getComponentTypeNamesForEntity(entity.id)).toEqual(['beta']);
+
+    componentManager.setComponent(entity.id, alpha, { value: 2 });
+    expect(componentManager.getComponentTypeNamesForEntity(entity.id)).toEqual(['alpha', 'beta']);
+
+    const cachedComponents = componentManager.getComponentsForEntity(entity.id);
+    expect(cachedComponents.get(alpha)).toEqual({ value: 2 });
+    expect(cachedComponents.get(beta)).toEqual({ value: 1 });
+
+    componentManager.removeComponent(entity.id, beta);
+    expect(componentManager.getComponentTypeNamesForEntity(entity.id)).toEqual(['alpha']);
+    expect(componentManager.getComponentsForEntity(entity.id).has(beta)).toBe(false);
+
+    componentManager.removeAllComponents(entity.id);
+    expect(componentManager.getComponentTypeNamesForEntity(entity.id)).toEqual([]);
+    expect(componentManager.getComponentsForEntity(entity.id).size).toBe(0);
   });
 });
