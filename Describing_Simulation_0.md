@@ -242,6 +242,15 @@ project/
 ├── package.json
 └── README.md
 ```
+
+Within this repository the tree above lives under
+`workspaces/Describing_Simulation_0/project/`. To make it easier for
+future simulation work, the `plugins/simulation` and
+`plugins/evaluation` branches of that tree now include committed
+directory scaffolding. Each subdirectory (`components/`, `systems/`, and
+`operations/`) contains a README that describes the type of plugin code
+expected there so that new contributors can drop in their generated ECS
+artifacts without needing to recreate the folder layout.
 ### Summary of Scope
 
 This service is only responsible for managing the simulator. To give some idea of where we’re going with this:
