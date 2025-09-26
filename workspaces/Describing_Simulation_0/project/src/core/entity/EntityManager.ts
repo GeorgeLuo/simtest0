@@ -1,3 +1,4 @@
+import { ComponentManager } from '../components/ComponentManager';
 import { Entity } from './Entity';
 
 /**
@@ -6,6 +7,8 @@ import { Entity } from './Entity';
 export class EntityManager {
   private readonly entities = new Map<string, Entity>();
   private nextId = 1;
+
+  constructor(private readonly componentManager?: ComponentManager) {}
 
   /**
    * Creates a new {@link Entity}. When an explicit id is not provided a
@@ -43,7 +46,14 @@ export class EntityManager {
    * @returns `true` when the entity existed and has been removed.
    */
   remove(id: string): boolean {
-    return this.entities.delete(id);
+    const existed = this.entities.has(id);
+    if (!existed) {
+      return false;
+    }
+
+    this.componentManager?.removeAllComponents(id);
+    this.entities.delete(id);
+    return true;
   }
 
   /**

@@ -1,8 +1,11 @@
 // Test intents:
 // - Creating entities without an explicit id yields sequential identifiers.
 // - Entities can be retrieved after creation and are removed cleanly.
+// - Removing an entity automatically clears its registered components.
 
 import { EntityManager } from 'src/core/entity/EntityManager';
+import { ComponentManager } from 'src/core/components/ComponentManager';
+import { ComponentType } from 'src/core/components/ComponentType';
 
 describe('EntityManager', () => {
   it('creates entities with sequential identifiers by default', () => {
@@ -32,5 +35,20 @@ describe('EntityManager', () => {
     expect(manager.remove(entity.id)).toBe(true);
     expect(manager.get(entity.id)).toBeUndefined();
     expect(manager.remove(entity.id)).toBe(false);
+  });
+
+  it('cleans up components when removing entities', () => {
+    const componentManager = new ComponentManager();
+    const manager = new EntityManager(componentManager);
+    const health = new ComponentType<{ hp: number }>('health');
+
+    componentManager.register(health);
+
+    const entity = manager.create();
+    componentManager.setComponent(entity.id, health, { hp: 10 });
+    expect(componentManager.hasComponent(entity.id, health)).toBe(true);
+
+    expect(manager.remove(entity.id)).toBe(true);
+    expect(componentManager.hasComponent(entity.id, health)).toBe(false);
   });
 });
