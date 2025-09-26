@@ -1,0 +1,17 @@
+{
+  "name": "@describing-simulation/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Core ECS primitives for the Describing Simulation 0 workspace.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest --runInBand"
+  },
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.1.3",
+    "ts-jest": "^29.4.4",
+    "typescript": "^5.9.2"
+  }
+}

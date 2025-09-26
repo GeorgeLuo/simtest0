@@ -58,4 +58,17 @@ else
   printf '\nAll required paths are present.\n'
 fi
 
+project_dir="$ROOT_DIR/workspaces/Describing_Simulation_0/project"
+if [[ -d "$project_dir" ]]; then
+  printf '\nRunning Describing Simulation 0 project tests...\n'
+  if "$ROOT_DIR/tools/run_project_tests.sh"; then
+    printf '\n[PASS] Workspace project tests succeeded.\n'
+  else
+    printf '\n[FAIL] Workspace project tests failed.\n'
+    overall_status=1
+  fi
+else
+  printf '\n[WARN] Workspace project directory not found; skipping tests.\n'
+fi
+
 exit "$overall_status"
