@@ -21,15 +21,15 @@ type PlayerState = 'idle' | 'running' | 'paused';
  */
 export class Player {
   private readonly tickIntervalMs: number;
-  private readonly timeProvider: () => number;
+  protected readonly timeProvider: () => number;
   private loopHandle: NodeJS.Timeout | null = null;
   private state: PlayerState = 'idle';
   private lastTickTime: number | null = null;
 
   constructor(
-    private readonly entities: EntityManager,
-    private readonly components: ComponentManager,
-    private readonly systems: SystemManager,
+    protected readonly entities: EntityManager,
+    protected readonly components: ComponentManager,
+    protected readonly systems: SystemManager,
     options: PlayerOptions = {}
   ) {
     const interval = options.tickIntervalMs ?? 16;
@@ -101,8 +101,14 @@ export class Player {
     this.lastTickTime = currentTime;
 
     const deltaMs = Math.max(0, currentTime - previousTime);
-    this.systems.tick(deltaMs / 1000);
+    const deltaSeconds = deltaMs / 1000;
+    this.systems.tick(deltaSeconds);
+    this.onTick(deltaSeconds, currentTime);
   }
+
+  /** Hook invoked after each successful system tick. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected onTick(deltaSeconds: number, timestamp: number): void {}
 
   private teardown(): void {
     this.systems.destroyAll();
