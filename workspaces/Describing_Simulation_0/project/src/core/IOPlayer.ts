@@ -121,14 +121,23 @@ export class IOPlayer extends Player {
 
   private serializeComponents(entityId: string): Record<string, unknown> {
     const components = this.components.getComponentsForEntity(entityId);
+    const typeNames = this.components.getComponentTypeNamesForEntity(entityId);
 
-    const serializedEntries = Array.from(components.entries()).sort((a, b) =>
-      a[0].name.localeCompare(b[0].name),
-    );
+    if (typeNames.length === 0) {
+      return {};
+    }
+
+    const componentsByName = new Map<string, unknown>();
+    for (const [type, component] of components.entries()) {
+      componentsByName.set(type.name, component);
+    }
 
     const snapshot: Record<string, unknown> = {};
-    for (const [type, component] of serializedEntries) {
-      snapshot[type.name] = component;
+    for (const typeName of typeNames) {
+      if (!componentsByName.has(typeName)) {
+        continue;
+      }
+      snapshot[typeName] = componentsByName.get(typeName);
     }
 
     return snapshot;

@@ -129,4 +129,74 @@ describe('IOPlayer', () => {
 
     expect(frames[1].metadata.tick).toBe(3);
   });
+
+  it('serializes components using cached per-entity ordering', () => {
+    const components = new ComponentManager();
+    const entities = new EntityManager(components);
+    const systems = new SystemManager();
+    const inboundBus = new Bus();
+    const outboundBus = new Bus();
+    const registry = new InboundHandlerRegistry();
+
+    const Alpha = new ComponentType<{ value: number }>('alpha');
+    const Beta = new ComponentType<{ value: number }>('beta');
+    components.register(Alpha);
+    components.register(Beta);
+
+    const entity = entities.create('entity-a');
+    components.setComponent(entity.id, Beta, { value: 1 });
+    components.setComponent(entity.id, Alpha, { value: 2 });
+
+    let currentTime = 0;
+    const timeProvider = jest.fn(() => currentTime);
+
+    const frames: SnapshotFrame[] = [];
+    outboundBus.subscribe((frame) => {
+      frames.push(frame as SnapshotFrame);
+      return acknowledge();
+    });
+
+    const player = new IOPlayer(
+      entities,
+      components,
+      systems,
+      inboundBus,
+      outboundBus,
+      registry,
+      {
+        tickIntervalMs: 5,
+        timeProvider,
+      },
+    );
+
+    player.start();
+
+    const advance = (ms: number) => {
+      currentTime += ms;
+      jest.advanceTimersByTime(ms);
+    };
+
+    advance(5);
+    expect(frames).toHaveLength(1);
+    let serialized = frames[0].payload.entities[0].components;
+    expect(Object.keys(serialized)).toEqual(['alpha', 'beta']);
+
+    components.removeComponent(entity.id, Alpha);
+    advance(5);
+    expect(frames).toHaveLength(2);
+    serialized = frames[1].payload.entities[0].components;
+    expect(Object.keys(serialized)).toEqual(['beta']);
+
+    components.setComponent(entity.id, Alpha, { value: 3 });
+    advance(5);
+    expect(frames).toHaveLength(3);
+    serialized = frames[2].payload.entities[0].components;
+    expect(Object.keys(serialized)).toEqual(['alpha', 'beta']);
+    expect(serialized).toEqual({
+      alpha: { value: 3 },
+      beta: { value: 1 },
+    });
+
+    player.stop();
+  });
 });
