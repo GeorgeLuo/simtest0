@@ -37,6 +37,25 @@ export class ComponentManager {
     return store.has(entityId);
   }
 
+  getComponentsForEntity(entityId: string): Map<ComponentType<unknown>, unknown> {
+    const components = new Map<ComponentType<unknown>, unknown>();
+
+    for (const [typeName, store] of this.stores.entries()) {
+      if (!store.has(entityId)) {
+        continue;
+      }
+
+      const type = this.registry.get(typeName);
+      if (!type) {
+        continue;
+      }
+
+      components.set(type, store.get(entityId));
+    }
+
+    return components;
+  }
+
   removeComponent(entityId: string, type: ComponentType<unknown>): boolean {
     const store = this.getStore(type);
     return store.delete(entityId);
@@ -52,6 +71,11 @@ export class ComponentManager {
 
   registeredTypes(): ComponentType<unknown>[] {
     return Array.from(this.registry.values());
+  }
+
+  entitiesWithComponent(type: ComponentType<unknown>): string[] {
+    const store = this.getStore(type);
+    return Array.from(store.keys());
   }
 
   private getStore(type: ComponentType<unknown>): Map<string, unknown> {
