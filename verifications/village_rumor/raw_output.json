@@ -1,0 +1,2973 @@
+{
+  "frames": [
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 1
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0.85,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0.85,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.01
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 1,
+        "timestamp": 20,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.02
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 2,
+        "timestamp": 30,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 1
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 1
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0.65,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0.44999999999999996,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.03
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 3,
+        "timestamp": 40,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 1.3000000000000003,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0.8999999999999998,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.04
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 4,
+        "timestamp": 50,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 1.1500000000000004,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.4999999999999998,
+                "heardTick": 5,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 5,
+                    "ignorant": 2,
+                    "spreaders": 1,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.05
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 5,
+        "timestamp": 60,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.6500000000000004,
+                "heardTick": 6,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.4999999999999998,
+                "heardTick": 5,
+                "activeTicks": 1
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 0.35,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 5,
+                    "ignorant": 2,
+                    "spreaders": 1,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 6,
+                    "ignorant": 1,
+                    "spreaders": 2,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.060000000000000005
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 6,
+        "timestamp": 70,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 1.6500000000000004,
+                "heardTick": 6,
+                "activeTicks": 1
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.4999999999999998,
+                "heardTick": 5,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "ignorant",
+                "exposure": 1.6,
+                "heardTick": null,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 5,
+                    "ignorant": 2,
+                    "spreaders": 1,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 6,
+                    "ignorant": 1,
+                    "spreaders": 2,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 7,
+                    "ignorant": 1,
+                    "spreaders": 1,
+                    "stiflers": 4,
+                    "newlyInformed": 0
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.07
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 7,
+        "timestamp": 80,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.6500000000000004,
+                "heardTick": 6,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.4999999999999998,
+                "heardTick": 5,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 2.5,
+                "heardTick": 8,
+                "activeTicks": 0
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 5,
+                    "ignorant": 2,
+                    "spreaders": 1,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 6,
+                    "ignorant": 1,
+                    "spreaders": 2,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 7,
+                    "ignorant": 1,
+                    "spreaders": 1,
+                    "stiflers": 4,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 8,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 1
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.08
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 8,
+        "timestamp": 90,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.6500000000000004,
+                "heardTick": 6,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.4999999999999998,
+                "heardTick": 5,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 2.5,
+                "heardTick": 8,
+                "activeTicks": 1
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 5,
+                    "ignorant": 2,
+                    "spreaders": 1,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 6,
+                    "ignorant": 1,
+                    "spreaders": 2,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 7,
+                    "ignorant": 1,
+                    "spreaders": 1,
+                    "stiflers": 4,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 8,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 9,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.09
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 9,
+        "timestamp": 100,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.6500000000000004,
+                "heardTick": 6,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.4999999999999998,
+                "heardTick": 5,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 2.5,
+                "heardTick": 8,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 5,
+                    "ignorant": 2,
+                    "spreaders": 1,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 6,
+                    "ignorant": 1,
+                    "spreaders": 2,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 7,
+                    "ignorant": 1,
+                    "spreaders": 1,
+                    "stiflers": 4,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 8,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 9,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 10,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.09999999999999999
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 10,
+        "timestamp": 110,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.6500000000000004,
+                "heardTick": 6,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.4999999999999998,
+                "heardTick": 5,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "spreader",
+                "exposure": 2.5,
+                "heardTick": 8,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 5,
+                    "ignorant": 2,
+                    "spreaders": 1,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 6,
+                    "ignorant": 1,
+                    "spreaders": 2,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 7,
+                    "ignorant": 1,
+                    "spreaders": 1,
+                    "stiflers": 4,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 8,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 9,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 10,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 11,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  }
+                ],
+                "completed": false,
+                "completionTick": null
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.10999999999999999
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 11,
+        "timestamp": 120,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.6500000000000004,
+                "heardTick": 6,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.4999999999999998,
+                "heardTick": 5,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 2.5,
+                "heardTick": 8,
+                "activeTicks": 4
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 5,
+                    "ignorant": 2,
+                    "spreaders": 1,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 6,
+                    "ignorant": 1,
+                    "spreaders": 2,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 7,
+                    "ignorant": 1,
+                    "spreaders": 1,
+                    "stiflers": 4,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 8,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 9,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 10,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 11,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 12,
+                    "ignorant": 0,
+                    "spreaders": 0,
+                    "stiflers": 6,
+                    "newlyInformed": 0
+                  }
+                ],
+                "completed": true,
+                "completionTick": 12
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.11999999999999998
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 12,
+        "timestamp": 130,
+        "deltaSeconds": 0.01
+      }
+    },
+    {
+      "type": "evaluation/frame",
+      "payload": {
+        "entities": [
+          {
+            "id": "amelie",
+            "components": {
+              "village/profile": {
+                "name": "Amélie",
+                "susceptibility": 1.1,
+                "expressiveness": 1,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.1,
+                "heardTick": 0,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "clara"
+                ]
+              }
+            }
+          },
+          {
+            "id": "bao",
+            "components": {
+              "village/profile": {
+                "name": "Bao",
+                "susceptibility": 1.4,
+                "expressiveness": 0.8,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "clara",
+                  "darius"
+                ]
+              }
+            }
+          },
+          {
+            "id": "clara",
+            "components": {
+              "village/profile": {
+                "name": "Clara",
+                "susceptibility": 1.2,
+                "expressiveness": 0.6,
+                "patience": 3
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.85,
+                "heardTick": 2,
+                "activeTicks": 3
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "amelie",
+                  "bao",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "darius",
+            "components": {
+              "village/profile": {
+                "name": "Darius",
+                "susceptibility": 1.6,
+                "expressiveness": 0.9,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.6500000000000004,
+                "heardTick": 6,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "bao",
+                  "elin",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "elin",
+            "components": {
+              "village/profile": {
+                "name": "Elin",
+                "susceptibility": 1.1,
+                "expressiveness": 0.5,
+                "patience": 2
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 1.4999999999999998,
+                "heardTick": 5,
+                "activeTicks": 2
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "clara",
+                  "darius",
+                  "farah"
+                ]
+              }
+            }
+          },
+          {
+            "id": "farah",
+            "components": {
+              "village/profile": {
+                "name": "Farah",
+                "susceptibility": 1.8,
+                "expressiveness": 0.7,
+                "patience": 4
+              },
+              "village/rumor-state": {
+                "status": "stifler",
+                "exposure": 2.5,
+                "heardTick": 8,
+                "activeTicks": 4
+              },
+              "village/social-network": {
+                "neighbors": [
+                  "darius",
+                  "elin"
+                ]
+              }
+            }
+          },
+          {
+            "id": "rumor-metrics",
+            "components": {
+              "village/rumor-metrics": {
+                "history": [
+                  {
+                    "tick": 1,
+                    "ignorant": 5,
+                    "spreaders": 1,
+                    "stiflers": 0,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 2,
+                    "ignorant": 3,
+                    "spreaders": 3,
+                    "stiflers": 0,
+                    "newlyInformed": 2
+                  },
+                  {
+                    "tick": 3,
+                    "ignorant": 3,
+                    "spreaders": 2,
+                    "stiflers": 1,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 4,
+                    "ignorant": 3,
+                    "spreaders": 1,
+                    "stiflers": 2,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 5,
+                    "ignorant": 2,
+                    "spreaders": 1,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 6,
+                    "ignorant": 1,
+                    "spreaders": 2,
+                    "stiflers": 3,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 7,
+                    "ignorant": 1,
+                    "spreaders": 1,
+                    "stiflers": 4,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 8,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 1
+                  },
+                  {
+                    "tick": 9,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 10,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 11,
+                    "ignorant": 0,
+                    "spreaders": 1,
+                    "stiflers": 5,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 12,
+                    "ignorant": 0,
+                    "spreaders": 0,
+                    "stiflers": 6,
+                    "newlyInformed": 0
+                  },
+                  {
+                    "tick": 13,
+                    "ignorant": 0,
+                    "spreaders": 0,
+                    "stiflers": 6,
+                    "newlyInformed": 0
+                  }
+                ],
+                "completed": true,
+                "completionTick": 12
+              }
+            }
+          },
+          {
+            "id": "time",
+            "components": {
+              "time": {
+                "elapsed": 0.12999999999999998
+              }
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "tick": 13,
+        "timestamp": 140,
+        "deltaSeconds": 0.01
+      }
+    }
+  ],
+  "villagers": [
+    {
+      "id": "amelie",
+      "name": "Amélie",
+      "neighbors": [
+        "bao",
+        "clara"
+      ],
+      "susceptibility": 1.1,
+      "expressiveness": 1,
+      "patience": 3,
+      "initialStatus": "spreader"
+    },
+    {
+      "id": "bao",
+      "name": "Bao",
+      "neighbors": [
+        "amelie",
+        "clara",
+        "darius"
+      ],
+      "susceptibility": 1.4,
+      "expressiveness": 0.8,
+      "patience": 2,
+      "initialStatus": "ignorant"
+    },
+    {
+      "id": "clara",
+      "name": "Clara",
+      "neighbors": [
+        "amelie",
+        "bao",
+        "elin"
+      ],
+      "susceptibility": 1.2,
+      "expressiveness": 0.6,
+      "patience": 3,
+      "initialStatus": "ignorant"
+    },
+    {
+      "id": "darius",
+      "name": "Darius",
+      "neighbors": [
+        "bao",
+        "elin",
+        "farah"
+      ],
+      "susceptibility": 1.6,
+      "expressiveness": 0.9,
+      "patience": 2,
+      "initialStatus": "ignorant"
+    },
+    {
+      "id": "elin",
+      "name": "Elin",
+      "neighbors": [
+        "clara",
+        "darius",
+        "farah"
+      ],
+      "susceptibility": 1.1,
+      "expressiveness": 0.5,
+      "patience": 2,
+      "initialStatus": "ignorant"
+    },
+    {
+      "id": "farah",
+      "name": "Farah",
+      "neighbors": [
+        "darius",
+        "elin"
+      ],
+      "susceptibility": 1.8,
+      "expressiveness": 0.7,
+      "patience": 4,
+      "initialStatus": "ignorant"
+    }
+  ],
+  "options": {
+    "ticks": 12,
+    "tickIntervalMs": 10,
+    "exposureDecay": 0.15
+  }
+}

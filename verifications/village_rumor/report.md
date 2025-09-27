@@ -1,0 +1,17 @@
+# Village Rumor Simulation Report
+
+## Form D framing
+- **Environment (E):** Six villagers (Amélie, Bao, Clara, Darius, Elin, Farah) connected by directed neighbor lists share a single rumor alongside a global timekeeper entity. Each villager carries profile, social-network, and rumor-state components that determine how they hear and propagate information.【F:verifications/village_rumor/raw_output.json†L5-L126】【F:workspaces/Describing_Simulation_0/project/plugins/simulation/components/VillageComponents.ts†L1-L63】
+- **Phenomenon (X):** Amélie begins the simulation as the sole spreader with the rumor fully internalized, triggering propagation attempts along the network each tick.【F:workspaces/Describing_Simulation_0/project/src/scenarios/villageRumor.ts†L40-L72】【F:verifications/village_rumor/raw_output.json†L12-L30】
+- **Condition set (C):** Observe the village until no spreaders remain or the twelve-tick horizon is reached; completion is detected when the metrics component reports zero active spreaders and records a completion tick.【F:workspaces/Describing_Simulation_0/project/src/scenarios/villageRumor.ts†L142-L231】【F:verifications/village_rumor/raw_output.json†L132-L201】
+
+## Simulation setup
+- **Propagation dynamics:** `RumorSpreadingSystem` adds each spreader’s expressiveness to neighbor exposure, converts neighbors whose cumulative exposure exceeds their susceptibility, increments spreader fatigue, and applies a gentle 0.15 decay to residual exposure among ignorants.【F:workspaces/Describing_Simulation_0/project/plugins/simulation/systems/RumorSpreadingSystem.ts†L12-L86】 
+- **Metrics tracking:** `RumorMetricsSystem` records per-tick counts of ignorants, spreaders, stiflers, and newly informed villagers, while capturing the first tick with no spreaders as the completion tick.【F:workspaces/Describing_Simulation_0/project/plugins/simulation/systems/RumorMetricsSystem.ts†L10-L76】
+- **Network structure and parameters:** Villager susceptibilities range from 1.1–1.8, expressiveness spans 0.5–1.0, and patience varies from two to four ticks, creating staggered adoption and fatigue. The social graph routes influence from Amélie through Bao and Clara to Darius, Elin, and Farah; the simulation advances in twelve one-millisecond ticks with 0.15 exposure decay.【F:workspaces/Describing_Simulation_0/project/src/scenarios/villageRumor.ts†L40-L231】
+
+## Findings
+- **Rapid initial amplification (ticks 1–3):** By tick two the rumor reaches Bao and Clara (two newly informed spreaders), shrinking the ignorant population from five to three; Amélie exits as a stifler on tick three while the rumor persists through her neighbors.【F:verifications/village_rumor/raw_output.json†L2518-L2545】
+- **Mid-village cascade (ticks 4–8):** Elin adopts on tick five, Darius on tick six, and Farah on tick eight, sequentially reducing ignorants to zero while keeping one or two active spreaders in circulation.【F:verifications/village_rumor/raw_output.json†L2546-L2574】
+- **Termination (ticks 9–12):** Farah sustains the final wave alone until fatigue transitions her to a stifler on tick twelve, marking completion with six stiflers and no remaining spreaders.【F:verifications/village_rumor/raw_output.json†L2575-L2605】
+- **Individual outcomes:** Final rumor-state snapshots show each villager’s adoption tick and spreading duration—Bao and Clara spread for two to three ticks after hearing on tick two, Elin and Darius sustain short bridges, and Farah remains active for four ticks before closure.【F:verifications/village_rumor/raw_output.json†L2480-L2513】
