@@ -187,7 +187,7 @@ project/
 │   │   │   └── operations/
 │   │   │       ├── Start.ts
 │   │   │       ├── Pause.ts
-`│   │   │       ├── ``Stop.ts`
+│   │   │       ├── Stop.ts
 
 │   │   │       ├── EjectSystem.ts
 │   │   │       └── InjectSystem.ts
