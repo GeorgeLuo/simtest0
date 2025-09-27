@@ -295,3 +295,27 @@ The evaluation player extends the input-output player, passively accepting frame
 
 We conclude this checkpoint by stating derivation logic is intended to be captured ad-hoc to serve specific use cases, rather than concretely defining condition checking. Generally, what can work is injection of systems which produce entities with actionable components and listening for those components from the outbound bus.
 
+### IX. Sim-Eval Server
+
+At this checkpoint the evaluation and simulation players are fronted by an http layer so the full sim-eval loop can be exercised through api calls. Initialization establishes both players and links their buses so simulation frames immediately pipe into evaluation handlers as soon as the service is online. The surface also exposes routes for streaming state via server sent events and for uploading plugin source code that extends either player in real time.
+
+#### Main
+
+The main module is the executable entry point. It bootstraps a server instance, ensuring both players are constructed, wired together, and ready to accept traffic before the listening socket is opened.
+
+#### Server
+
+The server module owns the lifecycle of the paired players. During construction it instantiates the simulation and evaluation players, connects the simulation outbound bus to the evaluation inbound bus, and then starts the http listener with the configured router. Each server instance manages exactly one sim-eval environment.
+
+#### Router
+
+The router exposes the api surface. It routes playback commands, status reads, and plugin management requests to the appropriate handlers while also publishing an informational route that documents the available endpoints and expected payloads.
+
+#### Simulation
+
+The simulation routes module provides the playback endpoints (start, pause, stop) alongside system injection controls. It is also responsible for forwarding the simulation player’s outbound bus over server sent events so clients can monitor live frames, and for accepting uploads of simulation plugins prior to the injection step.
+
+#### Evaluation
+
+The evaluation routes module mirrors the simulation surface for its domain, accepting plugin uploads and system injections that extend evaluation logic. It also exposes an sse stream that relays the evaluation player’s outbound bus so downstream consumers can react to derived signals as they are produced.
+
