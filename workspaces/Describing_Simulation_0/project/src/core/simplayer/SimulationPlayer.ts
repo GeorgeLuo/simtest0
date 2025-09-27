@@ -8,12 +8,14 @@ import { createStartOperation } from './operations/Start';
 import { createPauseOperation } from './operations/Pause';
 import { createStopOperation } from './operations/Stop';
 import { createInjectSystemOperation } from './operations/InjectSystem';
+import { createEjectSystemOperation } from './operations/EjectSystem';
 
 export interface SimulationPlayerCommandTypes {
   readonly start: string;
   readonly pause: string;
   readonly stop: string;
   readonly injectSystem: string;
+  readonly ejectSystem: string;
 }
 
 export interface SimulationPlayerOptions extends IOPlayerOptions {
@@ -27,6 +29,7 @@ const DEFAULT_COMMAND_TYPES: SimulationPlayerCommandTypes = {
   pause: 'simulation/pause',
   stop: 'simulation/stop',
   injectSystem: 'simulation/system.inject',
+  ejectSystem: 'simulation/system.eject',
 };
 
 export class SimulationPlayer extends IOPlayer {
@@ -91,6 +94,12 @@ export class SimulationPlayer extends IOPlayer {
     this.registry.register(
       createInjectSystemOperation(systems, {
         messageType: this.commandTypes.injectSystem,
+      }),
+    );
+
+    this.registry.register(
+      createEjectSystemOperation(systems, {
+        messageType: this.commandTypes.ejectSystem,
       }),
     );
   }
