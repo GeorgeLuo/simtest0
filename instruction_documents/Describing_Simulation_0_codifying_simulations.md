@@ -54,6 +54,7 @@ project/
 │   │   │       ├── Start.ts
 │   │   │       ├── Pause.ts
 │   │   │       ├── Stop.ts
+│   │   │       ├── EjectSystem.ts
 │   │   │       └── InjectSystem.ts
 │   │   ├── evalplayer/
 │   │   │   ├── EvaluationPlayer.ts
@@ -81,9 +82,9 @@ project/
 │   │           ├── MessageHandler.ts
 │   │           └── InboundHandlerRegistry.ts
 │   ├── routes/
-│   │   ├── apiRoutes.ts
-│   │   ├── controls.ts
-│   │   └── evaluations.ts
+│   │   ├── router.ts
+│   │   ├── simulation.ts
+│   │   └── evaluation.ts
 │   ├── server.ts
 │   └── main.ts
 ├── plugins/
@@ -237,6 +238,10 @@ The operation file defines the base interface for discrete actions of players. A
 #### InjectSystem
 
 The inject system file defines the operation to add a system through the system manager of a player.
+
+#### EjectSystem
+
+The eject system file defines the operation to remove a system through the system manager of a player.
 
 #### Acknowledgement
 
