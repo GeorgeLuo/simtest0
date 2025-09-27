@@ -152,10 +152,6 @@ In terms of architecture around the engine, we will be minimalistic in defining 
 
 Much of the decisions to this point and the following prioritize code *re-writability* in places outside of where there is a common right implementation. Common scaffolding should ultimately be very generic, preferring type parameters.
 
-### Condition Evaluator System
-
-We already know the logic to end the simulation needs to be captured. At the end of the evaluation loop, this system will determine if an exception needs to be thrown.
-
 ### Artifacts
 
 All simulations seek to produce some kind of result for analysis, a record of the simulation happening. We want metrics to be exposed for display in cycle-to-cycle real time. As experiments can be long running, the data should be accessible through a pull model based on the windowing of slices.
@@ -180,7 +176,7 @@ The following sections serve as guidelines for code layout and principles for im
 
 ### Structure
 
-```text
+```
 project/
 ├── src/
 │   ├── core/
@@ -191,39 +187,51 @@ project/
 │   │   │   └── operations/
 │   │   │       ├── Start.ts
 │   │   │       ├── Pause.ts
-│   │   │       ├── Stop.ts
+`│   │   │       ├── ``Stop.ts`
+
+│   │   │       ├── EjectSystem.ts
 │   │   │       └── InjectSystem.ts
+│   │   │
 │   │   ├── evalplayer/
 │   │   │   ├── EvaluationPlayer.ts
 │   │   │   └── operations/
 │   │   │       └── InjectFrame.ts
+│   │   │
 │   │   ├── entity/
 │   │   │   ├── EntityManager.ts
 │   │   │   └── Entity.ts
+│   │   │
 │   │   ├── components/
 │   │   │   ├── ComponentType.ts
 │   │   │   ├── ComponentManager.ts
 │   │   │   └── TimeComponent.ts
+│   │   │
 │   │   ├── systems/
 │   │   │   ├── System.ts
 │   │   │   ├── SystemManager.ts
 │   │   │   └── TimeSystem.ts
+│   │   │
 │   │   └── messaging/
 │   │       ├── Bus.ts
 │   │       ├── outbound/
 │   │       │   ├── Frame.ts
 │   │       │   ├── FrameFilter.ts
 │   │       │   └── Acknowledgement.ts
+│   │       │
 │   │       └── inbound/
 │   │           ├── Operation.ts
 │   │           ├── MessageHandler.ts
 │   │           └── InboundHandlerRegistry.ts
+│   │
+│   │
 │   ├── routes/
-│   │   ├── apiRoutes.ts
-│   │   ├── controls.ts
-│   │   └── evaluations.ts
+│   │   ├── router.ts
+│   │   ├── simulation.ts
+│   │   └── evaluation.ts
+│   │
 │   ├── server.ts
 │   └── main.ts
+│
 ├── plugins/
 │   ├── simulation/
 │   │   ├── components/
@@ -232,6 +240,7 @@ project/
 │   │   │   └── (agent-defined systems)
 │   │   └── operations/
 │   │       └── (agent-defined handlers)
+│   │
 │   └── evaluation/
 │       ├── components/
 │       │   └── (agent-defined evaluation components)
@@ -239,18 +248,10 @@ project/
 │       │   └── (agent-defined evaluation systems)
 │       └── operations/
 │           └── (agent-defined evaluation handlers)
+│
 ├── package.json
 └── README.md
 ```
-
-Within this repository the tree above lives under
-`workspaces/Describing_Simulation_0/project/`. To make it easier for
-future simulation work, the `plugins/simulation` and
-`plugins/evaluation` branches of that tree now include committed
-directory scaffolding. Each subdirectory (`components/`, `systems/`, and
-`operations/`) contains a README that describes the type of plugin code
-expected there so that new contributors can drop in their generated ECS
-artifacts without needing to recreate the folder layout.
 ### Summary of Scope
 
 This service is only responsible for managing the simulator. To give some idea of where we’re going with this:
@@ -385,6 +386,10 @@ The operation file defines the base interface for discrete actions of players. A
 
 The inject system file defines the operation to add a system through the system manager of a player.
 
+#### EjectSystem
+
+The eject system file defines the operation to remove a system through the system manager of a player.
+
 #### Acknowledgement
 
 The acknowledgement file defines the responses to inbound messages. Acknowledgements are linked to the initiating message through a message id. An acknowledgement is either success or error.
@@ -439,7 +444,9 @@ We conclude this checkpoint by stating derivation logic is intended to be captur
 
 # Serving Simulations
 
-By this point, we have pieces to run simulations from static definitions; we can script a simulation and collect evaluations.
+We have pieces to run simulations from static definitions; we can script a simulation and collect evaluations. Towards usability, the simulation evaluation player network will be front-ended with a basic http server, with an api exposing operations of both players.
+
+### IX. Sim-Eval Server
 
 In this section we will define interoperability between the players with a server control surface. By the end, we should be able to support this flow:
 
@@ -453,21 +460,35 @@ In this section we will define interoperability between the players with a serve
 
 5. Fetch most recent frame of the evaluation player
 
+This flow simplifies initialization; when the server is up, the simulation is ready. The api is intended to return actionable information with error responses and simple probes, directing clients to an information route, with basic acknowledgements otherwise.
+
 #### Main
 
 The main file is the entrypoint to start the server.
 
 #### Server
 
-The server
+The server file initializes the two players and links their messaging buses. Each server manages a single sim-eval environment. After players are initialized, an http server starts listening with a router.
 
-#### ApiRoutes
+#### Router
 
-#### Controls
+The router channels requests to control and read from the sim-eval environment. Here the router exposes the api surface of the server under an info route, returning endpoint usage details.
 
-#### Evaluations
+#### Simulation
 
-## Test-driven Development
+The simulation routes file defines the routes of the api for playback as well as the inherited operation of system injection. The simulation routes should also contain a path to forward the outbound bus data as server side events.
+
+#### Evaluation
+
+The evaluation routes file defines the route to inject systems. The evaluation routes should also contain a path to forward the outbound bus as server side events.
+
+### Plugins
+
+Real-time injection of system and component source code is a two-step process. First the source code is uploaded and plugin files are placed into the appropriate directory. Once acknowledged as a success response with system identifier, a further api call will add the system to the sequence of player evaluation.
+
+## Methodology
+
+### Test-driven Development
 
 When aggregate descriptions are sufficient to codify we will follow these steps:
 
@@ -486,15 +507,20 @@ This is a flow we will revisit at various points when enough information has bee
 Descriptions
 
 ├─► Stage 1: Skeletons (structure, empty methods)
-│   └─► Draft the file layout and placeholder methods
-├─► Stage 2: Test Intents (comment-only requirements)
-│   └─► Capture desired behaviors as descriptive comments
-├─► Stage 3: Codify Tests
-│   └─► Join Skeletons + Test Intents → Actual tests
-├─► Stage 4: Implement Logic
-│   └─► Fill skeletons to satisfy tests
-└─► Stage 5: Validate
-    └─► Run tests → Errors → Iterate until green
+
+└─► Stage 2: Test Intents (comment-only requirements)
+
+Stage 3: Codify Tests
+
+└─ Join (Skeletons + Test Intents) → Actual tests
+
+Stage 4: Implement Logic
+
+└─ Fill skeletons to satisfy tests
+
+Stage 5: Validate
+
+└─ Run tests → Errors → Iterate until green
 
 To be clear, this document upon delivery to you, the reader, should provide logic that is compilable to code.
 
@@ -531,7 +557,6 @@ Create instructions for future visitors to review the latest version of this doc
 │   ├── <this document's file name>_theory.md
 │   ├── <this document's file name>_bootstraps.md
 │   ├── <this document's file name>_codifying_simulations.md
-│   ├── <this document's file name>_master_prompt.md
 │   └── index.md
 ├── tools/
 │   └── index.md
