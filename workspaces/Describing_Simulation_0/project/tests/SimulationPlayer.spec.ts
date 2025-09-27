@@ -1,6 +1,6 @@
 import { ComponentManager } from 'src/core/components/ComponentManager';
 import { EntityManager } from 'src/core/entity/EntityManager';
-import { Bus, acknowledge } from 'src/core/messaging';
+import { Bus, acknowledge, noAcknowledgement } from 'src/core/messaging';
 import { System } from 'src/core/systems/System';
 import { SystemManager } from 'src/core/systems/SystemManager';
 import { SimulationPlayer } from 'src/core/simplayer/SimulationPlayer';
@@ -88,6 +88,41 @@ describe('SimulationPlayer', () => {
     const registeredSystems: System[] = [];
     systems.forEach((registered) => registeredSystems.push(registered));
     expect(registeredSystems).toContain(system);
+
+    player.stop();
+  });
+
+  it('ejects systems through the system manager', () => {
+    const components = new ComponentManager();
+    const entities = new EntityManager(components);
+    const systems = new SystemManager();
+    const inboundBus = new Bus();
+    const outboundBus = new Bus();
+
+    const player = new SimulationPlayer(
+      entities,
+      components,
+      systems,
+      inboundBus,
+      outboundBus,
+    );
+
+    const system = new TestSystem();
+    const removeSpy = jest.spyOn(systems, 'remove');
+
+    removeSpy.mockReturnValueOnce(true);
+
+    expect(inboundBus.send('simulation/system.eject', { system })).toEqual(
+      acknowledge(),
+    );
+    expect(removeSpy).toHaveBeenCalledWith(system);
+
+    removeSpy.mockReturnValueOnce(false);
+
+    expect(inboundBus.send('simulation/system.eject', { system })).toEqual(
+      noAcknowledgement(),
+    );
+    expect(removeSpy).toHaveBeenCalledWith(system);
 
     player.stop();
   });
