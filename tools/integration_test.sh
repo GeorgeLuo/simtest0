@@ -13,7 +13,9 @@ if [[ ! -d "$WORKSPACE/node_modules" ]]; then
   npm install --prefix "$WORKSPACE"
 fi
 
-PORT="$PORT" npm start --prefix "$WORKSPACE" >"$SERVER_LOG" 2>&1 &
+npm run build --prefix "$WORKSPACE"
+
+PORT="$PORT" npm run start:prod --prefix "$WORKSPACE" >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
 
