@@ -50,10 +50,13 @@ export async function handleRoute(
       payload: {
         simulation: {
           controls: ['/simulation/start', '/simulation/pause', '/simulation/stop'],
+          systemInjection: '/simulation/systems',
           events: '/simulation/events'
         },
         evaluation: {
           inject: '/evaluation/inject-frame',
+          systemInjection: '/evaluation/systems',
+          frames: '/evaluation/frames',
           events: '/evaluation/events'
         }
       }
@@ -75,6 +78,15 @@ export async function handleRoute(
     return { status: 200, payload: ack };
   }
 
+  if (method === 'POST' && path === '/simulation/systems') {
+    const { systemId, componentId } = (body as { systemId?: string; componentId?: string } | undefined) ?? {};
+    const registration = env.registerSimulationSystem({
+      systemId: systemId ?? '',
+      componentId: componentId ?? ''
+    });
+    return { status: 200, payload: registration };
+  }
+
   if (method === 'POST' && path === '/evaluation/inject-frame') {
     const frame = (body as { frame?: Frame } | undefined)?.frame;
     if (!frame) {
@@ -83,6 +95,15 @@ export async function handleRoute(
 
     const ack = await env.dispatchEvaluation('inject-frame', frame);
     return { status: 200, payload: ack };
+  }
+
+  if (method === 'POST' && path === '/evaluation/systems') {
+    const { systemId, componentId } = (body as { systemId?: string; componentId?: string } | undefined) ?? {};
+    const registration = env.registerEvaluationSystem({
+      systemId: systemId ?? '',
+      componentId: componentId ?? ''
+    });
+    return { status: 200, payload: registration };
   }
 
   if (method === 'GET' && path === '/evaluation/frames') {

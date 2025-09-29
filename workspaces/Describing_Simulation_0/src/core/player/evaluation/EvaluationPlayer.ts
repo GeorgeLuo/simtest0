@@ -18,6 +18,6 @@ export class EvaluationPlayer extends IOPlayer {
   }
 
   emitEvaluationFrame(): void {
-    this.emitFrame();
+    this.runTick();
   }
 }

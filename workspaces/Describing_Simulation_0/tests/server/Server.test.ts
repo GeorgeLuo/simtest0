@@ -44,6 +44,16 @@ describe('Server routes', () => {
     expect((stop.payload as any).payload.state).toBe('idle');
   });
 
+  it('injects simulation systems via api', async () => {
+    const response = await handleRoute(envWithDispatch, 'POST', '/simulation/systems', {
+      systemId: 'integration-sim',
+      componentId: 'simulation.metric'
+    });
+
+    expect(response.status).toBe(200);
+    expect((response.payload as any).componentId).toBe('simulation.metric');
+  });
+
   it('rejects injection without frame', async () => {
     const response = await handleRoute(envWithDispatch, 'POST', '/evaluation/inject-frame');
     expect(response.status).toBe(400);
@@ -61,6 +71,16 @@ describe('Server routes', () => {
 
     const entities = environment.evaluation.componentManager.getEntitiesWith(environment.evaluation.frameComponent);
     expect(entities.length).toBeGreaterThan(0);
+  });
+
+  it('registers evaluation systems via api', async () => {
+    const response = await handleRoute(envWithDispatch, 'POST', '/evaluation/systems', {
+      systemId: 'integration-eval',
+      componentId: 'evaluation.metric'
+    });
+
+    expect(response.status).toBe(200);
+    expect((response.payload as any).componentId).toBe('evaluation.metric');
   });
 
   it('lists stored frames via evaluation endpoint', async () => {
