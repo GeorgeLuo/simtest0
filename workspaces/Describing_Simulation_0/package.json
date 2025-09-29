@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "start": "node --loader ts-node/esm src/main.ts"
+    "start": "node --loader ts-node/esm --experimental-specifier-resolution=node src/main.ts"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
