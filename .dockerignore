@@ -1,0 +1,7 @@
+.git
+.gitignore
+memory/
+verifications/
+workspaces/Describing_Simulation_0/tests/
+workspaces/Describing_Simulation_0/node_modules/
+workspaces/Describing_Simulation_0/dist/

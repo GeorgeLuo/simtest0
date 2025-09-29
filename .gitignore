@@ -3,6 +3,7 @@ workspaces/Describing_Simulation_0/node_modules/
 workspaces/Describing_Simulation_0/.vitest/
 workspaces/Describing_Simulation_0/.ts-node-
 workspaces/Describing_Simulation_0/.cache/
+workspaces/Describing_Simulation_0/dist/
 
 # Logs and coverage artifacts
 workspaces/Describing_Simulation_0/*.log
