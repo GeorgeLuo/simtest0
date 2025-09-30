@@ -1,11 +1,7 @@
-export interface AcknowledgementPayload {
-  readonly [key: string]: unknown;
-}
-
 /**
  * Represents the response to an inbound message, indicating success or error.
  */
-export class Acknowledgement<TPayload extends AcknowledgementPayload | undefined = undefined> {
+export class Acknowledgement<TPayload = unknown> {
   private constructor(
     public readonly id: string,
     public readonly success: boolean,
@@ -13,10 +9,7 @@ export class Acknowledgement<TPayload extends AcknowledgementPayload | undefined
     public readonly error?: string
   ) {}
 
-  static success<TPayload extends AcknowledgementPayload>(
-    id: string,
-    payload?: TPayload
-  ): Acknowledgement<TPayload | undefined> {
+  static success<TPayload>(id: string, payload?: TPayload): Acknowledgement<TPayload> {
     return new Acknowledgement(id, true, payload);
   }
 
