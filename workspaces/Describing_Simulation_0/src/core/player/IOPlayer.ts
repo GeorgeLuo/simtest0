@@ -1,8 +1,8 @@
-import { Bus } from '../messaging/Bus';
-import { Acknowledgement } from '../messaging/outbound/Acknowledgement';
-import { InboundHandlerRegistry } from '../messaging/inbound/InboundHandlerRegistry';
-import { InboundMessage } from '../messaging/inbound/Operation';
-import { Player, PlayerOptions } from './Player';
+import { Bus } from '../messaging/Bus.js';
+import { Acknowledgement } from '../messaging/outbound/Acknowledgement.js';
+import { InboundHandlerRegistry } from '../messaging/inbound/InboundHandlerRegistry.js';
+import { InboundMessage } from '../messaging/inbound/Operation.js';
+import { Player, PlayerOptions } from './Player.js';
 
 export interface IOPlayerOptions extends PlayerOptions {
   inboundBus?: Bus<InboundMessage>;

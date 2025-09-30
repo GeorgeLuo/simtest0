@@ -1,5 +1,5 @@
-import { Operation } from '../../messaging/inbound/Operation';
-import { PlayerState } from '../Player';
+import { Operation } from '../../messaging/inbound/Operation.js';
+import { PlayerState } from '../Player.js';
 
 export interface PlaybackResult {
   state: PlayerState;

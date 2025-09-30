@@ -1,6 +1,6 @@
-import { FrameFilter } from '../../messaging/Frame';
-import { FrameComponentType } from './FrameComponent';
-import { IOPlayer, IOPlayerOptions } from '../IOPlayer';
+import { FrameFilter } from '../../messaging/Frame.js';
+import { FrameComponentType } from './FrameComponent.js';
+import { IOPlayer, IOPlayerOptions } from '../IOPlayer.js';
 
 export interface EvaluationPlayerOptions extends IOPlayerOptions {}
 

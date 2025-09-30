@@ -1,5 +1,5 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
-import { Bus } from '../core/messaging/Bus';
+import { Bus } from '../core/messaging/Bus.js';
 
 export function createSSEHandler<T>(bus: Bus<T>, serialize: (payload: T) => string = JSON.stringify) {
   return (_req: IncomingMessage, res: ServerResponse) => {

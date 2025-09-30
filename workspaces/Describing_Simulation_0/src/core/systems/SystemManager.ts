@@ -1,6 +1,6 @@
-import { EntityManager } from '../entity/EntityManager';
-import { ComponentManager } from '../components/ComponentManager';
-import { System } from './System';
+import { EntityManager } from '../entity/EntityManager.js';
+import { ComponentManager } from '../components/ComponentManager.js';
+import { System } from './System.js';
 
 /**
  * Manages the ordered execution of systems and coordinates their lifecycle hooks.

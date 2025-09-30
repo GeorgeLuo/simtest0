@@ -1,8 +1,8 @@
-import { MessageHandler } from '../../messaging/inbound/MessageHandler';
-import { IOPlayer } from '../IOPlayer';
-import { StartOperation } from './StartOperation';
-import { PauseOperation } from './PauseOperation';
-import { StopOperation } from './StopOperation';
+import { MessageHandler } from '../../messaging/inbound/MessageHandler.js';
+import { IOPlayer } from '../IOPlayer.js';
+import { StartOperation } from './StartOperation.js';
+import { PauseOperation } from './PauseOperation.js';
+import { StopOperation } from './StopOperation.js';
 
 export function createPlaybackHandlers(player: IOPlayer): void {
   const handlers = [
@@ -23,7 +23,7 @@ export function createPlaybackHandlers(player: IOPlayer): void {
   }
 }
 
-export { StartOperation } from './StartOperation';
-export { PauseOperation } from './PauseOperation';
-export { StopOperation } from './StopOperation';
-export { PlaybackOperation, PlaybackResult } from './PlaybackOperation';
+export { StartOperation } from './StartOperation.js';
+export { PauseOperation } from './PauseOperation.js';
+export { StopOperation } from './StopOperation.js';
+export { PlaybackOperation, PlaybackResult } from './PlaybackOperation.js';

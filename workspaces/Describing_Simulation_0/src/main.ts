@@ -1,4 +1,4 @@
-import { createSimEvalServer } from './server/server';
+import { createSimEvalServer } from './server/server.js';
 
 const port = Number(process.env.PORT ?? 3000);
 

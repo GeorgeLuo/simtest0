@@ -1,8 +1,8 @@
-import { Bus } from '../../messaging/Bus';
-import { Frame } from '../../messaging/Frame';
-import { IOPlayer } from '../IOPlayer';
-import { EvaluationPlayer } from '../evaluation';
-import { Acknowledgement } from '../../messaging/outbound/Acknowledgement';
+import { Bus } from '../../messaging/Bus.js';
+import { Frame } from '../../messaging/Frame.js';
+import { IOPlayer } from '../IOPlayer.js';
+import { EvaluationPlayer } from '../evaluation/index.js';
+import { Acknowledgement } from '../../messaging/outbound/Acknowledgement.js';
 
 interface PipeOptions {
   transform?: (frame: Frame) => Frame;

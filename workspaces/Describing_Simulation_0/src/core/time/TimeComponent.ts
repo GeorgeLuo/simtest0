@@ -1,5 +1,5 @@
-import { ComponentType } from '../components/ComponentType';
-import { Entity } from '../entity/Entity';
+import { ComponentType } from '../components/ComponentType.js';
+import { Entity } from '../entity/Entity.js';
 
 export interface TimeData {
   tick: number;

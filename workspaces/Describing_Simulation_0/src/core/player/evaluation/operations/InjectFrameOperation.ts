@@ -1,7 +1,7 @@
-import { Entity } from '../../../entity/Entity';
-import { Frame } from '../../../messaging/Frame';
-import { Operation, OperationContext } from '../../../messaging/inbound/Operation';
-import { EvaluationPlayer } from '../EvaluationPlayer';
+import { Entity } from '../../../entity/Entity.js';
+import { Frame } from '../../../messaging/Frame.js';
+import { Operation, OperationContext } from '../../../messaging/inbound/Operation.js';
+import { EvaluationPlayer } from '../EvaluationPlayer.js';
 
 export interface InjectFrameResult {
   entity: Entity;

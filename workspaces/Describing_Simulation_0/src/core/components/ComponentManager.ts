@@ -1,6 +1,6 @@
-import { Entity } from '../entity/Entity';
-import { EntityManager } from '../entity/EntityManager';
-import { ComponentInstance, ComponentType } from './ComponentType';
+import { Entity } from '../entity/Entity.js';
+import { EntityManager } from '../entity/EntityManager.js';
+import { ComponentInstance, ComponentType } from './ComponentType.js';
 
 /**
  * Coordinates component instances within the simulation.

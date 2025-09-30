@@ -1,14 +1,14 @@
-import { ComponentType } from '../core/components/ComponentType';
-import { ComponentManager } from '../core/components/ComponentManager';
-import { Entity } from '../core/entity/Entity';
-import { IOPlayer } from '../core/player/IOPlayer';
-import { EvaluationPlayer, FrameComponentType } from '../core/player/evaluation';
-import { createEvaluationHandlers } from '../core/player/evaluation/operations';
-import { pipeFrames } from '../core/player/integration/pipeFrames';
-import { createPlaybackHandlers } from '../core/player/operations';
-import { System } from '../core/systems/System';
-import { TimeComponentType } from '../core/time/TimeComponent';
-import { TimeSystem } from '../core/time/TimeSystem';
+import { ComponentType } from '../core/components/ComponentType.js';
+import { ComponentManager } from '../core/components/ComponentManager.js';
+import { Entity } from '../core/entity/Entity.js';
+import { IOPlayer } from '../core/player/IOPlayer.js';
+import { EvaluationPlayer, FrameComponentType } from '../core/player/evaluation/index.js';
+import { createEvaluationHandlers } from '../core/player/evaluation/operations/index.js';
+import { pipeFrames } from '../core/player/integration/pipeFrames.js';
+import { createPlaybackHandlers } from '../core/player/operations/index.js';
+import { System } from '../core/systems/System.js';
+import { TimeComponentType } from '../core/time/TimeComponent.js';
+import { TimeSystem } from '../core/time/TimeSystem.js';
 
 type DynamicData = Record<string, unknown>;
 

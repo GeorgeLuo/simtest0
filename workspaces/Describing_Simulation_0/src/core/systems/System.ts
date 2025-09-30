@@ -1,5 +1,5 @@
-import { EntityManager } from '../entity/EntityManager';
-import { ComponentManager } from '../components/ComponentManager';
+import { EntityManager } from '../entity/EntityManager.js';
+import { ComponentManager } from '../components/ComponentManager.js';
 
 /**
  * Base class for simulation systems. Systems mutate the world via entity and component managers

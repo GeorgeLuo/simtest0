@@ -1,10 +1,10 @@
-import { ComponentManager } from '../components/ComponentManager';
-import { EntityManager } from '../entity/EntityManager';
-import { System } from '../systems/System';
-import { SystemManager } from '../systems/SystemManager';
-import { Frame, FrameFilter } from '../messaging/Frame';
-import { Bus } from '../messaging/Bus';
-import { TimeComponentType, TimeSystem } from '../time';
+import { ComponentManager } from '../components/ComponentManager.js';
+import { EntityManager } from '../entity/EntityManager.js';
+import { System } from '../systems/System.js';
+import { SystemManager } from '../systems/SystemManager.js';
+import { Frame, FrameFilter } from '../messaging/Frame.js';
+import { Bus } from '../messaging/Bus.js';
+import { TimeComponentType, TimeSystem, type TimeData } from '../time/index.js';
 
 export type PlayerState = 'idle' | 'running' | 'paused';
 
@@ -144,7 +144,7 @@ export class Player {
     }
 
     const timeComponent = this.componentManager.getComponent(timeEntity, this.timeComponent);
-    return timeComponent?.data.tick ?? 0;
+    return (timeComponent?.data as TimeData | undefined)?.tick ?? 0;
   }
 
   private clearLoop(): void {

@@ -1,8 +1,8 @@
-import { ComponentManager } from '../components/ComponentManager';
-import { Entity } from '../entity/Entity';
-import { EntityManager } from '../entity/EntityManager';
-import { System } from '../systems/System';
-import { TimeComponentType } from './TimeComponent';
+import { ComponentManager } from '../components/ComponentManager.js';
+import { Entity } from '../entity/Entity.js';
+import { EntityManager } from '../entity/EntityManager.js';
+import { System } from '../systems/System.js';
+import { TimeComponentType } from './TimeComponent.js';
 
 /**
  * System responsible for advancing simulation time by incrementing a counter each update.

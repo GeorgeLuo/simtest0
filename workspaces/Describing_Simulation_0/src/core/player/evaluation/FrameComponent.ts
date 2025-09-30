@@ -1,6 +1,6 @@
-import { ComponentType } from '../../components/ComponentType';
-import { Entity } from '../../entity/Entity';
-import { Frame } from '../../messaging/Frame';
+import { ComponentType } from '../../components/ComponentType.js';
+import { Entity } from '../../entity/Entity.js';
+import { Frame } from '../../messaging/Frame.js';
 
 export interface FrameComponentData {
   frame: Frame;

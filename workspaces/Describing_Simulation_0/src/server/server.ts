@@ -1,9 +1,9 @@
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
-import { createEnvironment, SimEvalEnvironment } from './environment';
-import { createSSEHandler } from './sse';
-import { readJsonBody, sendJson, badRequest, methodNotAllowed, notFound, internalError } from './utils';
-import { Frame } from '../core/messaging/Frame';
+import { createEnvironment, SimEvalEnvironment } from './environment.js';
+import { createSSEHandler } from './sse.js';
+import { readJsonBody, sendJson, badRequest, methodNotAllowed, notFound, internalError } from './utils.js';
+import { Frame } from '../core/messaging/Frame.js';
 
 interface DispatchableEnvironment extends SimEvalEnvironment {
   dispatchSimulation: (type: string) => Promise<unknown>;

@@ -1,6 +1,6 @@
-import { Acknowledgement } from '../outbound/Acknowledgement';
-import { InboundMessage, Operation, OperationContext } from './Operation';
-import { Player } from '../../player/Player';
+import { Acknowledgement } from '../outbound/Acknowledgement.js';
+import { InboundMessage, Operation, OperationContext } from './Operation.js';
+import { Player } from '../../player/Player.js';
 
 export interface HandlerInvocation<TData = unknown> {
   player: Player;

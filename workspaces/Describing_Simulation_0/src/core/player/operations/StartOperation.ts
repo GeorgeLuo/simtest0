@@ -1,6 +1,6 @@
-import { PlaybackOperation } from './PlaybackOperation';
-import { OperationContext } from '../../messaging/inbound/Operation';
-import { PlaybackResult } from './PlaybackOperation';
+import { PlaybackOperation } from './PlaybackOperation.js';
+import { OperationContext } from '../../messaging/inbound/Operation.js';
+import { PlaybackResult } from './PlaybackOperation.js';
 
 export class StartOperation extends PlaybackOperation {
   constructor() {

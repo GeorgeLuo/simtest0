@@ -1,4 +1,4 @@
-import { Entity } from '../entity/Entity';
+import { Entity } from '../entity/Entity.js';
 
 /**
  * A component instance ties an entity to a payload described by a component type.

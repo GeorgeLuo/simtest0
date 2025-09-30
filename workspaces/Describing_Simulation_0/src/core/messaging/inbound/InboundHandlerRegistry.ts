@@ -1,5 +1,5 @@
-import { Acknowledgement } from '../outbound/Acknowledgement';
-import { HandlerInvocation, MessageHandler } from './MessageHandler';
+import { Acknowledgement } from '../outbound/Acknowledgement.js';
+import { HandlerInvocation, MessageHandler } from './MessageHandler.js';
 
 /**
  * Maintains mappings between inbound message types and their handlers.

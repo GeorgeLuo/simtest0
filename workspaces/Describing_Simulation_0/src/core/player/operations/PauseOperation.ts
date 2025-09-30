@@ -1,5 +1,5 @@
-import { PlaybackOperation, PlaybackResult } from './PlaybackOperation';
-import { OperationContext } from '../../messaging/inbound/Operation';
+import { PlaybackOperation, PlaybackResult } from './PlaybackOperation.js';
+import { OperationContext } from '../../messaging/inbound/Operation.js';
 
 export class PauseOperation extends PlaybackOperation {
   constructor() {

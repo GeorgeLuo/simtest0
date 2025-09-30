@@ -1,6 +1,6 @@
-import { MessageHandler } from '../../../messaging/inbound/MessageHandler';
-import { EvaluationPlayer } from '../EvaluationPlayer';
-import { InjectFrameOperation } from './InjectFrameOperation';
+import { MessageHandler } from '../../../messaging/inbound/MessageHandler.js';
+import { EvaluationPlayer } from '../EvaluationPlayer.js';
+import { InjectFrameOperation } from './InjectFrameOperation.js';
 
 export function createEvaluationHandlers(player: EvaluationPlayer): void {
   const injectHandler = new MessageHandler('inject-frame', [new InjectFrameOperation()]);
@@ -14,4 +14,4 @@ export function createEvaluationHandlers(player: EvaluationPlayer): void {
   }
 }
 
-export { InjectFrameOperation, type InjectFrameResult } from './InjectFrameOperation';
+export { InjectFrameOperation, type InjectFrameResult } from './InjectFrameOperation.js';
