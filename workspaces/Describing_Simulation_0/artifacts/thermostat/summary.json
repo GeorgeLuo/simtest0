@@ -1,0 +1,9 @@
+{
+  "minTemperatureC": 16.370083712273622,
+  "maxTemperatureC": 23.508259689614246,
+  "averageTemperatureC": 19.774797228436015,
+  "minutesWithinTargetBand": 202,
+  "totalHeatingMinutes": 950,
+  "totalCoolingMinutes": 174,
+  "totalEnergyKwh": 82.85000000000177
+}
