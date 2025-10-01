@@ -1,8 +1,0 @@
-
-> describing-simulation-0@0.0.0 start:prod
-> node dist/main.js
-
-SimEval server listening on port 4700
-Shutting down SimEval server...
-fter 5001 milliseconds with 29989 bytes received
-curl: (28) Operation timed out after 5000 milliseconds with 1185274 bytes received
