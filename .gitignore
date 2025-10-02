@@ -1,0 +1,9 @@
+node_modules/
+workspaces/**/node_modules/
+workspaces/**/dist/
+workspaces/**/verifications/
+verifications/
+.DS_Store
+npm-debug.log*
+yarn-error.log*
+*.log

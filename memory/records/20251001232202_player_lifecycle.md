@@ -1,0 +1,1 @@
+Implemented Player loop controller integration with start/pause/stop semantics, added post-start system initialization tests, and kept suite green.

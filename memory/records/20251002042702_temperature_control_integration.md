@@ -1,0 +1,1 @@
+Implemented thermostat and drift systems with injection via module path, added temperature system tests, and enhanced integration harnesses plus HTTP flow to validate injection success, error handling, and evaluation snapshots with artifacts captured under verifications/20251002T042613Z.

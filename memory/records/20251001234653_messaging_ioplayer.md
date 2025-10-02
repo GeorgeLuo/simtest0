@@ -1,0 +1,1 @@
+Implemented Bus infrastructure, inbound handler skeletons, IOPlayer with command/ack handling, and comprehensive tests for messaging flows.
