@@ -1,1 +1,0 @@
-Added evaluation-player injection validation, persisted temperature traces, and refreshed docs plus verification artifacts via npm test and tools/run_integration.sh (see verifications/20251002T043240Z).
