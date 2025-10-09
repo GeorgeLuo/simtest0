@@ -1,0 +1,25 @@
+{
+  "name": "describing_simulation_0",
+  "version": "1.0.0",
+  "description": "Phase 2 workspace for Describing Simulation 0 artifacts (see instruction_documents/Describing_Simulation_0_schedule_of_work.md).",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "ts-node src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "test:watch": "jest --watchAll"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.7.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

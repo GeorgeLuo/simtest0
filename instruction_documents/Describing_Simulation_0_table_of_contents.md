@@ -1,0 +1,96 @@
+- H1 Describing Simulation
+  - H2 Summary of Assumptions
+- H1 Describing Hypotheticals
+  - H2 Endogenous or Exogenous
+  - H2 Boundaries
+    - H3 Temporality
+      - H4 Static Problems
+    - H3 Conditionality
+  - H2 Formalization
+    - H3 Environment (E)
+    - H3 Time (T)
+    - H3 Condition (C)
+- H1 Simulations
+- H1 Codifying Simulations
+  - H2 Scaffolding
+    - H3 Artifacts
+    - H3 Realtime Commands
+    - H3 Server
+  - H2 Code
+    - H3 Code Structure
+    - H3 Summary of Scope
+    - H3 I. Primitives
+      - H4 Entity
+      - H4 ComponentType
+      - H4 EntityManager
+      - H4 ComponentManager
+    - H3 II. System
+      - H4 System
+    - H3 III. Time
+      - H4 TimeComponent
+      - H4 TimeSystem
+    - H3 IV. Orchestration
+      - H4 SystemManager
+      - H4 Player
+    - H3 V. Messaging
+      - H4 Bus
+    - H3 VI. IO Player
+      - H4 InboundHandlerRegistry
+      - H4 MessageHandler
+      - H4 Operation
+      - H4 InjectSystem
+      - H4 EjectSystem
+      - H4 Acknowledgement
+      - H4 Frame
+      - H4 FrameFilter
+      - H4 IOPlayer
+    - H3 VII. Simulation Player
+      - H4 Start
+      - H4 Pause
+      - H4 Stop
+      - H4 SimulationPlayer
+    - H3 VIII. Evaluation Player
+      - H4 InjectFrame
+      - H4 EvaluationPlayer
+    - H3 IX. Sim-Eval Server
+      - H4 Main
+      - H4 Server
+      - H4 Router
+      - H4 Simulation
+      - H4 Evaluation
+      - H4 Codebase
+      - H4 Api.md
+      - H4 Describing_Simulation.md
+      - H4 Plugins
+  - H2 Integration
+    - H3 Artifacts
+    - H3 Steps
+      - H4 Build & Start Service
+      - H4 Learn Usage
+      - H4 Validate State Before Start of Simulation
+      - H4 Inject Valid Systems and Components
+      - H4 Start of Simulation
+      - H4 Validate Behavior
+- H1 Agentic Instructions
+  - H2 Discoverability
+  - H2 Bootstraps
+    - H3 Repository Structure
+    - H3 Tools
+    - H3 Workspaces
+    - H3 Memory
+      - H4 Ways
+      - H4 Records
+      - H4 Exceptions
+    - H3 Checks
+  - H2 Agent Prompts
+    - H3 Tasker
+      - H4 Task Staging
+    - H3 Implementer
+    - H3 Integrator
+    - H3 Aligner
+    - H3 Optimizer
+    - H3 Master Prompt
+- H1 Implementation Guidelines
+  - H2 Methodology
+    - H3 Test-driven Development
+- H1 Schedule of Work
