@@ -4,7 +4,7 @@ This document summarizes the HTTP interface exposed by the simulation-evaluation
 
 ## Segments
 - `/api/simulation` — Control simulation playback, inject or eject systems, and consume outbound frames via Server-Sent Events (`/api/simulation/stream`).
-- `/api/evaluation` — Register evaluation conditions, inject frames, and subscribe to evaluation output via Server-Sent Events (`/api/evaluation/stream`).
+- `/api/evaluation` — Inject evaluation systems/components, feed frames, and subscribe to evaluation output via Server-Sent Events (`/api/evaluation/stream`).
 - `/api/codebase` — Inspect the project filesystem (`/api/codebase/tree`) and read source files (`/api/codebase/file`) to support plugin authoring.
 
 ## Simulation Control
@@ -17,8 +17,10 @@ This document summarizes the HTTP interface exposed by the simulation-evaluation
 
 ## Evaluation Interface
 - `POST /api/evaluation/frame` — Inject a frame record for evaluation processing.
-- `POST /api/evaluation/inject` — Register a condition definition for monitoring.
-- `POST /api/evaluation/eject` — Remove a registered condition.
+- `POST /api/evaluation/system/inject` — Load an evaluation system module and register it with the player.
+- `POST /api/evaluation/system/eject` — Remove a previously injected evaluation system.
+- `POST /api/evaluation/component/inject` — Register an evaluation component type for downstream systems.
+- `POST /api/evaluation/component/eject` — Remove a registered evaluation component type.
 - `GET  /api/evaluation/stream` — Stream evaluation acknowledgements and derived frames.
 
 ## Codebase Inspection

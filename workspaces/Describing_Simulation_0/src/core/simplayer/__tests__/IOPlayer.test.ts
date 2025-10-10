@@ -1,4 +1,4 @@
-import { IOPlayer } from '../IOPlayer';
+import { IOPlayer } from '../../IOPlayer';
 import { EntityManager } from '../../entity/EntityManager';
 import { ComponentManager } from '../../components/ComponentManager';
 import { SystemManager } from '../../systems/SystemManager';

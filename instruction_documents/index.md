@@ -6,6 +6,7 @@ Review this index before diving into the instruction set. Start with the table o
 - `Describing_Simulation_0.md` — Full original Describing_Simulation_0.md preserved for reference.
 - `Describing_Simulation_0_bootstraps.md` — Bootstrapping directives for repository structure and context management.
 - `Describing_Simulation_0_repository_structure.md` — Expected repository tree and required artifacts post-bootstrap.
+- `Describing_Simulation_0_code_structure.md` — Source tree layout for core, routing, and plugin directories.
 - `Describing_Simulation_0_workspace_structure.md` — Workspace directory usage for implementation snapshots.
 - `Describing_Simulation_0_codifying_simulations.md` — Detailed instructions on building simulations from specs.
 - `Describing_Simulation_0_implementation_guidelines.md` — Implementation methodology, including test-driven process.

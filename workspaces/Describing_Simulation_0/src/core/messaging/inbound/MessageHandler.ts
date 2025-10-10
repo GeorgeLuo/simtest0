@@ -1,16 +1,25 @@
 import type { Operation } from './Operation';
 import type { SystemContext } from '../../systems/System';
+import type { Acknowledgement } from '../outbound/Acknowledgement';
 
-export class MessageHandler<TContext = SystemContext> {
-  private readonly operations: Operation<TContext>[];
+export class MessageHandler<TContext = SystemContext, TPayload = unknown> {
+  private readonly operations: Operation<TContext, TPayload>[];
 
-  constructor(operations: Operation<TContext>[]) {
+  constructor(operations: Operation<TContext, TPayload>[]) {
     this.operations = operations;
   }
 
-  handle(context: TContext, payload: unknown): void {
+  handle(context: TContext, payload: TPayload): Acknowledgement {
+    let acknowledgement: Acknowledgement | null = null;
+
     for (const operation of this.operations) {
-      operation.execute(context, payload);
+      acknowledgement = operation.execute(context, payload);
     }
+
+    if (!acknowledgement) {
+      throw new Error('Inbound operations must return an acknowledgement');
+    }
+
+    return acknowledgement;
   }
 }

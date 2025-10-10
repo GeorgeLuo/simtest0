@@ -1,13 +1,13 @@
-import { EjectSystemOperation } from '../EjectSystemOperation';
-import type { IOPlayer } from '../../IOPlayer';
+import { EjectSystem } from '../EjectSystem';
+import type { IOPlayer } from '../../../IOPlayer';
 import type { System } from '../../../systems/System';
 
-describe('EjectSystemOperation', () => {
+describe('EjectSystem operation', () => {
   it('calls player.ejectSystem and returns success acknowledgement', () => {
     const player = {
       ejectSystem: jest.fn(),
     } as unknown as IOPlayer & { ejectSystem: jest.Mock };
-    const operation = new EjectSystemOperation();
+    const operation = new EjectSystem();
     const system = {} as System;
     const payload = { messageId: 'msg-5', system };
 

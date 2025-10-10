@@ -1,12 +1,12 @@
-import { StartOperation } from '../StartOperation';
-import type { IOPlayer } from '../../IOPlayer';
+import { Start } from '../Start';
+import type { IOPlayer } from '../../../IOPlayer';
 
-describe('StartOperation', () => {
+describe('Start operation', () => {
   it('invokes player.start and returns success acknowledgement', () => {
     const player = {
       start: jest.fn(),
     } as unknown as IOPlayer & { start: jest.Mock };
-    const operation = new StartOperation();
+    const operation = new Start();
 
     const acknowledgement = operation.execute(player, { messageId: 'msg-1' });
 

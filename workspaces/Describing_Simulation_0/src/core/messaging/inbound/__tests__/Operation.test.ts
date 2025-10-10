@@ -7,12 +7,14 @@ describe('Operation', () => {
     const operation: Operation<SystemContext, number> = {
       execute(context, payload) {
         calls.push({ context, payload });
+        return { messageId: 'operation-1', status: 'success' };
       },
     };
 
     const context = { entityManager: {} as never, componentManager: {} as never } satisfies SystemContext;
-    operation.execute(context, 42);
+    const acknowledgement = operation.execute(context, 42);
 
     expect(calls).toEqual([{ context, payload: 42 }]);
+    expect(acknowledgement).toEqual({ messageId: 'operation-1', status: 'success' });
   });
 });

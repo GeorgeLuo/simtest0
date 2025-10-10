@@ -1,5 +1,5 @@
-import { createServer, type BootstrapOptions } from '../../server/bootstrap';
-import type { IOPlayer } from '../../core/simplayer/IOPlayer';
+import { createServer, type BootstrapOptions } from '../../server';
+import type { IOPlayer } from '../../core/IOPlayer';
 import type { EvaluationPlayer } from '../../core/evalplayer/EvaluationPlayer';
 import { Router } from '../../routes/router';
 
@@ -35,6 +35,8 @@ describe('Sim-Eval integration harness', () => {
       injectSystem: jest.fn(),
       ejectSystem: jest.fn(),
       injectFrame: jest.fn(),
+      registerComponent: jest.fn(),
+      removeComponent: jest.fn(),
     } as unknown as EvaluationPlayer;
 
     const options: BootstrapOptions = {
@@ -47,6 +49,8 @@ describe('Sim-Eval integration harness', () => {
       evaluation: {
         player: evaluationPlayer,
         outboundBus: { subscribe: jest.fn(() => jest.fn()) },
+        loadSystem: jest.fn(async () => ({}) as unknown as any),
+        loadComponent: jest.fn(async () => ({ id: 'comp', validate: () => true })),
       },
       codebase: {
         rootDir: '/repo',

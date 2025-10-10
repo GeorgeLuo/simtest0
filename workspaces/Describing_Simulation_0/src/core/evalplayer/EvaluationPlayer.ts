@@ -4,31 +4,41 @@ import type { Frame } from '../messaging/outbound/Frame';
 import type { Acknowledgement } from '../messaging/outbound/Acknowledgement';
 import type { FrameFilter } from '../messaging/outbound/FrameFilter';
 import type { InboundHandlerRegistry } from '../messaging/inbound/InboundHandlerRegistry';
-import { IOPlayer } from '../simplayer/IOPlayer';
+import type { ComponentType } from '../components/ComponentType';
+import { MessageHandler } from '../messaging/inbound/MessageHandler';
+import { IOPlayer } from '../IOPlayer';
+import { InjectFrame, type InjectFramePayload } from './operations/InjectFrame';
 
 export interface FrameRecord {
   messageId?: string;
   frame: Frame;
 }
 
-export interface ConditionRecord {
-  conditionId: string;
-  definition: unknown;
-}
+export const EvaluationMessageType = {
+  INJECT_FRAME: 'inject-frame',
+} as const;
 
 export class EvaluationPlayer extends IOPlayer {
   protected readonly frames: FrameRecord[] = [];
-  protected readonly conditions = new Map<string, ConditionRecord>();
+  private readonly componentTypes = new Map<string, ComponentType<unknown>>();
 
   constructor(
     systemManager: SystemManager,
     inbound: Bus<unknown>,
     outbound: Bus<Frame | Acknowledgement>,
     frameFilter: FrameFilter,
-    handlers: InboundHandlerRegistry<EvaluationPlayer>,
+    handlers?: InboundHandlerRegistry<EvaluationPlayer>,
     cycleIntervalMs?: number,
   ) {
-    super(systemManager, inbound, outbound, frameFilter, handlers, cycleIntervalMs);
+    super(
+      systemManager,
+      inbound,
+      outbound,
+      frameFilter,
+      (handlers as unknown as InboundHandlerRegistry<IOPlayer>) ?? undefined,
+      cycleIntervalMs,
+    );
+    this.registerDefaultHandlers();
   }
 
   injectFrame(payload: FrameRecord): void {
@@ -36,19 +46,28 @@ export class EvaluationPlayer extends IOPlayer {
     this.publishFrame(payload.frame);
   }
 
-  registerCondition(payload: ConditionRecord): void {
-    this.conditions.set(payload.conditionId, payload);
-  }
-
-  removeCondition(payload: { conditionId: string }): void {
-    this.conditions.delete(payload.conditionId);
-  }
-
   getFrames(): FrameRecord[] {
     return [...this.frames];
   }
 
-  getConditions(): ConditionRecord[] {
-    return Array.from(this.conditions.values());
+  registerComponent<T>(component: ComponentType<T>): void {
+    this.componentTypes.set(component.id, component);
+  }
+
+  removeComponent(componentId: string): boolean {
+    return this.componentTypes.delete(componentId);
+  }
+
+  getRegisteredComponents(): ComponentType<unknown>[] {
+    return Array.from(this.componentTypes.values());
+  }
+
+  private registerDefaultHandlers(): void {
+    const registry = (this.getInboundHandlers() as unknown as InboundHandlerRegistry<EvaluationPlayer>);
+
+    registry.register(
+      EvaluationMessageType.INJECT_FRAME,
+      new MessageHandler<EvaluationPlayer, InjectFramePayload>([new InjectFrame()]),
+    );
   }
 }

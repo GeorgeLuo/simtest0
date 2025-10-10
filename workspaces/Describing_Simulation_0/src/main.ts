@@ -1,19 +1,20 @@
 import path from 'path';
 import { promises as fs } from 'fs';
 import type { Dirent } from 'fs';
-import { createServer } from './server/bootstrap';
-import type { Server } from './server';
-import { IOPlayer } from './core/simplayer/IOPlayer';
+import { createServer, Server } from './server';
+import type { IOPlayer } from './core/IOPlayer';
+import { SimulationPlayer } from './core/simplayer/SimulationPlayer';
 import { EvaluationPlayer } from './core/evalplayer/EvaluationPlayer';
 import { EntityManager } from './core/entity/EntityManager';
 import { ComponentManager } from './core/components/ComponentManager';
+import type { ComponentType } from './core/components/ComponentType';
 import { SystemManager } from './core/systems/SystemManager';
 import { Bus } from './core/messaging/Bus';
 import { FrameFilter } from './core/messaging/outbound/FrameFilter';
-import { InboundHandlerRegistry } from './core/messaging/inbound/InboundHandlerRegistry';
 import type { Frame } from './core/messaging/outbound/Frame';
 import type { Acknowledgement } from './core/messaging/outbound/Acknowledgement';
 import type { SimulationSystemDescriptor } from './routes/simulation';
+import type { EvaluationComponentDescriptor, EvaluationSystemDescriptor } from './routes/evaluation';
 import { System, type SystemContext } from './core/systems/System';
 
 const DEFAULT_PORT = 3000;
@@ -44,7 +45,7 @@ export async function start(options: StartOptions = {}): Promise<Server> {
     {
       id: 'evaluation',
       title: 'Evaluation',
-      description: 'Register conditions, ingest frames, and receive evaluation output.',
+      description: 'Inject evaluation systems/components, ingest frames, and receive evaluation output.',
       path: '/api/evaluation',
     },
     {
@@ -70,7 +71,9 @@ export async function start(options: StartOptions = {}): Promise<Server> {
     },
   ];
 
-  const loadSystem = async (descriptor: SimulationSystemDescriptor): Promise<System> => {
+  const loadSystem = async (
+    descriptor: SimulationSystemDescriptor | EvaluationSystemDescriptor,
+  ): Promise<System> => {
     const resolved = await resolvePath(rootDir, descriptor.modulePath);
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const moduleExports = require(resolved);
@@ -78,6 +81,17 @@ export async function start(options: StartOptions = {}): Promise<Server> {
     const candidate = selectExport(moduleExports, descriptor.exportName ?? null);
     const systemLike = await instantiateSystem(candidate);
     return wrapSystem(systemLike, descriptor.modulePath);
+  };
+
+  const loadComponent = async (
+    descriptor: EvaluationComponentDescriptor,
+  ): Promise<ComponentType<unknown>> => {
+    const resolved = await resolvePath(rootDir, descriptor.modulePath);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const moduleExports = require(resolved);
+
+    const candidate = selectExport(moduleExports, descriptor.exportName ?? null);
+    return resolveComponentType(candidate, descriptor.modulePath);
   };
 
   const simulation = createSimulationPlayer(cycleIntervalMs);
@@ -100,6 +114,8 @@ export async function start(options: StartOptions = {}): Promise<Server> {
     evaluation: {
       player: evaluation.player,
       outboundBus: evaluation.outboundBus,
+      loadSystem,
+      loadComponent,
     },
     codebase: {
       rootDir,
@@ -140,18 +156,17 @@ interface PlayerBundle<TPlayer extends IOPlayer> {
   outboundBus: Bus<Frame | Acknowledgement>;
 }
 
-function createSimulationPlayer(cycleIntervalMs?: number): PlayerBundle<IOPlayer> {
+function createSimulationPlayer(cycleIntervalMs?: number): PlayerBundle<SimulationPlayer> {
   const entityManager = new EntityManager();
   const componentManager = new ComponentManager();
   const systemManager = new SystemManager(entityManager, componentManager);
   const inboundBus = new Bus<unknown>();
   const outboundBus = new Bus<Frame | Acknowledgement>();
   const frameFilter = new FrameFilter();
-  const handlers = new InboundHandlerRegistry<IOPlayer>();
   const player =
     cycleIntervalMs === undefined
-      ? new IOPlayer(systemManager, inboundBus, outboundBus, frameFilter, handlers)
-      : new IOPlayer(systemManager, inboundBus, outboundBus, frameFilter, handlers, cycleIntervalMs);
+      ? new SimulationPlayer(systemManager, inboundBus, outboundBus, frameFilter)
+      : new SimulationPlayer(systemManager, inboundBus, outboundBus, frameFilter, undefined, cycleIntervalMs);
   return { player, inboundBus, outboundBus };
 }
 
@@ -162,11 +177,10 @@ function createEvaluationPlayer(cycleIntervalMs?: number): PlayerBundle<Evaluati
   const inboundBus = new Bus<unknown>();
   const outboundBus = new Bus<Frame | Acknowledgement>();
   const frameFilter = new FrameFilter();
-  const handlers = new InboundHandlerRegistry<EvaluationPlayer>();
   const player =
     cycleIntervalMs === undefined
-      ? new EvaluationPlayer(systemManager, inboundBus, outboundBus, frameFilter, handlers)
-      : new EvaluationPlayer(systemManager, inboundBus, outboundBus, frameFilter, handlers, cycleIntervalMs);
+      ? new EvaluationPlayer(systemManager, inboundBus, outboundBus, frameFilter)
+      : new EvaluationPlayer(systemManager, inboundBus, outboundBus, frameFilter, undefined, cycleIntervalMs);
   return { player, inboundBus, outboundBus };
 }
 
@@ -295,6 +309,37 @@ function wrapSystem(systemLike: SystemLike, modulePath: string): System {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to wrap system from ${modulePath}: ${detail}`);
   }
+}
+
+async function resolveComponentType(candidate: unknown, modulePath: string): Promise<ComponentType<unknown>> {
+  const materialized = await materializeComponent(candidate);
+  return ensureComponentShape(materialized, modulePath);
+}
+
+async function materializeComponent(candidate: unknown): Promise<unknown> {
+  if (typeof candidate === 'function') {
+    const produced = candidate();
+    return isPromise(produced) ? await produced : produced;
+  }
+
+  return candidate;
+}
+
+function ensureComponentShape(candidate: unknown, modulePath: string): ComponentType<unknown> {
+  if (!candidate || typeof candidate !== 'object') {
+    throw new Error(`Module export did not produce a ComponentType from ${modulePath}`);
+  }
+
+  const component = candidate as ComponentType<unknown>;
+  if (typeof component.id !== 'string' || component.id.length === 0) {
+    throw new Error(`Component from ${modulePath} is missing a valid id`);
+  }
+
+  if (typeof component.validate !== 'function') {
+    throw new Error(`Component from ${modulePath} is missing a validate function`);
+  }
+
+  return component;
 }
 
 function isSystemConstructor(value: unknown): value is new () => SystemLike {

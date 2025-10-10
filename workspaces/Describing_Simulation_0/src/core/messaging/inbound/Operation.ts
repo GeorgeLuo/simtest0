@@ -1,5 +1,6 @@
 import type { SystemContext } from '../../systems/System';
+import type { Acknowledgement } from '../outbound/Acknowledgement';
 
 export interface Operation<TContext = SystemContext, TPayload = unknown> {
-  execute(_context: TContext, _payload: TPayload): void;
+  execute(context: TContext, payload: TPayload): Acknowledgement;
 }

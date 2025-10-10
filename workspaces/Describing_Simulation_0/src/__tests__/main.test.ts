@@ -1,8 +1,8 @@
-import type { Server } from '../server';
 import { start } from '../main';
-import { createServer } from '../server/bootstrap';
+import { createServer } from '../server';
+import type { Server } from '../server';
 
-jest.mock('../server/bootstrap', () => ({
+jest.mock('../server', () => ({
   createServer: jest.fn(),
 }));
 
@@ -37,6 +37,8 @@ describe('main start()', () => {
         evaluation: expect.objectContaining({
           player: expect.any(Object),
           outboundBus: expect.any(Object),
+          loadSystem: expect.any(Function),
+          loadComponent: expect.any(Function),
         }),
         codebase: expect.objectContaining({
           rootDir: '/tmp/root',

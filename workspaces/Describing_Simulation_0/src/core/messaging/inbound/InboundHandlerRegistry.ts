@@ -1,22 +1,26 @@
 import type { MessageHandler } from './MessageHandler';
+import type { Acknowledgement } from '../outbound/Acknowledgement';
 
 export class InboundHandlerRegistry<TContext = unknown> {
-  private readonly handlers: Map<string, MessageHandler<TContext>>;
+  private readonly handlers: Map<string, MessageHandler<TContext, unknown>>;
 
-  constructor(handlers: Map<string, MessageHandler<TContext>> = new Map()) {
+  constructor(handlers: Map<string, MessageHandler<TContext, unknown>> = new Map()) {
     this.handlers = new Map(handlers);
   }
 
-  register(type: string, handler: MessageHandler<TContext>): void {
-    this.handlers.set(type, handler);
+  register<TPayload>(
+    type: string,
+    handler: MessageHandler<TContext, TPayload>,
+  ): void {
+    this.handlers.set(type, handler as unknown as MessageHandler<TContext, unknown>);
   }
 
-  handle(type: string, context: TContext, payload: unknown): void {
+  handle(type: string, context: TContext, payload: unknown): Acknowledgement | null {
     const handler = this.handlers.get(type);
     if (!handler) {
-      return;
+      return null;
     }
 
-    handler.handle(context, payload);
+    return handler.handle(context, payload);
   }
 }

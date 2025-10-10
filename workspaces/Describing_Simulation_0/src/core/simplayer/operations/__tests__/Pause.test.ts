@@ -1,12 +1,12 @@
-import { PauseOperation } from '../PauseOperation';
-import type { IOPlayer } from '../../IOPlayer';
+import { Pause } from '../Pause';
+import type { IOPlayer } from '../../../IOPlayer';
 
-describe('PauseOperation', () => {
+describe('Pause operation', () => {
   it('invokes player.pause and returns success acknowledgement', () => {
     const player = {
       pause: jest.fn(),
     } as unknown as IOPlayer & { pause: jest.Mock };
-    const operation = new PauseOperation();
+    const operation = new Pause();
 
     const acknowledgement = operation.execute(player, { messageId: 'msg-2' });
 

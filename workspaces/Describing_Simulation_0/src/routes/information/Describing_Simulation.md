@@ -5,7 +5,7 @@ This abridged reference points new operators to the broader simulation design no
 ## Core Concepts
 - **Entity Component System (ECS)** — Simulation state is modeled through entities that hold typed components; systems iterate over entities to advance time and produce outbound metrics.
 - **IO Player** — The base runtime loop that consumes inbound bus operations and publishes filtered frames to outbound subscribers.
-- **Evaluation Player** — Extends the IO player to capture injected frames and evaluate registered conditions for downstream analysis.
+- **Evaluation Player** — Extends the IO player to capture injected frames and run evaluation systems/components for downstream analysis.
 - **Messaging Buses** — Inbound buses carry control operations, while outbound buses publish frames and acknowledgements for clients or peer players.
 
 ## Extension Workflow

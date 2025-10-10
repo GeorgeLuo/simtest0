@@ -1,5 +1,5 @@
 import type { Router } from './router';
-import type { IOPlayer } from '../core/simplayer/IOPlayer';
+import type { IOPlayer } from '../core/IOPlayer';
 import type { Bus } from '../core/messaging/Bus';
 import type { Frame } from '../core/messaging/outbound/Frame';
 import type { Acknowledgement } from '../core/messaging/outbound/Acknowledgement';

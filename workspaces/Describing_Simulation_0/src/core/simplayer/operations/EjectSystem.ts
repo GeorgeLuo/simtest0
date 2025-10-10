@@ -1,5 +1,6 @@
-import type { IOPlayer } from '../IOPlayer';
+import type { IOPlayer } from '../../IOPlayer';
 import type { Acknowledgement } from '../../messaging/outbound/Acknowledgement';
+import type { Operation } from '../../messaging/inbound/Operation';
 import type { System } from '../../systems/System';
 
 export interface EjectSystemPayload {
@@ -7,7 +8,7 @@ export interface EjectSystemPayload {
   system: System;
 }
 
-export class EjectSystemOperation {
+export class EjectSystem implements Operation<IOPlayer, EjectSystemPayload> {
   execute(player: IOPlayer, payload: EjectSystemPayload): Acknowledgement {
     player.ejectSystem({ system: payload.system });
     return { messageId: payload.messageId, status: 'success' };
