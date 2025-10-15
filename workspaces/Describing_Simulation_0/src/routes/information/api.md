@@ -11,14 +11,14 @@ This document summarizes the HTTP interface exposed by the simulation-evaluation
 - `POST /api/simulation/start` — Begin advancing the simulation loop.
 - `POST /api/simulation/pause` — Temporarily halt cycle execution without tearing down state.
 - `POST /api/simulation/stop` — Halt execution and clear active timers.
-- `POST /api/simulation/inject` — Provide a serialized system for runtime registration.
-- `POST /api/simulation/eject` — Remove a previously injected system.
+- `POST /api/simulation/inject` — Provide a serialized system for runtime registration. Returns `{ status, messageId, systemId }` on success; persist the identifier for lifecycle management.
+- `POST /api/simulation/eject` — Remove a previously injected system by `{ systemId }`. Responds with `404` when the identifier is unknown.
 - `GET  /api/simulation/stream` — Stream outbound frames and acknowledgements in real time.
 
 ## Evaluation Interface
 - `POST /api/evaluation/frame` — Inject a frame record for evaluation processing.
-- `POST /api/evaluation/system/inject` — Load an evaluation system module and register it with the player.
-- `POST /api/evaluation/system/eject` — Remove a previously injected evaluation system.
+- `POST /api/evaluation/system/inject` — Load an evaluation system module and register it with the player. Returns `{ status, messageId, systemId }`.
+- `POST /api/evaluation/system/eject` — Remove a previously injected evaluation system via `{ systemId }`.
 - `POST /api/evaluation/component/inject` — Register an evaluation component type for downstream systems.
 - `POST /api/evaluation/component/eject` — Remove a registered evaluation component type.
 - `GET  /api/evaluation/stream` — Stream evaluation acknowledgements and derived frames.
@@ -29,5 +29,7 @@ This document summarizes the HTTP interface exposed by the simulation-evaluation
 
 ## Notes
 - All mutation endpoints accept JSON request bodies with a `messageId` to correlate responses.
-- Success responses return `{ status: "success", messageId }`; additional error messaging will be surfaced with `status: "error"` once implemented.
-- SSE endpoints emit JSON-encoded payloads separated by blank lines per the Server-Sent Events specification.
+- Success responses include `{ status: "success", messageId }` and may append additional fields (e.g., `systemId`) when relevant. Errors return `{ status: "error", messageId?, detail }`.
+- SSE endpoints emit JSON-encoded payloads separated by blank lines per the Server-Sent Events specification. Heartbeat comments (`:heartbeat`) are emitted every 15 seconds to keep connections alive; clients should ignore comment lines while parsing.
+- When `SIMEVAL_AUTH_TOKEN` is configured, clients must send an `Authorization` header matching the token (raw token or `Bearer <token>`). Requests missing or mis-matching the token receive `401 Unauthorized`.
+- Optional throttling is available via `SIMEVAL_RATE_WINDOW_MS` and `SIMEVAL_RATE_MAX`; exceeding the configured rate returns `429 Too Many Requests` until the window resets.

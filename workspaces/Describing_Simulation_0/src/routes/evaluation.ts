@@ -18,16 +18,21 @@ export interface EvaluationComponentDescriptor {
   exportName?: string;
 }
 
+type ControllableEvaluationPlayer = EvaluationPlayer & {
+  injectSystem: (payload: { system: System }) => string;
+  ejectSystem: (payload: { system?: System; systemId?: string }) => boolean;
+};
+
 export interface EvaluationRouteDeps {
-  player: EvaluationPlayer;
+  player: ControllableEvaluationPlayer;
   outboundBus: Bus<OutboundMessage>;
   loadSystem: (descriptor: EvaluationSystemDescriptor) => Promise<System>;
   loadComponent: (descriptor: EvaluationComponentDescriptor) => Promise<ComponentType<unknown>>;
 }
 
 export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDeps): void {
-  const respondSuccess = (res: any, messageId?: string) => {
-    res.json?.({ status: 'success', messageId });
+  const respondSuccess = (res: any, messageId?: string, extras: Record<string, unknown> = {}) => {
+    res.json?.({ status: 'success', messageId, ...extras });
   };
 
   const respondError = (res: any, messageId: string | undefined, detail: string, status = 400) => {
@@ -52,8 +57,8 @@ export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDe
 
     try {
       const system = await deps.loadSystem(descriptor);
-      deps.player.injectSystem({ system });
-      respondSuccess(res, messageId);
+      const systemId = deps.player.injectSystem({ system });
+      respondSuccess(res, messageId, { systemId });
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'System injection failed';
       respondError(res, messageId, detail);
@@ -62,15 +67,19 @@ export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDe
 
   router.register('/evaluation/system/eject', (req: any, res: any) => {
     const messageId = req.body?.messageId as string | undefined;
-    const system = req.body?.system as System | undefined;
-
-    if (!system) {
-      respondError(res, messageId, 'Missing system instance');
+    const systemId = typeof req.body?.systemId === 'string' ? req.body.systemId : undefined;
+    if (!systemId) {
+      respondError(res, messageId, 'Missing system identifier');
       return;
     }
 
-    deps.player.ejectSystem({ system });
-    respondSuccess(res, messageId);
+    const removed = deps.player.ejectSystem({ systemId });
+    if (!removed) {
+      respondError(res, messageId, 'System not found', 404);
+      return;
+    }
+
+    respondSuccess(res, messageId, { systemId });
   });
 
   router.register('/evaluation/component/inject', async (req: any, res: any) => {
@@ -113,12 +122,19 @@ export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDe
     });
     res.flushHeaders?.();
 
+    const heartbeatInterval = setInterval(() => {
+      res.write?.(':heartbeat\n\n');
+    }, 15000);
+
     const unsubscribe = deps.outboundBus.subscribe((message) => {
       res.write?.(`data: ${JSON.stringify(message)}\n\n`);
     });
 
     req.on?.('close', () => {
       unsubscribe?.();
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
       res.end?.();
     });
   });

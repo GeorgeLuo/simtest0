@@ -20,6 +20,7 @@ The following maps the structure of the repository following bootstrapping.
 │   ├── <this document's file name>_bootstraps.md
 │   ├── <this document's file name>_repository_structure.md
 │   ├── <this document's file name>_code_structure.md
+│   ├── <this document's file name>_API_map.md
 │   ├── <this document's file name>_codifying_simulations.md
 │   ├── <this document's file name>_theory.md
 │   ├── <this document's file name>_implementation_guidelines.md

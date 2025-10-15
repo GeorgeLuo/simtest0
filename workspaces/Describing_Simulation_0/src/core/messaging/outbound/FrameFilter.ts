@@ -9,15 +9,12 @@ export class FrameFilter {
 
   apply(frame: Frame): Frame {
     if (this.blacklist.size === 0) {
-      return {
-        tick: frame.tick,
-        entities: { ...frame.entities },
-      };
+      return frame;
     }
 
-    const entities: Record<string, Record<string, unknown>> = {};
+    const entities: Record<string, Record<string, unknown>> = Object.create(null);
     for (const [entityId, components] of Object.entries(frame.entities)) {
-      const filtered: Record<string, unknown> = {};
+      const filtered: Record<string, unknown> = Object.create(null);
       for (const [componentId, value] of Object.entries(components as Record<string, unknown>)) {
         if (!this.blacklist.has(componentId)) {
           filtered[componentId] = value;

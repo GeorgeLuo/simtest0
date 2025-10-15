@@ -15,6 +15,11 @@ const path = require('path');
 const { promises: fs } = require('fs');
 const { setTimeout: delay } = require('timers/promises');
 
+const RAW_AUTH_TOKEN = process.env.SIMEVAL_AUTH_TOKEN ?? process.env.SIMEVAL_API_TOKEN ?? '';
+const AUTH_HEADER_VALUE = RAW_AUTH_TOKEN
+  ? RAW_AUTH_TOKEN.startsWith('Bearer ') ? RAW_AUTH_TOKEN : `Bearer ${RAW_AUTH_TOKEN}`
+  : null;
+
 async function main() {
   const rootDir = path.resolve(__dirname, '..');
   const workspaceDir = path.join(rootDir, 'workspaces', 'Describing_Simulation_0');
@@ -32,8 +37,8 @@ async function main() {
   try {
     await verifyLanding(host, port);
     await verifyIdleStream(host, port);
-    await injectTemperatureSystem(host, port);
-    const sseSnapshots = await exerciseControls(host, port);
+    const systemId = await injectTemperatureSystem(host, port);
+    const sseSnapshots = await exerciseControls(host, port, systemId);
     await persistArtifacts(rootDir, sseSnapshots);
     console.log('[integration] Workflow completed successfully.');
   } finally {
@@ -66,7 +71,7 @@ async function verifyLanding(host, port) {
 async function verifyIdleStream(host, port) {
   console.log('[integration] Verifying simulation SSE stream is idle...');
   const controller = new AbortController();
-  const response = await fetch(`http://${host}:${port}/api/simulation/stream`, { signal: controller.signal });
+  const response = await fetch(`http://${host}:${port}/api/simulation/stream`, applyAuth({ signal: controller.signal }));
   if (!response.ok) {
     controller.abort();
     throw new Error(`Unexpected SSE status: ${response.status}`);
@@ -99,7 +104,7 @@ async function injectTemperatureSystem(host, port) {
     body: JSON.stringify({
       messageId: 'integration-inject',
       system: {
-        modulePath: 'plugins/simulation/temperatureControlSystem.js',
+        modulePath: 'plugins/simulation/systems/temperatureControlSystem.js',
         exportName: 'createTemperatureControlSystem',
       },
     }),
@@ -108,10 +113,19 @@ async function injectTemperatureSystem(host, port) {
   if (response.status !== 'success') {
     throw new Error(`System injection failed: ${response.detail ?? 'unknown error'}`);
   }
+
+  if (typeof response.systemId !== 'string' || response.systemId.length === 0) {
+    throw new Error('Injection response missing systemId');
+  }
+
+  return response.systemId;
 }
 
-async function exerciseControls(host, port) {
+async function exerciseControls(host, port, systemId) {
   console.log('[integration] Exercising simulation control routes...');
+  if (typeof systemId !== 'string' || systemId.length === 0) {
+    throw new Error('Cannot exercise controls without injected systemId');
+  }
   const startResponse = await fetchJson(`http://${host}:${port}/api/simulation/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -137,13 +151,23 @@ async function exerciseControls(host, port) {
     }
   }
 
+  const ejectResponse = await fetchJson(`http://${host}:${port}/api/simulation/eject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageId: 'integration-eject', systemId }),
+  });
+
+  if (ejectResponse.status !== 'success') {
+    throw new Error(`Simulation eject failed: ${ejectResponse.detail ?? 'unknown error'}`);
+  }
+
   return { simulationMessages, evaluationMessages };
 }
 
 async function collectSseMessages(host, port, path) {
   const url = `http://${host}:${port}${path}`;
   const controller = new AbortController();
-  const response = await fetch(url, { signal: controller.signal });
+  const response = await fetch(url, applyAuth({ signal: controller.signal }));
   if (!response.ok) {
     controller.abort();
     throw new Error(`SSE request failed (${response.status})`);
@@ -224,12 +248,27 @@ async function persistArtifacts(rootDir, snapshots) {
 }
 
 async function fetchJson(url, init) {
-  const response = await fetch(url, init);
+  const response = await fetch(url, applyAuth(init));
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     throw new Error(`Request failed (${response.status}): ${text}`);
   }
   return response.json();
+}
+
+function applyAuth(init = {}) {
+  if (!AUTH_HEADER_VALUE) {
+    return init;
+  }
+
+  const headersInit = init.headers;
+  if (headersInit instanceof Headers) {
+    headersInit.set('Authorization', AUTH_HEADER_VALUE);
+    return { ...init, headers: headersInit };
+  }
+
+  const headers = { ...(headersInit ?? {}), Authorization: AUTH_HEADER_VALUE };
+  return { ...init, headers };
 }
 
 main().catch((error) => {

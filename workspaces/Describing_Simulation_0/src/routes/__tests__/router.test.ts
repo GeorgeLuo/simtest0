@@ -59,4 +59,77 @@ describe('Router', () => {
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/json');
     expect(res.end).toHaveBeenCalledWith(JSON.stringify({ ok: true }));
   });
+
+  it('rejects requests without matching auth token', () => {
+    const router = new Router({ basePath: '/api', authToken: 'secret-token' });
+    const handler = jest.fn();
+    router.register('/protected', handler);
+
+    const req = {
+      url: '/api/protected',
+      method: 'GET',
+      headers: {},
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as Parameters<Router['dispatch']>[0];
+
+    const res: any = {
+      setHeader: jest.fn(),
+      end: jest.fn(),
+      headersSent: false,
+      statusCode: 0,
+    };
+
+    const dispatched = router.dispatch(req, res);
+    expect(dispatched).toBe(true);
+    expect(handler).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ status: 'error', detail: 'Unauthorized' }));
+  });
+
+  it('accepts bearer tokens and enforces rate limits', () => {
+    const now = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now')
+      .mockReturnValueOnce(now)
+      .mockReturnValueOnce(now)
+      .mockReturnValueOnce(now)
+      .mockReturnValueOnce(now + 2000);
+
+    const router = new Router({ basePath: '/api', authToken: 'secret-token', rateLimit: { windowMs: 1000, max: 2 } });
+    const handler = jest.fn();
+    router.register('/limited', handler);
+
+    const createReq = () =>
+      ({
+        url: '/api/limited',
+        method: 'GET',
+        headers: { authorization: 'Bearer secret-token' },
+        socket: { remoteAddress: '127.0.0.1' },
+      } as unknown as Parameters<Router['dispatch']>[0]);
+
+    const createRes = () =>
+      ({
+        setHeader: jest.fn(),
+        end: jest.fn(),
+        headersSent: false,
+        statusCode: 0,
+      } as any);
+
+    expect(router.dispatch(createReq(), createRes())).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    expect(router.dispatch(createReq(), createRes())).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(2);
+
+    const throttledRes = createRes();
+    expect(router.dispatch(createReq(), throttledRes)).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(throttledRes.statusCode).toBe(429);
+    expect(throttledRes.end).toHaveBeenCalledWith(JSON.stringify({ status: 'error', detail: 'Too Many Requests' }));
+
+    const resetRes = createRes();
+    expect(router.dispatch(createReq(), resetRes)).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(3);
+
+    nowSpy.mockRestore();
+  });
 });

@@ -4,7 +4,7 @@ import type { Dirent } from 'fs';
 import { createServer, Server } from './server';
 import type { IOPlayer } from './core/IOPlayer';
 import { SimulationPlayer } from './core/simplayer/SimulationPlayer';
-import { EvaluationPlayer } from './core/evalplayer/EvaluationPlayer';
+import { EvaluationPlayer, EvaluationMessageType } from './core/evalplayer/EvaluationPlayer';
 import { EntityManager } from './core/entity/EntityManager';
 import { ComponentManager } from './core/components/ComponentManager';
 import type { ComponentType } from './core/components/ComponentType';
@@ -25,6 +25,13 @@ export interface StartOptions {
   rootDir?: string;
   log?: (message: string) => void;
   cycleIntervalMs?: number;
+  authToken?: string | null;
+  rateLimit?: RateLimitOptions | null;
+}
+
+export interface RateLimitOptions {
+  windowMs: number;
+  max: number;
 }
 
 export async function start(options: StartOptions = {}): Promise<Server> {
@@ -34,6 +41,8 @@ export async function start(options: StartOptions = {}): Promise<Server> {
   const rootDir = options.rootDir ?? path.resolve(__dirname, '..');
   const informationDir = path.join(rootDir, 'src', 'routes', 'information');
   const cycleIntervalMs = options.cycleIntervalMs;
+  const authToken = resolveAuthToken(options.authToken);
+  const rateLimit = resolveRateLimit(options.rateLimit);
 
   const informationSegments = [
     {
@@ -97,9 +106,17 @@ export async function start(options: StartOptions = {}): Promise<Server> {
   const simulation = createSimulationPlayer(cycleIntervalMs);
   const evaluation = createEvaluationPlayer(cycleIntervalMs);
 
+  let frameSequence = 0;
   simulation.outboundBus.subscribe((message) => {
     if (isFrame(message)) {
-      evaluation.player.injectFrame({ frame: message });
+      frameSequence += 1;
+      evaluation.inboundBus.publish({
+        type: EvaluationMessageType.INJECT_FRAME,
+        payload: {
+          messageId: `frame-${frameSequence}`,
+          frame: message,
+        },
+      });
     }
   });
 
@@ -127,6 +144,8 @@ export async function start(options: StartOptions = {}): Promise<Server> {
       documents: informationDocuments,
       readDocument: (filename: string) => fs.readFile(filename, 'utf8'),
     },
+    authToken,
+    rateLimit,
   });
 
   await server.start();
@@ -148,6 +167,35 @@ function resolvePort(explicit?: number): number {
   }
 
   return DEFAULT_PORT;
+}
+
+function resolveAuthToken(candidate?: string | null): string | undefined {
+  const token = (candidate ?? process.env.SIMEVAL_AUTH_TOKEN ?? '').trim();
+  return token.length > 0 ? token : undefined;
+}
+
+function resolveRateLimit(candidate?: RateLimitOptions | null): RateLimitOptions | undefined {
+  if (candidate && isValidRateLimit(candidate)) {
+    return candidate;
+  }
+
+  const windowEnv = process.env.SIMEVAL_RATE_WINDOW_MS;
+  const maxEnv = process.env.SIMEVAL_RATE_MAX;
+  if (!windowEnv && !maxEnv) {
+    return undefined;
+  }
+
+  const windowMs = windowEnv ? Number.parseInt(windowEnv, 10) : 60000;
+  const max = maxEnv ? Number.parseInt(maxEnv, 10) : 120;
+  if (!Number.isFinite(windowMs) || windowMs <= 0 || !Number.isFinite(max) || max <= 0) {
+    return undefined;
+  }
+
+  return { windowMs, max };
+}
+
+function isValidRateLimit(value: RateLimitOptions): boolean {
+  return Number.isFinite(value.windowMs) && value.windowMs > 0 && Number.isFinite(value.max) && value.max > 0;
 }
 
 interface PlayerBundle<TPlayer extends IOPlayer> {

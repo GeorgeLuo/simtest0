@@ -19,4 +19,18 @@ describe('FrameFilter', () => {
     expect(filtered.entities.entityB).toEqual(clone.entities.entityB);
     expect(frame).toEqual(clone);
   });
+
+  it('returns the original frame when no blacklist is provided', () => {
+    const frame: Frame = {
+      tick: 2,
+      entities: {
+        entityA: { temperature: { value: 70 } },
+      },
+    };
+    const filter = new FrameFilter();
+
+    const result = filter.apply(frame);
+
+    expect(result).toBe(frame);
+  });
 });

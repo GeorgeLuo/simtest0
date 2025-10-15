@@ -5,12 +5,21 @@ import type { System } from '../../systems/System';
 
 export interface EjectSystemPayload {
   messageId: string;
-  system: System;
+  system?: System;
+  systemId?: string;
 }
 
 export class EjectSystem implements Operation<IOPlayer, EjectSystemPayload> {
   execute(player: IOPlayer, payload: EjectSystemPayload): Acknowledgement {
-    player.ejectSystem({ system: payload.system });
+    const removed = player.ejectSystem({ system: payload.system, systemId: payload.systemId });
+    if (!removed) {
+      return {
+        messageId: payload.messageId,
+        status: 'error',
+        detail: 'System not found',
+      };
+    }
+
     return { messageId: payload.messageId, status: 'success' };
   }
 }

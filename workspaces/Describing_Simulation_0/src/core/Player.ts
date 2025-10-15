@@ -7,6 +7,11 @@ interface InjectSystemPayload {
   system: System;
 }
 
+interface EjectSystemPayload {
+  system?: System;
+  systemId?: string;
+}
+
 /**
  * Base simulation player responsible for executing registered systems
  * on a fixed interval. Subclasses can hook into the lifecycle to expose
@@ -19,6 +24,9 @@ export class Player {
 
   private isRunning = false;
   private cycleTimer: NodeJS.Timeout | null = null;
+  private nextSystemId = 1;
+  private readonly systemsById = new Map<string, System>();
+  private readonly idsBySystem = new Map<System, string>();
 
   constructor(systemManager: SystemManager, cycleIntervalMs: number = DEFAULT_CYCLE_INTERVAL_MS) {
     this.systemManager = systemManager;
@@ -45,12 +53,33 @@ export class Player {
     this.resetEnvironment();
   }
 
-  injectSystem(payload: InjectSystemPayload): void {
+  injectSystem(payload: InjectSystemPayload): string {
+    const systemId = this.generateSystemId();
+    this.systemsById.set(systemId, payload.system);
+    this.idsBySystem.set(payload.system, systemId);
     this.systemManager.addSystem(payload.system);
+    return systemId;
   }
 
-  ejectSystem(payload: InjectSystemPayload): void {
-    this.systemManager.removeSystem(payload.system);
+  ejectSystem(payload: EjectSystemPayload): boolean {
+    const system =
+      payload.system ??
+      (payload.systemId ? this.systemsById.get(payload.systemId) ?? null : null);
+    if (!system) {
+      return false;
+    }
+
+    const removed = this.systemManager.removeSystem(system);
+    if (!removed) {
+      return false;
+    }
+
+    const resolvedId = payload.systemId ?? this.idsBySystem.get(system);
+    if (resolvedId) {
+      this.systemsById.delete(resolvedId);
+    }
+    this.idsBySystem.delete(system);
+    return true;
   }
 
   protected getContext(): SystemContext {
@@ -109,5 +138,26 @@ export class Player {
     }
 
     this.tick = 0;
+    // Systems persist across stops; clear registries for any that were removed elsewhere.
+    this.cleanupSystemRegistry();
+  }
+
+  private generateSystemId(): string {
+    const id = `system-${this.nextSystemId}`;
+    this.nextSystemId += 1;
+    return id;
+  }
+
+  private cleanupSystemRegistry(): void {
+    for (const [id, system] of this.systemsById.entries()) {
+      if (!this.idsBySystem.has(system)) {
+        this.systemsById.delete(id);
+      }
+    }
+    for (const [system, id] of this.idsBySystem.entries()) {
+      if (!this.systemsById.has(id)) {
+        this.idsBySystem.delete(system);
+      }
+    }
   }
 }

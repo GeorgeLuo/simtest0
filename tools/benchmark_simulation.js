@@ -18,6 +18,10 @@ const { promises: fs } = require('fs');
 const TARGET_TICKS = 500;
 const HOST = '127.0.0.1';
 const PORT = 4323;
+const RAW_AUTH_TOKEN = process.env.SIMEVAL_AUTH_TOKEN ?? process.env.SIMEVAL_API_TOKEN ?? '';
+const AUTH_HEADER_VALUE = RAW_AUTH_TOKEN
+  ? RAW_AUTH_TOKEN.startsWith('Bearer ') ? RAW_AUTH_TOKEN : `Bearer ${RAW_AUTH_TOKEN}`
+  : null;
 
 async function main() {
   const rootDir = path.resolve(__dirname, '..');
@@ -32,13 +36,17 @@ async function main() {
   console.log('[benchmark] Starting SimEval server...');
   const server = await start({ port: PORT, host: HOST, log: () => {}, cycleIntervalMs: 0 });
 
+  let systemId;
   try {
-    await injectTemperatureSystem();
+    systemId = await injectTemperatureSystem();
     const results = await measureSimulationPerformance();
     await persistBaseline(rootDir, results);
     console.log('[benchmark] Benchmark completed successfully.');
   } finally {
     console.log('[benchmark] Shutting down server...');
+    if (systemId) {
+      await ejectSimulationSystem(systemId).catch(() => undefined);
+    }
     await stopSimulation().catch(() => undefined);
     await server.stop();
   }
@@ -60,7 +68,7 @@ async function injectTemperatureSystem() {
   const response = await fetchJson('POST', '/api/simulation/inject', {
     messageId: 'benchmark-inject',
     system: {
-      modulePath: 'plugins/simulation/temperatureControlSystem.js',
+      modulePath: 'plugins/simulation/systems/temperatureControlSystem.js',
       exportName: 'createTemperatureControlSystem',
     },
   });
@@ -68,17 +76,27 @@ async function injectTemperatureSystem() {
   if (response.status !== 'success') {
     throw new Error(`System injection failed: ${response.detail ?? 'unknown error'}`);
   }
+
+  if (typeof response.systemId !== 'string' || response.systemId.length === 0) {
+    throw new Error('Injection response missing systemId');
+  }
+
+  return response.systemId;
 }
 
 async function stopSimulation() {
   await fetchJson('POST', '/api/simulation/stop', { messageId: 'benchmark-stop' });
 }
 
+async function ejectSimulationSystem(systemId) {
+  await fetchJson('POST', '/api/simulation/eject', { messageId: 'benchmark-eject', systemId });
+}
+
 async function measureSimulationPerformance() {
   console.log(`[benchmark] Measuring ${TARGET_TICKS} simulation ticks...`);
 
   const streamController = new AbortController();
-  const response = await fetch(resourceUrl('/api/simulation/stream'), { signal: streamController.signal });
+  const response = await fetch(resourceUrl('/api/simulation/stream'), applyAuth({ signal: streamController.signal }));
   if (!response.ok) {
     streamController.abort();
     throw new Error(`Unable to open simulation stream (${response.status})`);
@@ -233,11 +251,11 @@ async function persistBaseline(rootDir, results) {
 }
 
 async function fetchJson(method, pathname, body) {
-  const response = await fetch(resourceUrl(pathname), {
+  const response = await fetch(resourceUrl(pathname), applyAuth({
     method,
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
-  });
+  }));
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -249,6 +267,21 @@ async function fetchJson(method, pathname, body) {
 
 function resourceUrl(pathname) {
   return `http://${HOST}:${PORT}${pathname}`;
+}
+
+function applyAuth(init = {}) {
+  if (!AUTH_HEADER_VALUE) {
+    return init;
+  }
+
+  const headersInit = init.headers;
+  if (headersInit instanceof Headers) {
+    headersInit.set('Authorization', AUTH_HEADER_VALUE);
+    return { ...init, headers: headersInit };
+  }
+
+  const headers = { ...(headersInit ?? {}), Authorization: AUTH_HEADER_VALUE };
+  return { ...init, headers };
 }
 
 main().catch((error) => {

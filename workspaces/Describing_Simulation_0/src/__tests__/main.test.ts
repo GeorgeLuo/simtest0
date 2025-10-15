@@ -102,4 +102,47 @@ describe('main start()', () => {
 
     setIntervalSpy.mockRestore();
   });
+
+  it('pipes simulation frames through the evaluation inbound bus', async () => {
+    const startMock = jest.fn().mockResolvedValue(undefined);
+    const serverMock = { start: startMock } as unknown as Server;
+    const log = jest.fn();
+    const outboundMessages: unknown[] = [];
+    let capturedOptions: any;
+
+    mockedCreateServer.mockImplementationOnce((options) => {
+      capturedOptions = options;
+      const evaluationOutboundBus = options.evaluation.outboundBus as {
+        subscribe: (callback: (message: unknown) => void) => void;
+      };
+      evaluationOutboundBus.subscribe((message: unknown) => {
+        outboundMessages.push(message);
+      });
+      return serverMock;
+    });
+
+    await start({ log });
+
+    const frame = { tick: 7, entities: { foo: {} } };
+    capturedOptions.simulation.outboundBus.publish(frame);
+
+    const hasAcknowledgement = outboundMessages.some(
+      (message) =>
+        message &&
+        typeof message === 'object' &&
+        'status' in (message as { status?: unknown }) &&
+        (message as { status?: unknown }).status === 'success',
+    );
+    const hasFrame = outboundMessages.some(
+      (message) => message && typeof message === 'object' && 'tick' in (message as { tick?: unknown }),
+    );
+
+    expect(hasAcknowledgement).toBe(true);
+    expect(hasFrame).toBe(true);
+
+    const evaluationContext = (capturedOptions.evaluation.player as unknown as { getContext(): unknown }).getContext() as {
+      entityManager: { list(): unknown[] };
+    };
+    expect(evaluationContext.entityManager.list()).toHaveLength(1);
+  });
 });

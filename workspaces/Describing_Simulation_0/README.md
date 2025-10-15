@@ -10,6 +10,9 @@ Artifacts for Phase 2 — Artifact Creation live here. Follow the schedule outli
 - Launch the SimEval server locally with `npm run start`; the CLI logs the listening host and port once ready.
 - Programmatic consumers may pass `cycleIntervalMs` to `start(...)` to adjust tick pacing (default `50` ms; set to `0` in benchmarking tools for fast-cycle runs).
 - Visit `http://<host>:<port>/api` after launch to review discoverability metadata and documentation links. The landing payload links to JSON-rendered copies of `routes/information/api.md` and `routes/information/Describing_Simulation.md`.
+- Retain the `systemId` returned from `/api/(simulation|evaluation)/system/inject` calls; subsequent eject requests now require this identifier.
+- Set `SIMEVAL_AUTH_TOKEN` to require clients to supply a matching `Authorization` header (`Bearer <token>` is accepted); omit the variable to leave the API unsecured for local development.
+- Configure optional rate limiting with `SIMEVAL_RATE_WINDOW_MS` (milliseconds) and `SIMEVAL_RATE_MAX` (requests per window). Leave unset to disable throttling.
 
 ## Next Steps
 

@@ -18,6 +18,8 @@ This document will serve as the source of truth for task generation. Bootstrappi
 
 - Master Prompt section to a file with a name formed from the name of this document appended with *_master_prompt_important*
 
+- API Map section to a file with a name formed from the name of this document appended with *_api_map*
+
 - Codifying Simulations section to a file with a name formed from the name of this document appended with *_codifying_simulations*
 
 - The text portion from the beginning of this document to the beginning of Codifying Simulations to a file with a name formed from the name of this document appended with *_theory*
@@ -52,6 +54,7 @@ The following maps the structure of the repository following bootstrapping.
 │   ├── <this document's file name>_bootstraps.md
 │   ├── <this document's file name>_repository_structure.md
 │   ├── <this document's file name>_code_structure.md
+│   ├── <this document's file name>_API_map.md
 │   ├── <this document's file name>_codifying_simulations.md
 │   ├── <this document's file name>_theory.md
 │   ├── <this document's file name>_implementation_guidelines.md

@@ -7,14 +7,27 @@ export interface RouteHandler {
 
 export interface RouterOptions {
   basePath?: string;
+  authToken?: string;
+  rateLimit?: {
+    windowMs: number;
+    max: number;
+  };
 }
 
 export class Router {
   private readonly basePath: string;
   private readonly routes = new Map<string, RouteHandler>();
+  private readonly authToken?: string;
+  private readonly rateLimit?: {
+    windowMs: number;
+    max: number;
+  };
+  private readonly hits = new Map<string, { count: number; reset: number }>();
 
   constructor(options: RouterOptions = {}) {
     this.basePath = normalizeBasePath(options.basePath ?? '');
+    this.authToken = options.authToken;
+    this.rateLimit = options.rateLimit;
   }
 
   register(path: string, handler: RouteHandler): void {
@@ -39,6 +52,16 @@ export class Router {
 
     if (incoming) {
       attachQuery(incoming);
+
+      if (this.authToken && !isAuthorized(incoming, this.authToken)) {
+        sendError(response, 401, { status: 'error', detail: 'Unauthorized' });
+        return true;
+      }
+
+      if (this.rateLimit && !this.consumeRateLimit(incoming)) {
+        sendError(response, 429, { status: 'error', detail: 'Too Many Requests' });
+        return true;
+      }
     }
 
     if (response) {
@@ -75,6 +98,30 @@ export class Router {
     const cleaned = ensureLeadingSlash(stripTrailingSlash(path));
     const combined = `${this.basePath}${cleaned}`;
     return combined === '' ? '/' : stripTrailingSlash(combined) || '/';
+  }
+
+  private consumeRateLimit(req: IncomingMessage): boolean {
+    if (!this.rateLimit) {
+      return true;
+    }
+
+    const now = Date.now();
+    const key = buildRateKey(req);
+    const existing = this.hits.get(key);
+    const windowMs = this.rateLimit.windowMs;
+    const max = this.rateLimit.max;
+
+    if (!existing || existing.reset <= now) {
+      this.hits.set(key, { count: 1, reset: now + windowMs });
+      return true;
+    }
+
+    existing.count += 1;
+    if (existing.count > max) {
+      return false;
+    }
+
+    return true;
   }
 }
 
@@ -180,4 +227,46 @@ function ensureJson(res: ServerResponse & { json?: (body: unknown) => void }): v
     }
     res.end(JSON.stringify(body));
   };
+}
+
+function isAuthorized(req: IncomingMessage, expectedToken: string): boolean {
+  const header = req.headers['authorization'];
+  if (typeof header !== 'string') {
+    return false;
+  }
+
+  const trimmed = header.trim();
+  return trimmed === expectedToken || trimmed === `Bearer ${expectedToken}`;
+}
+
+function sendError(res: (ServerResponse & { json?: (body: unknown) => void }) | undefined, statusCode: number, body: unknown): void {
+  if (!res) {
+    return;
+  }
+
+  if (!res.headersSent) {
+    res.statusCode = statusCode;
+    res.setHeader('Content-Type', 'application/json');
+  }
+  res.end(JSON.stringify(body));
+}
+
+function buildRateKey(req: IncomingMessage): string {
+  const ip = extractIp(req);
+  const path = typeof req.url === 'string' ? stripQueryAndTrailingSlash(req.url) : '/';
+  const method = typeof req.method === 'string' ? req.method.toUpperCase() : 'GET';
+  return `${ip}:${method}:${path}`;
+}
+
+function extractIp(req: IncomingMessage): string {
+  const header = req.headers['x-forwarded-for'];
+  if (typeof header === 'string' && header.length > 0) {
+    return header.split(',')[0]?.trim() ?? 'unknown';
+  }
+
+  if (req.socket) {
+    return req.socket.remoteAddress ?? 'unknown';
+  }
+
+  return 'unknown';
 }

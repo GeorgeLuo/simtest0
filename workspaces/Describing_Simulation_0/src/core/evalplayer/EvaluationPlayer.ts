@@ -18,9 +18,24 @@ export const EvaluationMessageType = {
   INJECT_FRAME: 'inject-frame',
 } as const;
 
+const FrameComponent: ComponentType<Frame> = {
+  id: 'evaluation.frame',
+  description: 'Stores a raw simulation frame for downstream evaluation systems.',
+  validate(payload: Frame): boolean {
+    if (!payload || typeof payload !== 'object') {
+      return false;
+    }
+
+    const { tick, entities } = payload;
+    const entitiesIsRecord = typeof entities === 'object' && entities !== null;
+    return Number.isFinite(tick) && tick >= 0 && entitiesIsRecord;
+  },
+};
+
 export class EvaluationPlayer extends IOPlayer {
   protected readonly frames: FrameRecord[] = [];
   private readonly componentTypes = new Map<string, ComponentType<unknown>>();
+  private readonly frameComponentType: ComponentType<Frame> = FrameComponent;
 
   constructor(
     systemManager: SystemManager,
@@ -42,6 +57,10 @@ export class EvaluationPlayer extends IOPlayer {
   }
 
   injectFrame(payload: FrameRecord): void {
+    const context = this.getContext();
+    const entity = context.entityManager.create();
+    context.componentManager.addComponent(entity, this.frameComponentType, payload.frame);
+
     this.frames.push(payload);
     this.publishFrame(payload.frame);
   }

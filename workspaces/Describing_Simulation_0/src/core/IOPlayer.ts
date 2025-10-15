@@ -22,6 +22,8 @@ export class IOPlayer extends Player {
   private readonly frameFilter: FrameFilter;
   private readonly handlers: InboundHandlerRegistry<IOPlayer>;
   private readonly unsubscribeInbound: () => void;
+  private readonly entityBuffer: Entity[] = [];
+  private readonly componentBuffer: ComponentInstance<unknown>[] = [];
 
   constructor(
     systemManager: SystemManager,
@@ -79,11 +81,13 @@ export class IOPlayer extends Player {
   }
 
   private createFrameSnapshot(tick: number, context: SystemContext): Frame {
-    const entities = context.entityManager.list();
-    const snapshot: Record<string, Record<string, unknown>> = {};
+    const snapshot: Record<string, Record<string, unknown>> = Object.create(null);
 
-    for (const entity of entities) {
-      snapshot[String(entity)] = this.collectComponents(entity, context.componentManager);
+    this.populateEntityBuffer(context.entityManager);
+    for (let index = 0; index < this.entityBuffer.length; index += 1) {
+      const entity = this.entityBuffer[index];
+      const entityKey = String(entity);
+      snapshot[entityKey] = this.collectComponents(entity, context.componentManager);
     }
 
     return {
@@ -96,16 +100,24 @@ export class IOPlayer extends Player {
     entity: Entity,
     componentManager: SystemContext['componentManager'],
   ): Record<string, unknown> {
-    const components = componentManager.getComponents(entity) as ComponentInstance<unknown>[];
-    if (components.length === 0) {
-      return {};
+    const componentCount = componentManager.collectComponents(entity, this.componentBuffer);
+    if (componentCount === 0) {
+      return Object.create(null);
     }
 
-    const record: Record<string, unknown> = {};
-    for (const component of components) {
+    const record: Record<string, unknown> = Object.create(null);
+    for (let index = 0; index < componentCount; index += 1) {
+      const component = this.componentBuffer[index];
       record[component.type.id] = component.payload;
     }
     return record;
+  }
+
+  private populateEntityBuffer(entityManager: SystemContext['entityManager']): void {
+    this.entityBuffer.length = 0;
+    entityManager.forEach((entity) => {
+      this.entityBuffer.push(entity);
+    });
   }
 }
 

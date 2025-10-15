@@ -22,8 +22,8 @@ describe('evaluation routes', () => {
   const createDeps = () => {
     const player = {
       injectFrame: jest.fn(),
-      injectSystem: jest.fn(),
-      ejectSystem: jest.fn(),
+      injectSystem: jest.fn(() => 'system-abc'),
+      ejectSystem: jest.fn(() => true),
       registerComponent: jest.fn(),
       removeComponent: jest.fn(),
     } as unknown as EvaluationPlayer & {
@@ -34,8 +34,9 @@ describe('evaluation routes', () => {
       removeComponent: jest.Mock;
     };
 
+    const unsubscribe = jest.fn();
     const outboundBus = {
-      subscribe: jest.fn(() => jest.fn()),
+      subscribe: jest.fn(() => unsubscribe),
     } as unknown as Bus<Frame | Acknowledgement> & { subscribe: jest.Mock };
 
     const loadSystem = jest.fn<Promise<System>, [EvaluationSystemDescriptor]>(async () => ({} as System));
@@ -43,7 +44,7 @@ describe('evaluation routes', () => {
       async () => ({ id: 'component', validate: () => true }),
     );
 
-    return { player, outboundBus, loadSystem, loadComponent };
+    return { player, outboundBus, loadSystem, loadComponent, unsubscribe };
   };
 
   it('registers evaluation endpoints and delegates to dependencies', async () => {
@@ -77,13 +78,20 @@ describe('evaluation routes', () => {
     await injectSystemHandler?.({ body: { messageId: 'sys-1', system: { modulePath: 'plugins/eval/System.js' } } }, systemRes);
     expect(deps.loadSystem).toHaveBeenCalledWith({ modulePath: 'plugins/eval/System.js' });
     expect(deps.player.injectSystem).toHaveBeenCalled();
-    expect(systemRes.json).toHaveBeenCalledWith({ status: 'success', messageId: 'sys-1' });
+    expect(systemRes.json).toHaveBeenCalledWith({
+      status: 'success',
+      messageId: 'sys-1',
+      systemId: 'system-abc',
+    });
 
     const ejectSystemRes = { json: jest.fn(), statusCode: 200 };
-    const systemInstance = {} as System;
-    ejectSystemHandler?.({ body: { messageId: 'sys-2', system: systemInstance } }, ejectSystemRes);
-    expect(deps.player.ejectSystem).toHaveBeenCalledWith({ system: systemInstance });
-    expect(ejectSystemRes.json).toHaveBeenCalledWith({ status: 'success', messageId: 'sys-2' });
+    ejectSystemHandler?.({ body: { messageId: 'sys-2', systemId: 'system-abc' } }, ejectSystemRes);
+    expect(deps.player.ejectSystem).toHaveBeenCalledWith({ system: undefined, systemId: 'system-abc' });
+    expect(ejectSystemRes.json).toHaveBeenCalledWith({
+      status: 'success',
+      messageId: 'sys-2',
+      systemId: 'system-abc',
+    });
 
     const componentRes = { json: jest.fn(), statusCode: 200 };
     await injectComponentHandler?.(
@@ -126,7 +134,7 @@ describe('evaluation routes', () => {
     expect(ejectSystemRes.json).toHaveBeenCalledWith({
       status: 'error',
       messageId: 'sys-err2',
-      detail: 'Missing system instance',
+      detail: 'Missing system identifier',
     });
 
     const compErrorRes = { json: jest.fn(), statusCode: 200 };
@@ -146,5 +154,65 @@ describe('evaluation routes', () => {
       messageId: 'comp-err2',
       detail: 'Missing component identifier',
     });
+  });
+
+  it('returns error when systemId not found during eject', () => {
+    const { router, routes } = createRouter();
+    const deps = createDeps();
+    (deps.player.ejectSystem as jest.Mock).mockReturnValueOnce(false);
+
+    registerEvaluationRoutes(router, deps);
+
+    const handler = routes.get('/evaluation/system/eject');
+    const res = { json: jest.fn(), statusCode: 200 };
+    handler?.({ body: { messageId: 'missing', systemId: 'system-missing' } }, res);
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json).toHaveBeenCalledWith({
+      status: 'error',
+      messageId: 'missing',
+      detail: 'System not found',
+    });
+  });
+
+  it('emits heartbeat comments on evaluation stream and stops after disconnect', () => {
+    jest.useFakeTimers({ advanceTimers: true });
+
+    const { router, routes } = createRouter();
+    const deps = createDeps();
+
+    registerEvaluationRoutes(router, deps);
+
+    const streamHandler = routes.get('/evaluation/stream');
+    const writes: string[] = [];
+    const res = {
+      writeHead: jest.fn(),
+      flushHeaders: jest.fn(),
+      write: jest.fn((chunk: string) => {
+        writes.push(chunk);
+      }),
+      end: jest.fn(),
+    };
+    const listeners = new Map<string, () => void>();
+    const req = {
+      on: jest.fn((event: string, handler: () => void) => {
+        listeners.set(event, handler);
+      }),
+    };
+
+    streamHandler?.(req, res);
+
+    jest.advanceTimersByTime(15000);
+    expect(res.write).toHaveBeenCalledWith(':heartbeat\n\n');
+
+    const initial = writes.length;
+    listeners.get('close')?.();
+    expect(deps.unsubscribe).toHaveBeenCalled();
+    expect(res.end).toHaveBeenCalled();
+
+    jest.advanceTimersByTime(15000);
+    expect(writes.length).toBe(initial);
+
+    jest.useRealTimers();
   });
 });

@@ -70,8 +70,13 @@ describe('IOPlayer', () => {
 
     expect(frames.length).toBeGreaterThanOrEqual(2);
     expect(frames[0]).toMatchObject({ tick: 0 });
+    expect(frames[0]).not.toBe(frames[1]);
     expect(frames[frames.length - 1].tick).toBeGreaterThan(frames[0].tick);
     expect(frameFilter.apply).toHaveBeenCalledTimes(frames.length);
     expect(frames.every((frame) => frame.entities)).toBe(true);
+
+    const entityId = Object.keys(frames[0].entities)[0];
+    frames[0].entities[entityId].temperature.value = 999;
+    expect(frames[frames.length - 1].entities[entityId].temperature.value).not.toBe(999);
   });
 });

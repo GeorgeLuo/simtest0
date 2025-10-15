@@ -94,3 +94,24 @@
   - H2 Methodology
     - H3 Test-driven Development
 - H1 Schedule of Work
+- H1 API Map
+    - H3 Root Domain
+    - H3 Informational
+      - H4 Source Spec
+      - H4 Management Surface
+    - H3 Simulation
+      - H4 Start
+      - H4 Pause
+      - H4 Stop
+      - H4 System Injection
+      - H4 System Ejection
+      - H4 Component Injection
+      - H4 Component Ejection
+      - H4 Stream
+    - H3 Codebase
+      - H4 Directory Tree
+      - H4 File Retrieval
+      - H4 Plugin Upload
+    - H3 System
+      - H4 Health
+      - H4 Status

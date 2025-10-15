@@ -7,13 +7,13 @@ describe('InjectSystem operation', () => {
     const operation = new InjectSystem();
     const system = {} as System;
     const player = {
-      injectSystem: jest.fn(),
+      injectSystem: jest.fn(() => 'system-1'),
     } as unknown as IOPlayer & { injectSystem: jest.Mock };
 
     const acknowledgement = operation.execute(player, { messageId: 'msg-1', system });
 
     expect(player.injectSystem).toHaveBeenCalledWith({ system });
-    expect(acknowledgement).toEqual({ messageId: 'msg-1', status: 'success' });
+    expect(acknowledgement).toEqual({ messageId: 'msg-1', status: 'success', systemId: 'system-1' });
   });
 
   it('throws when system payload missing', () => {

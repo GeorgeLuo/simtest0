@@ -5,4 +5,5 @@ export interface Acknowledgement {
   messageId: string;
   status: AcknowledgementStatus;
   detail?: string;
+  systemId?: string;
 }

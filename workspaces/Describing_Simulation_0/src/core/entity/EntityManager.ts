@@ -46,4 +46,13 @@ export class EntityManager {
   list(): Entity[] {
     return Array.from(this.active.values());
   }
+
+  /**
+   * Iterate over all active entities without allocating an intermediate array.
+   */
+  forEach(callback: (entity: Entity) => void): void {
+    this.active.forEach((entity) => {
+      callback(entity);
+    });
+  }
 }

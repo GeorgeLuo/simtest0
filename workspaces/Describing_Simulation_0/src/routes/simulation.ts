@@ -7,8 +7,13 @@ import type { System } from '../core/systems/System';
 
 type OutboundMessage = Frame | Acknowledgement;
 
+type ControllableIOPlayer = Pick<IOPlayer, 'start' | 'pause' | 'stop'> & {
+  injectSystem: (payload: { system: System }) => string;
+  ejectSystem: (payload: { system?: System; systemId?: string }) => boolean;
+};
+
 export interface SimulationRouteDeps {
-  player: Pick<IOPlayer, 'start' | 'pause' | 'stop' | 'injectSystem' | 'ejectSystem'>;
+  player: ControllableIOPlayer;
   outboundBus: Bus<OutboundMessage>;
   loadSystem: (descriptor: SimulationSystemDescriptor) => Promise<System>;
 }
@@ -19,8 +24,8 @@ export interface SimulationSystemDescriptor {
 }
 
 export function registerSimulationRoutes(router: Router, deps: SimulationRouteDeps): void {
-  const respondSuccess = (res: any, messageId?: string) => {
-    res.json?.({ status: 'success', messageId });
+  const respondSuccess = (res: any, messageId?: string, extras: Record<string, unknown> = {}) => {
+    res.json?.({ status: 'success', messageId, ...extras });
   };
 
   const respondError = (res: any, messageId: string | undefined, detail: string, status = 400) => {
@@ -54,8 +59,8 @@ export function registerSimulationRoutes(router: Router, deps: SimulationRouteDe
 
     try {
       const system = await deps.loadSystem(descriptor);
-      deps.player.injectSystem({ system });
-      respondSuccess(res, messageId);
+      const systemId = deps.player.injectSystem({ system });
+      respondSuccess(res, messageId, { systemId });
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'System injection failed';
       respondError(res, messageId, detail);
@@ -63,8 +68,20 @@ export function registerSimulationRoutes(router: Router, deps: SimulationRouteDe
   });
 
   router.register('/simulation/eject', (req: any, res: any) => {
-    deps.player.ejectSystem({ system: req.body?.system });
-    respondSuccess(res, req.body?.messageId);
+    const messageId = req.body?.messageId as string | undefined;
+    const systemId = typeof req.body?.systemId === 'string' ? req.body.systemId : undefined;
+    if (!systemId) {
+      respondError(res, messageId, 'Missing system identifier');
+      return;
+    }
+
+    const removed = deps.player.ejectSystem({ systemId });
+    if (!removed) {
+      respondError(res, messageId, 'System not found', 404);
+      return;
+    }
+
+    respondSuccess(res, messageId, { systemId });
   });
 
   router.register('/simulation/stream', (req: any, res: any) => {
@@ -75,12 +92,19 @@ export function registerSimulationRoutes(router: Router, deps: SimulationRouteDe
     });
     res.flushHeaders?.();
 
+    const heartbeatInterval = setInterval(() => {
+      res.write?.(':heartbeat\n\n');
+    }, 15000);
+
     const unsubscribe = deps.outboundBus.subscribe((message) => {
       res.write?.(`data: ${JSON.stringify(message)}\n\n`);
     });
 
     req.on?.('close', () => {
       unsubscribe?.();
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
       res.end?.();
     });
   });

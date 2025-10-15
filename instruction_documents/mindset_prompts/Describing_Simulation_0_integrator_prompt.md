@@ -4,4 +4,4 @@ The integrator mindset, when interrogating usage, acts as a third party without 
 
 Practically this means you should not read the source code to understand usage, and instead base actions from the discoverable surface of the api.
 
-Important instruction documents: Codifying Simulations
+Important instruction documents: Codifying Simulations, API Map

@@ -8,44 +8,49 @@ import { FrameFilter } from '../../messaging/outbound/FrameFilter';
 import type { Frame } from '../../messaging/outbound/Frame';
 import type { Acknowledgement } from '../../messaging/outbound/Acknowledgement';
 import type { ComponentType } from '../../components/ComponentType';
+import type { SystemContext } from '../../systems/System';
 
 describe('EvaluationPlayer', () => {
   const createPlayer = () => {
-    const systemManager = {
-      runCycle: jest.fn(),
-      addSystem: jest.fn(),
-      removeSystem: jest.fn(),
-    } as unknown as SystemManager;
-
-    const inboundBus = {
-      subscribe: jest.fn(() => jest.fn()),
-      publish: jest.fn(),
-    } as unknown as Bus<unknown> & { subscribe: jest.Mock };
-
-    const outboundBus = {
-      publish: jest.fn(),
-    } as unknown as Bus<Frame | Acknowledgement> & { publish: jest.Mock };
-
-    const frameFilter = {
-      apply: jest.fn((frame: Frame) => frame),
-    } as unknown as FrameFilter & { apply: jest.Mock };
-
+    const entityManager = new EntityManager();
+    const componentManager = new ComponentManager();
+    const systemManager = new SystemManager(entityManager, componentManager);
+    const inboundBus = new Bus<unknown>();
+    const outboundBus = new Bus<Frame | Acknowledgement>();
+    const frameFilter = new FrameFilter();
     const handlers = new InboundHandlerRegistry<EvaluationPlayer>();
 
     const player = new EvaluationPlayer(systemManager, inboundBus, outboundBus, frameFilter, handlers);
     return { player, inboundBus, outboundBus, frameFilter };
   };
 
-  it('stores frames and publishes filtered frame on inject', () => {
+  it('stores frames, persists ECS entities, and publishes filtered frame on inject', () => {
     const { player, outboundBus, frameFilter } = createPlayer();
     const payload = { messageId: 'f-1', frame: { tick: 1, entities: {} } as Frame };
-    frameFilter.apply.mockReturnValue({ tick: 1, entities: { filtered: true } } as unknown as Frame);
+    const filteredFrame = { tick: 1, entities: { filtered: true } } as unknown as Frame;
+    const applySpy = jest.spyOn(frameFilter, 'apply').mockReturnValue(filteredFrame);
+
+    const publishedFrames: Frame[] = [];
+    outboundBus.subscribe((message) => {
+      if (message && typeof message === 'object' && 'tick' in message) {
+        publishedFrames.push(message as Frame);
+      }
+    });
 
     player.injectFrame(payload);
 
     expect(player.getFrames()).toEqual([payload]);
-    expect(frameFilter.apply).toHaveBeenCalledWith(payload.frame);
-    expect(outboundBus.publish).toHaveBeenCalledWith({ tick: 1, entities: { filtered: true } });
+    expect(applySpy).toHaveBeenCalledWith(payload.frame);
+    expect(publishedFrames).toContain(filteredFrame);
+
+    const context = (player as unknown as { getContext(): SystemContext }).getContext();
+    const entities = context.entityManager.list();
+    expect(entities).toHaveLength(1);
+    const [entity] = entities;
+    const components = context.componentManager.getComponents(entity);
+    expect(components).toHaveLength(1);
+    expect(components[0]?.type.id).toBe('evaluation.frame');
+    expect(components[0]?.payload).toBe(payload.frame);
   });
 
   it('registers and removes component definitions', () => {
@@ -86,5 +91,9 @@ describe('EvaluationPlayer', () => {
 
     expect(acknowledgements).toContainEqual({ messageId: 'frame-1', status: 'success' });
     expect(player.getFrames()).toHaveLength(1);
+
+    const context = (player as unknown as { getContext(): SystemContext }).getContext();
+    const entities = context.entityManager.list();
+    expect(entities).toHaveLength(1);
   });
 });

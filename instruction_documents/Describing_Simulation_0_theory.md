@@ -134,4 +134,4 @@ In order to build a simulation from natural language prompts, we need to be conf
 
 2. Provides sufficient information to execute a simulation
 
-Or, natural language hypotheticals shoul/d be compilable into form D, and a form D compilation needs to be compilable into a simulation as executable code.
+Or, natural language hypotheticals should be compilable into form D, and a form D compilation needs to be compilable into a simulation as executable code.

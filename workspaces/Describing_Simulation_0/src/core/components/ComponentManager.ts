@@ -96,6 +96,27 @@ export class ComponentManager {
   }
 
   /**
+   * Populate the provided array with the component instances for the entity,
+   * returning the number of components discovered. The target array is cleared
+   * before population to support buffer reuse.
+   */
+  collectComponents(entity: Entity, target: ComponentInstance<unknown>[]): number {
+    target.length = 0;
+    const components = this.componentsByEntity.get(entity);
+    if (!components) {
+      return 0;
+    }
+
+    let index = 0;
+    components.forEach((instance) => {
+      target[index] = instance;
+      index += 1;
+    });
+    target.length = index;
+    return index;
+  }
+
+  /**
    * Retrieve entities that possess a component of the provided type.
    */
   getEntitiesWithComponent<T>(type: ComponentType<T>): Entity[] {

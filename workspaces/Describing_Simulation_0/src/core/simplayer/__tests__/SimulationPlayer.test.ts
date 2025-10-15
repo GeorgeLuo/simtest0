@@ -50,8 +50,8 @@ describe('SimulationPlayer', () => {
 
     expect(acknowledgements).toEqual(
       expect.arrayContaining([
-        { messageId: 'inject-1', status: 'success' },
-        { messageId: 'start-1', status: 'success' },
+        expect.objectContaining({ messageId: 'inject-1', status: 'success', systemId: expect.any(String) }),
+        expect.objectContaining({ messageId: 'start-1', status: 'success' }),
       ]),
     );
   });

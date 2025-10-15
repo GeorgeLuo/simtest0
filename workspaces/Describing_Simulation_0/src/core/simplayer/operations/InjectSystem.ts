@@ -14,7 +14,7 @@ export class InjectSystem implements Operation<IOPlayer, InjectSystemPayload> {
       throw new Error('System payload is required for injection');
     }
 
-    player.injectSystem({ system: payload.system });
-    return { messageId: payload.messageId, status: 'success' };
+    const systemId = player.injectSystem({ system: payload.system });
+    return { messageId: payload.messageId, status: 'success', systemId };
   }
 }

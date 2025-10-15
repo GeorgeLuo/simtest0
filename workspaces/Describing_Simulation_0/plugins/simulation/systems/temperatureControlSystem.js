@@ -1,4 +1,5 @@
-const { System } = require('../../dist/core/systems/System');
+const { join } = require('path');
+const { System } = require(join(__dirname, '../../../dist/core/systems/System'));
 
 const TemperatureComponent = {
   id: 'temperature',

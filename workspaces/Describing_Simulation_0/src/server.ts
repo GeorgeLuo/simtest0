@@ -100,10 +100,15 @@ export interface BootstrapOptions {
     documents: InformationDocument[];
     readDocument: (filename: string) => Promise<string>;
   };
+  authToken?: string;
+  rateLimit?: {
+    windowMs: number;
+    max: number;
+  };
 }
 
 export function createServer(options: BootstrapOptions): Server {
-  const router = new Router({ basePath: '/api' });
+  const router = new Router({ basePath: '/api', authToken: options.authToken, rateLimit: options.rateLimit });
 
   registerSimulationRoutes(router, {
     player: options.simulation.player,
