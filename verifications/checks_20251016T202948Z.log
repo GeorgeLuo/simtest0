@@ -1,0 +1,55 @@
+Sim-Eval checks started at 20251016T202948Z
+
+=== Clean previous build artifacts ===
+Command: (cd /Users/gluo/Projects/simtest0/workspaces/Describing_Simulation_0 && rm -rf dist)
+
+=== Build TypeScript bundle ===
+Command: (cd /Users/gluo/Projects/simtest0/workspaces/Describing_Simulation_0 && npm run build)
+
+> sim-eval@0.0.1 build
+> tsc -p tsconfig.json
+
+
+=== Run unit tests ===
+Command: (cd /Users/gluo/Projects/simtest0/workspaces/Describing_Simulation_0 && npm test)
+
+> sim-eval@0.0.1 test
+> vitest run
+
+
+ RUN  v1.6.1 /Users/gluo/Projects/simtest0/workspaces/Describing_Simulation_0
+
+ ✓ src/routes/__tests__/router.test.ts  (5 tests) 8ms
+ ✓ src/routes/__tests__/codebase.test.ts  (5 tests) 18ms
+ ✓ src/routes/__tests__/evaluation.test.ts  (3 tests) 8ms
+ ✓ src/routes/__tests__/simulation.test.ts  (3 tests) 6ms
+ ✓ src/core/__tests__/IOPlayer.test.ts  (3 tests) 58ms
+ ✓ src/core/__tests__/ComponentManager.test.ts  (7 tests) 3ms
+ ✓ src/routes/__tests__/information.test.ts  (3 tests) 5ms
+ ✓ src/core/simplayer/__tests__/SimulationPlayer.test.ts  (4 tests) 174ms
+ ✓ src/core/evalplayer/__tests__/EvaluationPlayer.test.ts  (4 tests) 212ms
+ ✓ src/routes/__tests__/system.test.ts  (3 tests) 18ms
+ ✓ src/server/__tests__/Server.test.ts  (4 tests) 25ms
+ ✓ src/core/__tests__/Player.test.ts  (5 tests) 3ms
+ ✓ src/core/__tests__/SystemManager.test.ts  (6 tests) 15ms
+ ✓ src/core/__tests__/EntityManager.test.ts  (5 tests) 7ms
+ ✓ src/core/evalplayer/operations/__tests__/InjectFrame.test.ts  (2 tests) 3ms
+ ✓ src/core/__tests__/TimeSystem.test.ts  (3 tests) 3ms
+ ✓ src/main.test.ts  (4 tests) 12ms
+ ✓ src/core/simplayer/operations/__tests__/Start.test.ts  (2 tests) 3ms
+ ✓ src/core/simplayer/operations/__tests__/Pause.test.ts  (2 tests) 3ms
+ ✓ src/core/simplayer/operations/__tests__/Stop.test.ts  (2 tests) 2ms
+ ✓ src/core/__tests__/Bus.test.ts  (3 tests) 7ms
+ ✓ src/core/__tests__/System.test.ts  (2 tests) 5ms
+
+ Test Files  22 passed (22)
+      Tests  80 passed (80)
+   Start at  13:29:50
+   Duration  1.21s (transform 614ms, setup 1ms, collect 1.23s, tests 598ms, environment 3ms, prepare 2.88s)
+
+
+=== Run integration harness ===
+Command: /Users/gluo/Projects/simtest0/tools/run_integration.sh
+
+Checks completed successfully.
+Log file: /Users/gluo/Projects/simtest0/verifications/checks_20251016T202948Z.log

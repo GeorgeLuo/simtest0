@@ -1,58 +1,59 @@
-import type { EntityManager } from '../entity/EntityManager';
-import type { ComponentManager } from '../components/ComponentManager';
-import type { System, SystemContext } from './System';
+import { System } from "./System.js";
+
+export interface RegisteredSystem<TSystem extends System = System> {
+  readonly id: string;
+  readonly instance: TSystem;
+}
 
 export class SystemManager {
-  private readonly systems: System[] = [];
-  private readonly context: SystemContext;
+  private readonly systems: RegisteredSystem[] = [];
+  private nextId = 1;
 
-  constructor(
-    entityManager: EntityManager,
-    componentManager: ComponentManager,
-  ) {
-    this.context = {
-      entityManager,
-      componentManager,
-    };
-  }
+  addSystem(
+    system: System,
+    indexOrOptions?: number | { index?: number; id?: string },
+  ): string {
+    const options =
+      typeof indexOrOptions === "number"
+        ? { index: indexOrOptions }
+        : indexOrOptions ?? {};
 
-  /** Register a system at the end of the execution order or specified index. */
-  addSystem(system: System, index?: number): void {
+    const id = options.id ?? `system-${this.nextId++}`;
+    if (this.systems.some((entry) => entry.id === id)) {
+      throw new Error(`System with id '${id}' is already registered`);
+    }
+
+    const entry: RegisteredSystem = { id, instance: system };
+
     const insertionIndex =
-      index === undefined || index < 0 || index > this.systems.length
+      options.index === undefined
         ? this.systems.length
-        : index;
+        : Math.min(Math.max(options.index, 0), this.systems.length);
+    this.systems.splice(insertionIndex, 0, entry);
 
-    this.systems.splice(insertionIndex, 0, system);
-    system.initialize(this.context);
+    system.onInit();
+
+    return id;
   }
 
-  /** Remove a system and trigger destroy lifecycle hook. */
-  removeSystem(system: System): boolean {
-    const idx = this.systems.indexOf(system);
-    if (idx === -1) {
-      return false;
+  removeSystem(id: string): void {
+    const position = this.systems.findIndex((entry) => entry.id === id);
+    if (position === -1) {
+      return;
     }
 
-    this.systems.splice(idx, 1);
-    system.destroy(this.context);
-    return true;
+    const [entry] = this.systems.splice(position, 1);
+    entry.instance.onDestroy();
   }
 
-  /** Execute one update cycle across all systems in order. */
-  runCycle(): void {
-    for (const system of this.systems) {
-      system.update(this.context);
-    }
-  }
-
-  /** Retrieve current ordered list of systems. */
-  getSystems(): System[] {
+  getSystems(): RegisteredSystem[] {
     return [...this.systems];
   }
 
-  /** Expose the context passed into systems (entity/component managers). */
-  getContext(): SystemContext {
-    return this.context;
+  clear(): void {
+    while (this.systems.length > 0) {
+      const { id } = this.systems[0];
+      this.removeSystem(id);
+    }
   }
 }

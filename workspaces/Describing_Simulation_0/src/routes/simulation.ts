@@ -1,111 +1,176 @@
-import type { Router } from './router';
-import type { IOPlayer } from '../core/IOPlayer';
-import type { Bus } from '../core/messaging/Bus';
-import type { Frame } from '../core/messaging/outbound/Frame';
-import type { Acknowledgement } from '../core/messaging/outbound/Acknowledgement';
-import type { System } from '../core/systems/System';
+import { IncomingMessage, ServerResponse } from "node:http";
+import {
+  SIMULATION_PAUSE_MESSAGE,
+  SIMULATION_START_MESSAGE,
+  SIMULATION_STOP_MESSAGE,
+  SIMULATION_SYSTEM_INJECT_MESSAGE,
+  SIMULATION_SYSTEM_EJECT_MESSAGE,
+  SIMULATION_COMPONENT_INJECT_MESSAGE,
+  SIMULATION_COMPONENT_EJECT_MESSAGE,
+  SimulationPlayer,
+} from "../core/simplayer/SimulationPlayer.js";
+import { Bus } from "../core/messaging/Bus.js";
+import { InboundMessage } from "../core/messaging/inbound/InboundMessage.js";
+import { OutboundMessage } from "../core/messaging/outbound/OutboundMessage.js";
+import {
+  RouteContext,
+  RouteHandler,
+  Router,
+} from "./router.js";
+import {
+  publishWithAcknowledgement,
+  streamOutboundFrames,
+} from "./helpers.js";
 
-type OutboundMessage = Frame | Acknowledgement;
+export const SIMULATION_ROUTE_PREFIX = "/simulation";
+export const SIMULATION_START_PATH = `${SIMULATION_ROUTE_PREFIX}/start`;
+export const SIMULATION_PAUSE_PATH = `${SIMULATION_ROUTE_PREFIX}/pause`;
+export const SIMULATION_STOP_PATH = `${SIMULATION_ROUTE_PREFIX}/stop`;
+export const SIMULATION_SYSTEM_PATH = `${SIMULATION_ROUTE_PREFIX}/system`;
+export const SIMULATION_SYSTEM_ID_PATH = `${SIMULATION_SYSTEM_PATH}/:id`;
+export const SIMULATION_COMPONENT_PATH = `${SIMULATION_ROUTE_PREFIX}/component`;
+export const SIMULATION_COMPONENT_ID_PATH = `${SIMULATION_COMPONENT_PATH}/:id`;
+export const SIMULATION_STREAM_PATH = `${SIMULATION_ROUTE_PREFIX}/stream`;
 
-type ControllableIOPlayer = Pick<IOPlayer, 'start' | 'pause' | 'stop'> & {
-  injectSystem: (payload: { system: System }) => string;
-  ejectSystem: (payload: { system?: System; systemId?: string }) => boolean;
-};
-
-export interface SimulationRouteDeps {
-  player: ControllableIOPlayer;
-  outboundBus: Bus<OutboundMessage>;
-  loadSystem: (descriptor: SimulationSystemDescriptor) => Promise<System>;
+export interface SimulationRouteDependencies {
+  readonly player: SimulationPlayer;
+  readonly inboundBus: Bus<InboundMessage>;
+  readonly outboundBus: Bus<OutboundMessage>;
+  readonly createMessageId: () => string;
+  readonly acknowledgementTimeoutMs?: number;
 }
 
-export interface SimulationSystemDescriptor {
-  modulePath: string;
-  exportName?: string;
+export function registerSimulationRoutes(
+  router: Router,
+  dependencies: SimulationRouteDependencies,
+): void {
+  router.register({
+    method: "POST",
+    path: SIMULATION_START_PATH,
+    handler: createMessageHandler(
+      dependencies,
+      SIMULATION_START_MESSAGE,
+    ),
+  });
+
+  router.register({
+    method: "POST",
+    path: SIMULATION_PAUSE_PATH,
+    handler: createMessageHandler(
+      dependencies,
+      SIMULATION_PAUSE_MESSAGE,
+    ),
+  });
+
+  router.register({
+    method: "POST",
+    path: SIMULATION_STOP_PATH,
+    handler: createMessageHandler(
+      dependencies,
+      SIMULATION_STOP_MESSAGE,
+    ),
+  });
+
+  router.register({
+    method: "POST",
+    path: SIMULATION_SYSTEM_PATH,
+    handler: createMessageHandler(
+      dependencies,
+      SIMULATION_SYSTEM_INJECT_MESSAGE,
+    ),
+  });
+
+  router.register({
+    method: "DELETE",
+    path: SIMULATION_SYSTEM_ID_PATH,
+    handler: createMessageHandler(
+      dependencies,
+      SIMULATION_SYSTEM_EJECT_MESSAGE,
+      (context) => combinePayloadWithParams(context),
+    ),
+  });
+
+  router.register({
+    method: "POST",
+    path: SIMULATION_COMPONENT_PATH,
+    handler: createMessageHandler(
+      dependencies,
+      SIMULATION_COMPONENT_INJECT_MESSAGE,
+    ),
+  });
+
+  router.register({
+    method: "DELETE",
+    path: SIMULATION_COMPONENT_ID_PATH,
+    handler: createMessageHandler(
+      dependencies,
+      SIMULATION_COMPONENT_EJECT_MESSAGE,
+      (context) => combinePayloadWithParams(context),
+    ),
+  });
+
+  router.register({
+    method: "GET",
+    path: SIMULATION_STREAM_PATH,
+    handler: (context) => {
+      streamOutboundFrames({
+        request: context.request as IncomingMessage | null | undefined,
+        response: context.response as ServerResponse,
+        outboundBus: dependencies.outboundBus,
+        eventName: "simulation",
+      });
+    },
+  });
 }
 
-export function registerSimulationRoutes(router: Router, deps: SimulationRouteDeps): void {
-  const respondSuccess = (res: any, messageId?: string, extras: Record<string, unknown> = {}) => {
-    res.json?.({ status: 'success', messageId, ...extras });
+function createMessageHandler(
+  dependencies: SimulationRouteDependencies,
+  messageType: string,
+  payloadFactory: (context: RouteContext) => unknown = extractBody,
+): RouteHandler {
+  return async (context) => {
+    const acknowledgement = await publishWithAcknowledgement(
+      {
+        inboundBus: dependencies.inboundBus,
+        outboundBus: dependencies.outboundBus,
+        createMessageId: dependencies.createMessageId,
+      },
+      messageType,
+      {
+        payload: payloadFactory(context),
+        acknowledgementTimeoutMs: dependencies.acknowledgementTimeoutMs,
+      },
+    );
+
+    const status =
+      acknowledgement.status === "success" ? 200 : 500;
+
+    return {
+      status,
+      body: { acknowledgement },
+    };
   };
+}
 
-  const respondError = (res: any, messageId: string | undefined, detail: string, status = 400) => {
-    res.statusCode = status;
-    res.json?.({ status: 'error', messageId, detail });
-  };
+function extractBody(
+  context: RouteContext,
+): unknown {
+  return context.body === undefined ? {} : context.body;
+}
 
-  router.register('/simulation/start', (req: any, res: any) => {
-    deps.player.start();
-    respondSuccess(res, req.body?.messageId);
-  });
+function combinePayloadWithParams(
+  context: RouteContext,
+): unknown {
+  const body = context.body;
+  const params = context.params ?? {};
 
-  router.register('/simulation/pause', (req: any, res: any) => {
-    deps.player.pause();
-    respondSuccess(res, req.body?.messageId);
-  });
+  if (body === undefined) {
+    return { ...params };
+  }
 
-  router.register('/simulation/stop', (req: any, res: any) => {
-    deps.player.stop();
-    respondSuccess(res, req.body?.messageId);
-  });
+  if (typeof body === "object" && body !== null && !Array.isArray(body)) {
+    return { ...(body as Record<string, unknown>), ...params };
+  }
 
-  router.register('/simulation/inject', async (req: any, res: any) => {
-    const messageId = req.body?.messageId as string | undefined;
-    const descriptor = req.body?.system as SimulationSystemDescriptor | undefined;
-
-    if (!descriptor?.modulePath) {
-      respondError(res, messageId, 'Missing system descriptor');
-      return;
-    }
-
-    try {
-      const system = await deps.loadSystem(descriptor);
-      const systemId = deps.player.injectSystem({ system });
-      respondSuccess(res, messageId, { systemId });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : 'System injection failed';
-      respondError(res, messageId, detail);
-    }
-  });
-
-  router.register('/simulation/eject', (req: any, res: any) => {
-    const messageId = req.body?.messageId as string | undefined;
-    const systemId = typeof req.body?.systemId === 'string' ? req.body.systemId : undefined;
-    if (!systemId) {
-      respondError(res, messageId, 'Missing system identifier');
-      return;
-    }
-
-    const removed = deps.player.ejectSystem({ systemId });
-    if (!removed) {
-      respondError(res, messageId, 'System not found', 404);
-      return;
-    }
-
-    respondSuccess(res, messageId, { systemId });
-  });
-
-  router.register('/simulation/stream', (req: any, res: any) => {
-    res.writeHead?.(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    });
-    res.flushHeaders?.();
-
-    const heartbeatInterval = setInterval(() => {
-      res.write?.(':heartbeat\n\n');
-    }, 15000);
-
-    const unsubscribe = deps.outboundBus.subscribe((message) => {
-      res.write?.(`data: ${JSON.stringify(message)}\n\n`);
-    });
-
-    req.on?.('close', () => {
-      unsubscribe?.();
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-      }
-      res.end?.();
-    });
-  });
+  return { body, ...params };
 }

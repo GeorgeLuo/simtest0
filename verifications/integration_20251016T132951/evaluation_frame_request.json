@@ -1,0 +1,23 @@
+{
+  "frame": {
+    "tick": 1,
+    "entities": [
+      {
+        "id": "temperature-zone-1",
+        "components": [
+          {
+            "type": "temperature.sensor",
+            "data": { "celsius": 21.5 }
+          },
+          {
+            "type": "thermostat.state",
+            "data": {
+              "setPointCelsius": 22,
+              "measuredCelsius": 21.5
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

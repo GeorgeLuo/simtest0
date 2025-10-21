@@ -1,9 +1,5 @@
 # Tools Directory
 
-This directory houses scripts that support the simulation workspace.
-
-- `run_integration.sh` — orchestrates the Phase 3 integration flow (build workspace, execute automation).
-- `run_integration.js` — node-based automation that starts the service, verifies the API landing page, confirms idle SSE behaviour, injects the temperature control system, and exercises playback controls.
-- `benchmark_simulation.js` — Phase 5 harness that starts the compiled workspace, advances 500+ ticks, measures runtime/memory metrics, and records baseline artifacts under `verifications/`.
-
-All usage patterns should remain consistent with guidance in `instruction_documents/Describing_Simulation_0_codifying_simulations.md` derived from `Describing_Simulation_0.md`.
+- `checks.sh`: Top-level verification harness (`./checks.sh [--integration]`) that cleans the workspace build artifacts, runs `npm run build`, executes `npm test`, and optionally chains the integration workflow while teeing output to `verifications/checks_<timestamp>.log`.
+- `start.sh`: Builds the TypeScript workspace (if needed) and launches the simulator in the background, writing logs to `tmp_manual_server.log` and tracking the process via `tools/start.sh stop`.
+- `run_integration.sh`: Automates the integration workflow (build, start, probe API, upload plugins, stream evaluation data). Run `./tools/run_integration.sh` to produce timestamped artifacts under `verifications/`.

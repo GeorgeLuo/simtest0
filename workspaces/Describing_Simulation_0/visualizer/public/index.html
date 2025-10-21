@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Two Body Simulation Visualizer</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Two Body Simulation Visualizer</h1>
+      <p>
+        Reads frames from the Sim-Eval stream at <code>/simulation/stream</code>.
+        Start the simulation separately; this page only renders streamed data.
+      </p>
+    </header>
+    <main>
+      <section class="canvas-wrapper">
+        <canvas
+          id="scene"
+          width="640"
+          height="640"
+          aria-label="Two body orbit visualisation"
+        ></canvas>
+      </section>
+      <section class="telemetry">
+        <h2>Frame Telemetry</h2>
+        <div id="status">Status: waiting for stream…</div>
+        <pre id="details">No data yet</pre>
+      </section>
+    </main>
+    <footer>
+      <small>
+        Visualizer served from this workspace on port 3001. The simulation must
+        expose components with type <code>plugin.twoBody.body</code> (or any
+        component containing <code>position</code> and <code>velocity</code>
+        fields) for best results.
+      </small>
+    </footer>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

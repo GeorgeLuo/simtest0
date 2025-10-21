@@ -1,272 +1,270 @@
-import type { IncomingMessage, ServerResponse } from 'http';
+import { IncomingMessage, ServerResponse } from "node:http";
+import { URL } from "node:url";
 
-export interface RouteHandler {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (req: unknown, res: unknown, next?: () => void): any;
+export type HttpMethod =
+  | "GET"
+  | "POST"
+  | "DELETE"
+  | "PUT"
+  | "PATCH";
+
+export interface RouteContext {
+  readonly request: unknown;
+  readonly response: unknown;
+  readonly params?: Record<string, string>;
+  readonly query?: Record<string, string | string[]>;
+  readonly body?: unknown;
 }
 
-export interface RouterOptions {
-  basePath?: string;
-  authToken?: string;
-  rateLimit?: {
-    windowMs: number;
-    max: number;
-  };
+export interface RouteResponse {
+  readonly status: number;
+  readonly body?: unknown;
+  readonly headers?: Record<string, string>;
 }
+
+export type RouteHandler =
+  | ((context: RouteContext) => Promise<RouteResponse | void>)
+  | ((context: RouteContext) => RouteResponse | void);
+
+export interface RouteDefinition {
+  readonly method: HttpMethod;
+  readonly path: string;
+  readonly handler: RouteHandler;
+  readonly description?: string;
+}
+
+type RequestListener = (request: IncomingMessage, response: ServerResponse) => Promise<void> | void;
+
+interface RegisteredRoute {
+  readonly definition: RouteDefinition;
+  readonly matchPath: (pathname: string) => { readonly params: Record<string, string> } | null;
+}
+
+const METHODS_WITH_BODY = new Set<HttpMethod>(["POST", "PUT", "PATCH", "DELETE"]);
 
 export class Router {
-  private readonly basePath: string;
-  private readonly routes = new Map<string, RouteHandler>();
-  private readonly authToken?: string;
-  private readonly rateLimit?: {
-    windowMs: number;
-    max: number;
-  };
-  private readonly hits = new Map<string, { count: number; reset: number }>();
+  private readonly routes: RegisteredRoute[] = [];
 
-  constructor(options: RouterOptions = {}) {
-    this.basePath = normalizeBasePath(options.basePath ?? '');
-    this.authToken = options.authToken;
-    this.rateLimit = options.rateLimit;
+  register(route: RouteDefinition): void {
+    this.routes.push({
+      definition: route,
+      matchPath: createPathMatcher(route.path),
+    });
   }
 
-  register(path: string, handler: RouteHandler): void {
-    const normalizedPath = this.normalizeRegisteredPath(path);
-    this.routes.set(normalizedPath, handler);
+  getRoutes(): RouteDefinition[] {
+    return this.routes.map((registered) => ({
+      ...registered.definition,
+    }));
   }
 
-  dispatch(req: unknown, res: unknown): boolean {
-    const url = typeof (req as { url?: unknown }).url === 'string' ? (req as { url: string }).url : '';
-    const path = stripQueryAndTrailingSlash(url);
-    const handler = this.routes.get(path);
-    if (!handler) {
-      return false;
-    }
+  createListener(): RequestListener {
+    return async (request, response) => {
+      const method = normalizeMethod(request.method);
+      const url = request.url ?? "/";
+      const parsed = new URL(url, "http://localhost");
+      const pathname = parsed.pathname;
 
-    const next = () => {
-      /* no-op for now */
-    };
+      const registeredRoute = method
+        ? this.findRoute(method, pathname)
+        : null;
 
-    const incoming = isIncomingMessage(req) ? req : undefined;
-    const response = isServerResponse(res) ? res : undefined;
-
-    if (incoming) {
-      attachQuery(incoming);
-
-      if (this.authToken && !isAuthorized(incoming, this.authToken)) {
-        sendError(response, 401, { status: 'error', detail: 'Unauthorized' });
-        return true;
+      if (!registeredRoute) {
+        this.respondJson(response, 404, { error: "Route not found" });
+        return;
       }
 
-      if (this.rateLimit && !this.consumeRateLimit(incoming)) {
-        sendError(response, 429, { status: 'error', detail: 'Too Many Requests' });
-        return true;
-      }
-    }
+      try {
+        const query = buildQueryObject(parsed.searchParams);
+        const body = METHODS_WITH_BODY.has(registeredRoute.definition.method)
+          ? await parseBody(request)
+          : undefined;
 
-    if (response) {
-      ensureJson(response);
-    }
+        const matched = registeredRoute.matchPath(pathname);
+        const context: RouteContext = {
+          request,
+          response,
+          ...(matched && Object.keys(matched.params).length > 0
+            ? { params: matched.params }
+            : {}),
+          ...(Object.keys(query).length > 0 ? { query } : {}),
+          ...(body !== undefined ? { body } : {}),
+        };
 
-    const invokeHandler = () => {
-      handler(req, res, next);
-    };
+        const result = await Promise.resolve(
+          registeredRoute.definition.handler(context),
+        );
 
-    if (incoming && shouldParseBody(incoming.method)) {
-      parseJsonBody(incoming)
-        .then((body) => {
-          (incoming as { body?: unknown }).body = body;
-          invokeHandler();
-        })
-        .catch((error: Error) => {
-          if (response) {
-            if (!response.headersSent) {
-              response.statusCode = 400;
-              response.setHeader('Content-Type', 'application/json');
-            }
-            response.end(JSON.stringify({ status: 'error', detail: error.message }));
+        if (response.writableEnded) {
+          return;
+        }
+
+        if (!result) {
+          return;
+        }
+
+        if (result.headers) {
+          for (const [header, value] of Object.entries(result.headers)) {
+            response.setHeader(header, value);
           }
-        });
-    } else {
-      invokeHandler();
+        }
+
+        response.statusCode = result.status;
+        ensureJsonHeader(response);
+
+        if (result.body === undefined) {
+          response.end();
+          return;
+        }
+
+        const payload =
+          typeof result.body === "string"
+            ? result.body
+            : JSON.stringify(result.body);
+
+        response.end(payload);
+      } catch (error) {
+        if (response.writableEnded) {
+          return;
+        }
+
+        const message =
+          error instanceof Error ? error.message : "Unknown route error";
+        this.respondJson(response, 500, { error: message });
+      }
+    };
+  }
+
+  private findRoute(
+    method: HttpMethod,
+    pathname: string,
+  ): RegisteredRoute | null {
+    for (const route of this.routes) {
+      if (route.definition.method !== method) {
+        continue;
+      }
+
+      if (route.matchPath(pathname)) {
+        return route;
+      }
     }
 
-    return true;
+    return null;
   }
 
-  private normalizeRegisteredPath(path: string): string {
-    const cleaned = ensureLeadingSlash(stripTrailingSlash(path));
-    const combined = `${this.basePath}${cleaned}`;
-    return combined === '' ? '/' : stripTrailingSlash(combined) || '/';
-  }
-
-  private consumeRateLimit(req: IncomingMessage): boolean {
-    if (!this.rateLimit) {
-      return true;
+  private respondJson(
+    response: ServerResponse,
+    status: number,
+    payload: unknown,
+  ): void {
+    if (response.writableEnded) {
+      return;
     }
 
-    const now = Date.now();
-    const key = buildRateKey(req);
-    const existing = this.hits.get(key);
-    const windowMs = this.rateLimit.windowMs;
-    const max = this.rateLimit.max;
+    response.statusCode = status;
+    ensureJsonHeader(response);
+    const body =
+      typeof payload === "string" ? payload : JSON.stringify(payload);
+    response.end(body);
+  }
+}
 
-    if (!existing || existing.reset <= now) {
-      this.hits.set(key, { count: 1, reset: now + windowMs });
-      return true;
+function createPathMatcher(
+  path: string,
+): RegisteredRoute["matchPath"] {
+  if (path === "/") {
+    return (pathname) => (pathname === "/" ? { params: {} } : null);
+  }
+
+  const paramNames: string[] = [];
+  const pattern = path.replace(/:([A-Za-z0-9_]+)/g, (_substring, name: string) => {
+    paramNames.push(name);
+    return "([^/]+)";
+  });
+  const matcher = new RegExp(`^${pattern}$`);
+
+  return (pathname) => {
+    const match = matcher.exec(pathname);
+    if (!match) {
+      return null;
     }
 
-    existing.count += 1;
-    if (existing.count > max) {
-      return false;
-    }
+    const params: Record<string, string> = {};
+    paramNames.forEach((name, index) => {
+      params[name] = decodeURIComponent(match[index + 1]);
+    });
 
-    return true;
+    return { params };
+  };
+}
+
+function buildQueryObject(
+  searchParams: URLSearchParams,
+): Record<string, string | string[]> {
+  const query: Record<string, string | string[]> = {};
+  for (const key of searchParams.keys()) {
+    const values = searchParams.getAll(key).map((value) => value);
+    query[key] = values.length > 1 ? values : values[0];
+  }
+  return query;
+}
+
+function ensureJsonHeader(response: ServerResponse): void {
+  const existing =
+    typeof response.getHeader === "function"
+      ? response.getHeader("content-type")
+      : undefined;
+  if (!existing) {
+    response.setHeader("content-type", "application/json");
   }
 }
 
-function normalizeBasePath(basePath: string): string {
-  if (!basePath || basePath === '/') {
-    return '';
+async function parseBody(
+  request: IncomingMessage,
+): Promise<unknown> {
+  if (typeof (request as unknown as AsyncIterable<unknown>)[Symbol.asyncIterator] !== "function") {
+    return undefined;
   }
 
-  return stripTrailingSlash(ensureLeadingSlash(basePath));
-}
-
-function ensureLeadingSlash(path: string): string {
-  return path.startsWith('/') ? path : `/${path}`;
-}
-
-function stripTrailingSlash(path: string): string {
-  if (path === '/') {
-    return path;
-  }
-
-  return path.replace(/\/+$/, '');
-}
-
-function stripQueryAndTrailingSlash(url: string): string {
-  if (!url) {
-    return '/';
-  }
-
-  const [path] = url.split('?');
-  const cleaned = stripTrailingSlash(path);
-  return cleaned || '/';
-}
-
-function isIncomingMessage(req: unknown): req is IncomingMessage {
-  return Boolean(req && typeof req === 'object' && 'headers' in (req as Record<string, unknown>));
-}
-
-function isServerResponse(res: unknown): res is ServerResponse & { json?: (body: unknown) => void } {
-  return Boolean(res && typeof res === 'object' && 'setHeader' in (res as Record<string, unknown>));
-}
-
-function shouldParseBody(method: string | undefined): boolean {
-  if (!method) {
-    return false;
-  }
-
-  const normalized = method.toUpperCase();
-  return normalized === 'POST' || normalized === 'PUT' || normalized === 'PATCH';
-}
-
-async function parseJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
 
-  for await (const chunk of req) {
-    if (typeof chunk === 'string') {
-      chunks.push(Buffer.from(chunk));
-    } else {
-      chunks.push(chunk as Buffer);
-    }
+  for await (const chunk of request) {
+    chunks.push(
+      typeof chunk === "string" ? Buffer.from(chunk) : chunk,
+    );
   }
 
   if (chunks.length === 0) {
     return undefined;
   }
 
-  const text = Buffer.concat(chunks).toString('utf8').trim();
-  if (!text) {
+  const raw = Buffer.concat(chunks).toString("utf-8");
+  const contentType = request.headers["content-type"] ?? "";
+
+  if (typeof raw !== "string" || raw.length === 0) {
     return undefined;
   }
 
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error('Invalid JSON payload');
-  }
-}
-
-function attachQuery(req: unknown): void {
-  const url = typeof (req as { url?: unknown }).url === 'string' ? (req as { url: string }).url : '';
-  try {
-    const urlObj = new URL(url, 'http://localhost');
-    const query: Record<string, string> = {};
-    urlObj.searchParams.forEach((value, key) => {
-      query[key] = value;
-    });
-    (req as { query?: unknown }).query = query;
-  } catch {
-    (req as { query?: unknown }).query = {};
-  }
-}
-
-function ensureJson(res: ServerResponse & { json?: (body: unknown) => void }): void {
-  if (typeof res.json === 'function') {
-    return;
-  }
-
-  res.json = (body: unknown) => {
-    if (!res.headersSent) {
-      res.setHeader('Content-Type', 'application/json');
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
     }
-    if (!res.statusCode) {
-      res.statusCode = 200;
-    }
-    res.end(JSON.stringify(body));
-  };
+  }
+
+  return raw;
 }
 
-function isAuthorized(req: IncomingMessage, expectedToken: string): boolean {
-  const header = req.headers['authorization'];
-  if (typeof header !== 'string') {
-    return false;
+function normalizeMethod(method?: string | null): HttpMethod | null {
+  if (!method) {
+    return null;
   }
 
-  const trimmed = header.trim();
-  return trimmed === expectedToken || trimmed === `Bearer ${expectedToken}`;
-}
-
-function sendError(res: (ServerResponse & { json?: (body: unknown) => void }) | undefined, statusCode: number, body: unknown): void {
-  if (!res) {
-    return;
+  const upper = method.toUpperCase();
+  if (["GET", "POST", "DELETE", "PUT", "PATCH"].includes(upper)) {
+    return upper as HttpMethod;
   }
 
-  if (!res.headersSent) {
-    res.statusCode = statusCode;
-    res.setHeader('Content-Type', 'application/json');
-  }
-  res.end(JSON.stringify(body));
-}
-
-function buildRateKey(req: IncomingMessage): string {
-  const ip = extractIp(req);
-  const path = typeof req.url === 'string' ? stripQueryAndTrailingSlash(req.url) : '/';
-  const method = typeof req.method === 'string' ? req.method.toUpperCase() : 'GET';
-  return `${ip}:${method}:${path}`;
-}
-
-function extractIp(req: IncomingMessage): string {
-  const header = req.headers['x-forwarded-for'];
-  if (typeof header === 'string' && header.length > 0) {
-    return header.split(',')[0]?.trim() ?? 'unknown';
-  }
-
-  if (req.socket) {
-    return req.socket.remoteAddress ?? 'unknown';
-  }
-
-  return 'unknown';
+  return null;
 }

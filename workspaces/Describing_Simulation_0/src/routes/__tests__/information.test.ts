@@ -1,91 +1,109 @@
-import { registerInformationRoutes } from '../information';
-import type { Router } from '../router';
+import { describe, expect, it, vi } from "vitest";
+import {
+  API_DOCUMENT_PATH,
+  ROOT_INFORMATION_PATH,
+  SOURCE_SPEC_PATH,
+  registerInformationRoutes,
+  InformationRouteDependencies,
+} from "../information/index.js";
+import { RouteContext, RouteDefinition, Router } from "../router.js";
 
-describe('information routes', () => {
-  const createRouter = () => {
-    const map = new Map<string, (req: any, res: any) => unknown>();
-    const router = {
-      register: jest.fn((path: string, handler: (req: any, res: any) => unknown) => {
-        map.set(path, handler);
-      }),
-    } as unknown as Router & { register: jest.Mock };
+interface RouterCapture {
+  router: Router;
+  routes: RouteDefinition[];
+}
 
-    return { router, map };
-  };
+const createRouterCapture = (): RouterCapture => {
+  const routes: RouteDefinition[] = [];
+  const router = {
+    register: (definition: RouteDefinition) => {
+      routes.push(definition);
+    },
+    getRoutes: vi.fn(),
+    createListener: vi.fn(),
+  } as unknown as Router;
 
-  it('registers root, listing, and document endpoints', async () => {
-    const { router, map } = createRouter();
-    const readDocument = jest.fn(async (filename: string) => `# ${filename}`);
+  return { router, routes };
+};
 
-    const segments = [
-      { id: 'simulation', title: 'Simulation', description: 'Control loop', path: '/api/simulation' },
-      { id: 'evaluation', title: 'Evaluation', description: 'Inspect metrics', path: '/api/evaluation' },
-    ];
+const createDependencies = (): InformationRouteDependencies => ({
+  describingSimulationPath: "/docs/Describing_Simulation.md",
+  apiDocumentPath: "/docs/api.md",
+  readFile: vi.fn(async (path: string) => `content from ${path}`),
+  metadata: {
+    project: "sim-eval",
+  },
+});
 
-    const documents = [
-      { id: 'api', title: 'API', description: 'Endpoint summary', filename: '/docs/api.md' },
-      {
-        id: 'describing-simulation',
-        title: 'Orientation',
-        description: 'Key ECS notes',
-        filename: '/docs/Describing_Simulation.md',
-      },
-    ];
+const findRoute = (
+  routes: RouteDefinition[],
+  path: string,
+  method: RouteDefinition["method"],
+): RouteDefinition => {
+  const route = routes.find((definition) => definition.path === path && definition.method === method);
+  if (!route) {
+    throw new Error(`Route ${method} ${path} not registered`);
+  }
+  return route;
+};
 
-    registerInformationRoutes(router, { segments, documents, readDocument });
+const createContext = (overrides?: Partial<RouteContext>): RouteContext => ({
+  request: {},
+  response: {},
+  ...overrides,
+});
 
-    const rootHandler = map.get('/');
-    const indexHandler = map.get('/information');
-    const apiHandler = map.get('/information/api');
-    const docHandler = map.get('/information/describing-simulation');
+describe("registerInformationRoutes", () => {
+  it("registers root, spec, and api documentation routes", () => {
+    const { router, routes } = createRouterCapture();
+    const dependencies = createDependencies();
 
-    expect(rootHandler).toBeDefined();
-    expect(indexHandler).toBeDefined();
-    expect(apiHandler).toBeDefined();
-    expect(docHandler).toBeDefined();
+    expect(() => registerInformationRoutes(router, dependencies)).not.toThrow();
 
-    const rootRes = { json: jest.fn() };
-    rootHandler?.({}, rootRes);
-    expect(rootRes.json).toHaveBeenCalledWith({
-      name: 'SimEval API',
-      segments,
-      documents: documents.map((doc) => ({
-        id: doc.id,
-        title: doc.title,
-        description: doc.description,
-        path: `/api/information/${doc.id}`,
-      })),
-    });
+    const paths = routes.map((route) => `${route.method} ${route.path}`);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        `GET ${ROOT_INFORMATION_PATH}`,
+        `GET ${SOURCE_SPEC_PATH}`,
+        `GET ${API_DOCUMENT_PATH}`,
+      ]),
+    );
+  });
 
-    const indexRes = { json: jest.fn() };
-    indexHandler?.({}, indexRes);
-    expect(indexRes.json).toHaveBeenCalledWith({
-      documents: documents.map((doc) => ({
-        id: doc.id,
-        title: doc.title,
-        description: doc.description,
-        path: `/api/information/${doc.id}`,
-      })),
-    });
+  it("returns discoverable metadata from the root route", async () => {
+    const { router, routes } = createRouterCapture();
+    const dependencies = createDependencies();
+    registerInformationRoutes(router, dependencies);
 
-    const apiRes = { json: jest.fn() };
-    await apiHandler?.({}, apiRes);
-    expect(readDocument).toHaveBeenCalledWith('/docs/api.md');
-    expect(apiRes.json).toHaveBeenCalledWith({
-      id: 'api',
-      title: 'API',
-      description: 'Endpoint summary',
-      content: '# /docs/api.md',
-    });
+    const rootRoute = findRoute(routes, ROOT_INFORMATION_PATH, "GET");
+    const result = await rootRoute.handler(createContext());
 
-    const docRes = { json: jest.fn() };
-    await docHandler?.({}, docRes);
-    expect(readDocument).toHaveBeenCalledWith('/docs/Describing_Simulation.md');
-    expect(docRes.json).toHaveBeenCalledWith({
-      id: 'describing-simulation',
-      title: 'Orientation',
-      description: 'Key ECS notes',
-      content: '# /docs/Describing_Simulation.md',
-    });
+    expect(result).toMatchObject({ status: 200 });
+    const body = result?.body as { segments: Array<{ path: string; description: string }>; metadata: unknown };
+    expect(body.segments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "/simulation" }),
+        expect.objectContaining({ path: "/evaluation" }),
+        expect.objectContaining({ path: "/codebase" }),
+      ]),
+    );
+    expect(body.metadata).toEqual(dependencies.metadata);
+  });
+
+  it("serves descriptive markdown documents", async () => {
+    const { router, routes } = createRouterCapture();
+    const dependencies = createDependencies();
+    registerInformationRoutes(router, dependencies);
+
+    const specRoute = findRoute(routes, SOURCE_SPEC_PATH, "GET");
+    const apiRoute = findRoute(routes, API_DOCUMENT_PATH, "GET");
+
+    const specResult = await specRoute.handler(createContext());
+    const apiResult = await apiRoute.handler(createContext());
+
+    expect(dependencies.readFile).toHaveBeenCalledWith("/docs/Describing_Simulation.md");
+    expect(dependencies.readFile).toHaveBeenCalledWith("/docs/api.md");
+    expect(specResult).toMatchObject({ status: 200, body: { content: expect.stringContaining("Describing_Simulation") } });
+    expect(apiResult).toMatchObject({ status: 200, body: { content: expect.stringContaining("api") } });
   });
 });

@@ -1,218 +1,157 @@
-import { registerEvaluationRoutes, type EvaluationComponentDescriptor, type EvaluationSystemDescriptor } from '../evaluation';
-import type { Router } from '../router';
-import type { EvaluationPlayer } from '../../core/evalplayer/EvaluationPlayer';
-import type { Bus } from '../../core/messaging/Bus';
-import type { Frame } from '../../core/messaging/outbound/Frame';
-import type { Acknowledgement } from '../../core/messaging/outbound/Acknowledgement';
-import type { System } from '../../core/systems/System';
-import type { ComponentType } from '../../core/components/ComponentType';
+import { describe, expect, it, vi } from "vitest";
+import { Bus } from "../../core/messaging/Bus.js";
+import { InboundMessage } from "../../core/messaging/inbound/InboundMessage.js";
+import { OutboundMessage } from "../../core/messaging/outbound/OutboundMessage.js";
+import { successAck } from "../../core/messaging/outbound/Acknowledgement.js";
+import {
+  EvaluationPlayer,
+  EVALUATION_FRAME_MESSAGE,
+} from "../../core/evalplayer/EvaluationPlayer.js";
+import {
+  EVALUATION_FRAME_PATH,
+  EVALUATION_STREAM_PATH,
+  registerEvaluationRoutes,
+  EvaluationRouteDependencies,
+} from "../evaluation.js";
+import { RouteContext, RouteDefinition, Router } from "../router.js";
 
-describe('evaluation routes', () => {
-  const createRouter = () => {
-    const map = new Map<string, (req: any, res: any) => void>();
-    const router = {
-      register: jest.fn((path: string, handler: (req: any, res: any) => void) => {
-        map.set(path, handler);
-      }),
-    } as unknown as Router & { register: jest.Mock };
+interface RouterCapture {
+  router: Router;
+  routes: RouteDefinition[];
+}
 
-    return { router, routes: map };
+const createRouterCapture = (): RouterCapture => {
+  const routes: RouteDefinition[] = [];
+  const router = {
+    register: (definition: RouteDefinition) => {
+      routes.push(definition);
+    },
+    getRoutes: vi.fn(),
+    createListener: vi.fn(),
+  } as unknown as Router;
+
+  return { router, routes };
+};
+
+const createDependencies = (): EvaluationRouteDependencies & {
+  inboundBus: Bus<InboundMessage>;
+  outboundBus: Bus<OutboundMessage>;
+  player: EvaluationPlayer;
+} => {
+  const inboundBus = new Bus<InboundMessage>();
+  const outboundBus = new Bus<OutboundMessage>();
+  const player = {
+    ingestFrame: vi.fn(),
+  } as unknown as EvaluationPlayer;
+  let messageCounter = 0;
+
+  return {
+    player,
+    inboundBus,
+    outboundBus,
+    createMessageId: () => `msg-${messageCounter++}`,
+    acknowledgementTimeoutMs: 10,
   };
+};
 
-  const createDeps = () => {
-    const player = {
-      injectFrame: jest.fn(),
-      injectSystem: jest.fn(() => 'system-abc'),
-      ejectSystem: jest.fn(() => true),
-      registerComponent: jest.fn(),
-      removeComponent: jest.fn(),
-    } as unknown as EvaluationPlayer & {
-      injectFrame: jest.Mock;
-      injectSystem: jest.Mock;
-      ejectSystem: jest.Mock;
-      registerComponent: jest.Mock;
-      removeComponent: jest.Mock;
-    };
+const findRoute = (
+  routes: RouteDefinition[],
+  path: string,
+  method: RouteDefinition["method"],
+): RouteDefinition => {
+  const route = routes.find((definition) => definition.path === path && definition.method === method);
+  if (!route) {
+    throw new Error(`Route ${method} ${path} not registered`);
+  }
+  return route;
+};
 
-    const unsubscribe = jest.fn();
-    const outboundBus = {
-      subscribe: jest.fn(() => unsubscribe),
-    } as unknown as Bus<Frame | Acknowledgement> & { subscribe: jest.Mock };
+const createContext = (overrides?: Partial<RouteContext>): RouteContext => ({
+  request: {},
+  response: {},
+  ...overrides,
+});
 
-    const loadSystem = jest.fn<Promise<System>, [EvaluationSystemDescriptor]>(async () => ({} as System));
-    const loadComponent = jest.fn<Promise<ComponentType<unknown>>, [EvaluationComponentDescriptor]>(
-      async () => ({ id: 'component', validate: () => true }),
+const createSseResponse = () => {
+  const headers: Record<string, string> = {};
+  return {
+    headers,
+    setHeader: vi.fn((key: string, value: string) => {
+      headers[key.toLowerCase()] = value;
+    }),
+    write: vi.fn(),
+    end: vi.fn(),
+    flushHeaders: vi.fn(),
+  };
+};
+
+describe("registerEvaluationRoutes", () => {
+  it("registers frame ingestion and stream routes", () => {
+    const { router, routes } = createRouterCapture();
+    const dependencies = createDependencies();
+
+    expect(() => registerEvaluationRoutes(router, dependencies)).not.toThrow();
+
+    const paths = routes.map((route) => `${route.method} ${route.path}`);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        `POST ${EVALUATION_FRAME_PATH}`,
+        `GET ${EVALUATION_STREAM_PATH}`,
+      ]),
+    );
+  });
+
+  it("publishes frame injections and resolves with acknowledgement", async () => {
+    const { router, routes } = createRouterCapture();
+    const dependencies = createDependencies();
+    const inboundMessages: InboundMessage[] = [];
+
+    dependencies.inboundBus.subscribe((message) => {
+      inboundMessages.push(message);
+      dependencies.outboundBus.publish({
+        type: "acknowledgement",
+        acknowledgement: successAck(message.id),
+      });
+    });
+
+    registerEvaluationRoutes(router, dependencies);
+
+    const frameRoute = findRoute(routes, EVALUATION_FRAME_PATH, "POST");
+    const result = await frameRoute.handler(
+      createContext({
+        body: {
+          frame: { tick: 1, entities: [] },
+        },
+      }),
     );
 
-    return { player, outboundBus, loadSystem, loadComponent, unsubscribe };
-  };
-
-  it('registers evaluation endpoints and delegates to dependencies', async () => {
-    const { router, routes } = createRouter();
-    const deps = createDeps();
-
-    registerEvaluationRoutes(router, deps);
-
-    expect(router.register).toHaveBeenCalledTimes(6);
-
-    const frameHandler = routes.get('/evaluation/frame');
-    const injectSystemHandler = routes.get('/evaluation/system/inject');
-    const ejectSystemHandler = routes.get('/evaluation/system/eject');
-    const injectComponentHandler = routes.get('/evaluation/component/inject');
-    const ejectComponentHandler = routes.get('/evaluation/component/eject');
-    const streamHandler = routes.get('/evaluation/stream');
-
-    expect(frameHandler).toBeDefined();
-    expect(injectSystemHandler).toBeDefined();
-    expect(ejectSystemHandler).toBeDefined();
-    expect(injectComponentHandler).toBeDefined();
-    expect(ejectComponentHandler).toBeDefined();
-    expect(streamHandler).toBeDefined();
-
-    const frameRes = { json: jest.fn() };
-    frameHandler?.({ body: { messageId: 'frame-1', frame: { tick: 1, entities: {} } } }, frameRes);
-    expect(deps.player.injectFrame).toHaveBeenCalledWith({ messageId: 'frame-1', frame: { tick: 1, entities: {} } });
-    expect(frameRes.json).toHaveBeenCalledWith({ status: 'success', messageId: 'frame-1' });
-
-    const systemRes = { json: jest.fn(), statusCode: 200 };
-    await injectSystemHandler?.({ body: { messageId: 'sys-1', system: { modulePath: 'plugins/eval/System.js' } } }, systemRes);
-    expect(deps.loadSystem).toHaveBeenCalledWith({ modulePath: 'plugins/eval/System.js' });
-    expect(deps.player.injectSystem).toHaveBeenCalled();
-    expect(systemRes.json).toHaveBeenCalledWith({
-      status: 'success',
-      messageId: 'sys-1',
-      systemId: 'system-abc',
-    });
-
-    const ejectSystemRes = { json: jest.fn(), statusCode: 200 };
-    ejectSystemHandler?.({ body: { messageId: 'sys-2', systemId: 'system-abc' } }, ejectSystemRes);
-    expect(deps.player.ejectSystem).toHaveBeenCalledWith({ system: undefined, systemId: 'system-abc' });
-    expect(ejectSystemRes.json).toHaveBeenCalledWith({
-      status: 'success',
-      messageId: 'sys-2',
-      systemId: 'system-abc',
-    });
-
-    const componentRes = { json: jest.fn(), statusCode: 200 };
-    await injectComponentHandler?.(
-      { body: { messageId: 'comp-1', component: { modulePath: 'plugins/eval/component.js' } } },
-      componentRes,
-    );
-    expect(deps.loadComponent).toHaveBeenCalledWith({ modulePath: 'plugins/eval/component.js' });
-    expect(deps.player.registerComponent).toHaveBeenCalled();
-    expect(componentRes.json).toHaveBeenCalledWith({ status: 'success', messageId: 'comp-1' });
-
-    const ejectComponentRes = { json: jest.fn(), statusCode: 200 };
-    ejectComponentHandler?.({ body: { messageId: 'comp-2', componentId: 'component' } }, ejectComponentRes);
-    expect(deps.player.removeComponent).toHaveBeenCalledWith('component');
-    expect(ejectComponentRes.json).toHaveBeenCalledWith({ status: 'success', messageId: 'comp-2' });
-  });
-
-  it('returns error when evaluation descriptors are missing', async () => {
-    const { router, routes } = createRouter();
-    const deps = createDeps();
-
-    registerEvaluationRoutes(router, deps);
-
-    const injectSystemHandler = routes.get('/evaluation/system/inject');
-    const injectComponentHandler = routes.get('/evaluation/component/inject');
-    const ejectSystemHandler = routes.get('/evaluation/system/eject');
-    const ejectComponentHandler = routes.get('/evaluation/component/eject');
-
-    const errorRes = { json: jest.fn(), statusCode: 200 };
-    await injectSystemHandler?.({ body: { messageId: 'sys-err' } }, errorRes);
-    expect(errorRes.statusCode).toBe(400);
-    expect(errorRes.json).toHaveBeenCalledWith({
-      status: 'error',
-      messageId: 'sys-err',
-      detail: 'Missing system descriptor',
-    });
-
-    const ejectSystemRes = { json: jest.fn(), statusCode: 200 };
-    ejectSystemHandler?.({ body: { messageId: 'sys-err2' } }, ejectSystemRes);
-    expect(ejectSystemRes.statusCode).toBe(400);
-    expect(ejectSystemRes.json).toHaveBeenCalledWith({
-      status: 'error',
-      messageId: 'sys-err2',
-      detail: 'Missing system identifier',
-    });
-
-    const compErrorRes = { json: jest.fn(), statusCode: 200 };
-    await injectComponentHandler?.({ body: { messageId: 'comp-err' } }, compErrorRes);
-    expect(compErrorRes.statusCode).toBe(400);
-    expect(compErrorRes.json).toHaveBeenCalledWith({
-      status: 'error',
-      messageId: 'comp-err',
-      detail: 'Missing component descriptor',
-    });
-
-    const ejectComponentRes = { json: jest.fn(), statusCode: 200 };
-    ejectComponentHandler?.({ body: { messageId: 'comp-err2' } }, ejectComponentRes);
-    expect(ejectComponentRes.statusCode).toBe(400);
-    expect(ejectComponentRes.json).toHaveBeenCalledWith({
-      status: 'error',
-      messageId: 'comp-err2',
-      detail: 'Missing component identifier',
+    expect(inboundMessages).toHaveLength(1);
+    expect(inboundMessages[0].type).toBe(EVALUATION_FRAME_MESSAGE);
+    expect(result).toMatchObject({
+      status: 200,
+      body: {
+        acknowledgement: expect.objectContaining({ status: "success" }),
+      },
     });
   });
 
-  it('returns error when systemId not found during eject', () => {
-    const { router, routes } = createRouter();
-    const deps = createDeps();
-    (deps.player.ejectSystem as jest.Mock).mockReturnValueOnce(false);
+  it("streams evaluation outbound frames to SSE clients", async () => {
+    const { router, routes } = createRouterCapture();
+    const dependencies = createDependencies();
+    registerEvaluationRoutes(router, dependencies);
 
-    registerEvaluationRoutes(router, deps);
+    const streamRoute = findRoute(routes, EVALUATION_STREAM_PATH, "GET");
+    const response = createSseResponse();
 
-    const handler = routes.get('/evaluation/system/eject');
-    const res = { json: jest.fn(), statusCode: 200 };
-    handler?.({ body: { messageId: 'missing', systemId: 'system-missing' } }, res);
+    await streamRoute.handler(createContext({ response }));
 
-    expect(res.statusCode).toBe(404);
-    expect(res.json).toHaveBeenCalledWith({
-      status: 'error',
-      messageId: 'missing',
-      detail: 'System not found',
+    dependencies.outboundBus.publish({
+      type: "frame",
+      frame: { tick: 7, entities: [] },
     });
-  });
 
-  it('emits heartbeat comments on evaluation stream and stops after disconnect', () => {
-    jest.useFakeTimers({ advanceTimers: true });
-
-    const { router, routes } = createRouter();
-    const deps = createDeps();
-
-    registerEvaluationRoutes(router, deps);
-
-    const streamHandler = routes.get('/evaluation/stream');
-    const writes: string[] = [];
-    const res = {
-      writeHead: jest.fn(),
-      flushHeaders: jest.fn(),
-      write: jest.fn((chunk: string) => {
-        writes.push(chunk);
-      }),
-      end: jest.fn(),
-    };
-    const listeners = new Map<string, () => void>();
-    const req = {
-      on: jest.fn((event: string, handler: () => void) => {
-        listeners.set(event, handler);
-      }),
-    };
-
-    streamHandler?.(req, res);
-
-    jest.advanceTimersByTime(15000);
-    expect(res.write).toHaveBeenCalledWith(':heartbeat\n\n');
-
-    const initial = writes.length;
-    listeners.get('close')?.();
-    expect(deps.unsubscribe).toHaveBeenCalled();
-    expect(res.end).toHaveBeenCalled();
-
-    jest.advanceTimersByTime(15000);
-    expect(writes.length).toBe(initial);
-
-    jest.useRealTimers();
+    expect(response.setHeader).toHaveBeenCalledWith("content-type", "text/event-stream");
+    expect(response.write).toHaveBeenCalledWith(expect.stringContaining("\"tick\":7"));
+    expect(response.end).not.toHaveBeenCalled();
   });
 });

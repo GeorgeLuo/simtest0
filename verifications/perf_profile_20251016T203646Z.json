@@ -1,0 +1,7 @@
+{
+  "iterations": 1000,
+  "entities": 500,
+  "componentsPerEntity": 5,
+  "durationMs": 0.05529200000000145,
+  "framesPerSecond": 18085799.030600697
+}

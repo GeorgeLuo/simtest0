@@ -1,25 +1,24 @@
-import type { Operation } from './Operation';
-import type { SystemContext } from '../../systems/System';
-import type { Acknowledgement } from '../outbound/Acknowledgement';
+import { IOPlayer } from "../../IOPlayer.js";
+import { Acknowledgement, errorAck, successAck } from "../outbound/Acknowledgement.js";
+import { InboundMessage } from "./InboundMessage.js";
+import { Operation } from "./Operation.js";
 
-export class MessageHandler<TContext = SystemContext, TPayload = unknown> {
-  private readonly operations: Operation<TContext, TPayload>[];
+export class MessageHandler<TPayload = unknown> {
+  constructor(private readonly operations: Operation<TPayload>[]) {}
 
-  constructor(operations: Operation<TContext, TPayload>[]) {
-    this.operations = operations;
-  }
-
-  handle(context: TContext, payload: TPayload): Acknowledgement {
-    let acknowledgement: Acknowledgement | null = null;
-
-    for (const operation of this.operations) {
-      acknowledgement = operation.execute(context, payload);
+  async handle(
+    player: IOPlayer,
+    message: InboundMessage<TPayload>,
+  ): Promise<Acknowledgement> {
+    try {
+      for (const operation of this.operations) {
+        await operation.execute(player, message);
+      }
+      return successAck(message.id);
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : "Unknown handler error";
+      return errorAck(message.id, reason);
     }
-
-    if (!acknowledgement) {
-      throw new Error('Inbound operations must return an acknowledgement');
-    }
-
-    return acknowledgement;
   }
 }

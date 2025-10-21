@@ -1,9 +1,6 @@
-# Agent Onboarding
+# AGENT ORIENTATION
 
-Before changing tasks, review:
-
-- `instruction_documents/index.md` for document map and table of contents pointer.
-- `instruction_documents/mindset_prompts/index.md` to select the appropriate mindset prompt.
-- `instruction_documents/Describing_Simulation_0_master_prompt_important.md` to confirm the mindset roster (tasker, implementer, integrator, aligner, optimizer) before acting.
-
-All guidance originates from `Describing_Simulation_0.md`. Keep original document unchanged; update the extracted instruction files instead.
+1. Start with `instruction_documents/index.md` to choose the smallest useful context for your task.
+2. Use `instruction_documents/Describing_Simulation_0_table_of_contents.md` when you need the full heading map.
+3. Before acting, load the matching mindset prompt from `instruction_documents/mindset_prompts/index.md`.
+4. Record outcomes in `memory/records/` and update long-lived assumptions in `memory/ways/` when decisions affect future work.

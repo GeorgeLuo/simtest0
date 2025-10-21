@@ -1,16 +1,45 @@
-import { Start } from '../Start';
-import type { IOPlayer } from '../../../IOPlayer';
+import { describe, expect, it, vi } from "vitest";
+import { IOPlayer } from "../../../IOPlayer.js";
+import { InboundMessage } from "../../../messaging/inbound/InboundMessage.js";
+import { MessageHandler } from "../../../messaging/inbound/MessageHandler.js";
+import { StartOperation, START_OPERATION_MESSAGE } from "../Start.js";
 
-describe('Start operation', () => {
-  it('invokes player.start and returns success acknowledgement', () => {
-    const player = {
-      start: jest.fn(),
-    } as unknown as IOPlayer & { start: jest.Mock };
-    const operation = new Start();
+const createMessage = (): InboundMessage<Record<string, unknown>> => ({
+  id: "msg-start",
+  type: START_OPERATION_MESSAGE,
+  payload: { arbitrary: "data" },
+});
 
-    const acknowledgement = operation.execute(player, { messageId: 'msg-1' });
+describe("StartOperation", () => {
+  it("delegates to player.start()", async () => {
+    const startSpy = vi.fn();
+    const playerStub = {
+      start: startSpy,
+      pause: vi.fn(),
+      stop: vi.fn(),
+    } as unknown as IOPlayer;
 
-    expect(player.start).toHaveBeenCalled();
-    expect(acknowledgement).toEqual({ messageId: 'msg-1', status: 'success' });
+    const message = createMessage();
+    const operation = new StartOperation();
+
+    await operation.execute(playerStub, message);
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("yields success acknowledgement through MessageHandler", async () => {
+    const playerStub = {
+      start: vi.fn(),
+      pause: vi.fn(),
+      stop: vi.fn(),
+    } as unknown as IOPlayer;
+
+    const message = createMessage();
+    const handler = new MessageHandler([new StartOperation()]);
+
+    const acknowledgement = await handler.handle(playerStub, message);
+
+    expect(acknowledgement.status).toBe("success");
+    expect(acknowledgement.messageId).toBe(message.id);
   });
 });

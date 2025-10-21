@@ -1,0 +1,52 @@
+Sim-Eval checks started at 20251020T193536Z
+
+=== Clean previous build artifacts ===
+Command: (cd /Users/gluo/Projects/simtest0/workspaces/Describing_Simulation_0 && rm -rf dist)
+
+=== Build TypeScript bundle ===
+Command: (cd /Users/gluo/Projects/simtest0/workspaces/Describing_Simulation_0 && npm run build)
+
+> sim-eval@0.0.1 build
+> tsc -p tsconfig.json
+
+
+=== Run unit tests ===
+Command: (cd /Users/gluo/Projects/simtest0/workspaces/Describing_Simulation_0 && npm test)
+
+> sim-eval@0.0.1 test
+> vitest run
+
+
+ RUN  v1.6.1 /Users/gluo/Projects/simtest0/workspaces/Describing_Simulation_0
+
+ ✓ src/routes/__tests__/router.test.ts  (5 tests) 7ms
+ ✓ src/core/__tests__/ComponentManager.test.ts  (8 tests) 3ms
+ ✓ src/routes/__tests__/codebase.test.ts  (5 tests) 17ms
+ ✓ src/routes/__tests__/evaluation.test.ts  (3 tests) 6ms
+ ✓ src/routes/__tests__/simulation.test.ts  (3 tests) 6ms
+ ✓ src/routes/__tests__/information.test.ts  (3 tests) 10ms
+ ✓ src/core/__tests__/SystemManager.test.ts  (7 tests) 8ms
+ ✓ src/core/evalplayer/__tests__/EvaluationPlayer.test.ts  (4 tests) 219ms
+ ✓ src/core/__tests__/IOPlayer.test.ts  (3 tests) 59ms
+ ✓ src/routes/__tests__/system.test.ts  (3 tests) 11ms
+ ✓ src/core/simplayer/__tests__/SimulationPlayer.test.ts  (5 tests) 227ms
+ ✓ src/server/__tests__/Server.test.ts  (4 tests) 6ms
+ ✓ src/core/__tests__/EntityManager.test.ts  (6 tests) 16ms
+ ✓ src/core/__tests__/Player.test.ts  (5 tests) 3ms
+ ✓ src/core/__tests__/TimeSystem.test.ts  (3 tests) 4ms
+ ✓ src/core/simplayer/operations/__tests__/Start.test.ts  (2 tests) 2ms
+ ✓ src/core/evalplayer/operations/__tests__/InjectFrame.test.ts  (2 tests) 17ms
+ ✓ src/core/simplayer/operations/__tests__/Pause.test.ts  (2 tests) 3ms
+ ✓ src/main.test.ts  (4 tests) 19ms
+ ✓ src/core/__tests__/System.test.ts  (2 tests) 6ms
+ ✓ src/core/simplayer/operations/__tests__/Stop.test.ts  (2 tests) 3ms
+ ✓ src/core/__tests__/Bus.test.ts  (3 tests) 2ms
+
+ Test Files  22 passed (22)
+      Tests  84 passed (84)
+   Start at  12:35:38
+   Duration  1.49s (transform 2.63s, setup 1ms, collect 3.43s, tests 654ms, environment 3ms, prepare 2.32s)
+
+
+Checks completed successfully.
+Log file: /Users/gluo/Projects/simtest0/verifications/checks_20251020T193536Z.log

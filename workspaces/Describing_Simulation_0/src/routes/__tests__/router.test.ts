@@ -1,135 +1,144 @@
-import { PassThrough } from 'stream';
-import { Router } from '../router';
+import { describe, expect, it, vi } from "vitest";
+import { Router, RouteDefinition, RouteContext, RouteResponse } from "../router.js";
 
-describe('Router', () => {
-  it('dispatches registered handlers with base path', () => {
-    const router = new Router({ basePath: '/api' });
-    const handler = jest.fn();
-    router.register('/hello', handler);
+interface ResponseStub {
+  statusCode: number;
+  headers: Record<string, string>;
+  setHeader: (key: string, value: string) => void;
+  end: (body?: string) => void;
+}
 
-    const req = { url: '/api/hello', method: 'GET' } as unknown;
-    const res = {} as unknown;
+const createResponseStub = (): ResponseStub & { end: ReturnType<typeof vi.fn> } => {
+  const headers: Record<string, string> = {};
+  return {
+    statusCode: 200,
+    headers,
+    setHeader: (key: string, value: string) => {
+      headers[key.toLowerCase()] = value;
+    },
+    end: vi.fn(),
+  };
+};
 
-    const dispatched = router.dispatch(req, res);
+const listenerInvoke = async (
+  listener: unknown,
+  request: { method?: string; url?: string },
+  response: ResponseStub,
+) => {
+  expect(typeof listener).toBe("function");
+  const handler = listener as (
+    req: { method?: string; url?: string },
+    res: ResponseStub,
+  ) => Promise<void> | void;
+  await handler(request, response);
+};
 
-    expect(dispatched).toBe(true);
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][0]).toBe(req);
-    expect(handler.mock.calls[0][1]).toBe(res);
-    expect(typeof handler.mock.calls[0][2]).toBe('function');
+describe("Router", () => {
+  it("registers routes without mutating prior snapshots", () => {
+    const router = new Router();
+    const handlerA = vi.fn();
+    const handlerB = vi.fn();
+
+    router.register({ method: "GET", path: "/a", handler: handlerA });
+    router.register({ method: "POST", path: "/b", handler: handlerB });
+
+    const snapshotA = router.getRoutes();
+    expect(snapshotA).toHaveLength(2);
+    expect(snapshotA[0]).toMatchObject({ method: "GET", path: "/a", handler: handlerA });
+
+    const snapshotB = router.getRoutes();
+    expect(snapshotB).not.toBe(snapshotA);
+    expect(snapshotB[1]).toMatchObject({ method: "POST", path: "/b", handler: handlerB });
+
+    snapshotA.push({ method: "DELETE", path: "/c", handler: () => undefined });
+    const snapshotC = router.getRoutes();
+    expect(snapshotC).toHaveLength(2);
   });
 
-  it('returns false when no handler matches', () => {
-    const router = new Router({ basePath: '/api' });
-    const dispatched = router.dispatch({ url: '/api/missing' } as unknown, {} as unknown);
+  it("dispatches requests to matching handler with params and query", async () => {
+    const router = new Router();
+    const capturedContexts: unknown[] = [];
+    const handlerMock = vi.fn<[RouteContext], RouteResponse>((context) => {
+      capturedContexts.push(context);
+      return {
+        status: 200,
+        body: { ok: true },
+      };
+    });
+    const handler: RouteDefinition["handler"] = (context) => handlerMock(context as RouteContext);
 
-    expect(dispatched).toBe(false);
-  });
-
-  it('parses json bodies, attaches query, and ensures json helper', async () => {
-    const router = new Router({ basePath: '/api' });
-    const received: Array<{ body: unknown; query: unknown }> = [];
-
-    router.register('/echo', (req, res) => {
-      received.push({ body: (req as { body?: unknown }).body, query: (req as { query?: unknown }).query });
-      (res as any).json?.({ ok: true });
+    router.register({
+      method: "GET",
+      path: "/resource/:id",
+      handler,
     });
 
-    const req = new PassThrough({ objectMode: false });
-    (req as unknown as { headers: Record<string, string> }).headers = {};
-    (req as unknown as { method: string }).method = 'POST';
-    (req as unknown as { url: string }).url = '/api/echo?foo=bar';
+    const listener = router.createListener();
+    const response = createResponseStub();
 
-    const res: any = {
-      setHeader: jest.fn(),
-      end: jest.fn(),
-      headersSent: false,
-      statusCode: 0,
-    };
+    await listenerInvoke(listener, { method: "GET", url: "/resource/123?filter=latest" }, response);
 
-    const dispatched = router.dispatch(req, res);
-    expect(dispatched).toBe(true);
-
-    req.end(JSON.stringify({ value: 42 }));
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(received).toHaveLength(1);
-    expect(received[0]).toEqual({ body: { value: 42 }, query: { foo: 'bar' } });
-    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/json');
-    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ ok: true }));
+    expect(handlerMock).toHaveBeenCalledTimes(1);
+    const context = capturedContexts[0] as { params: Record<string, string>; query: Record<string, string> };
+    expect(context.params).toEqual({ id: "123" });
+    expect(context.query).toEqual({ filter: "latest" });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toBe("application/json");
+    expect(response.end).toHaveBeenCalledWith(JSON.stringify({ ok: true }));
   });
 
-  it('rejects requests without matching auth token', () => {
-    const router = new Router({ basePath: '/api', authToken: 'secret-token' });
-    const handler = jest.fn();
-    router.register('/protected', handler);
+  it("responds with 404 for missing route", async () => {
+    const router = new Router();
+    const listener = router.createListener();
+    const response = createResponseStub();
 
-    const req = {
-      url: '/api/protected',
-      method: 'GET',
-      headers: {},
-      socket: { remoteAddress: '127.0.0.1' },
-    } as unknown as Parameters<Router['dispatch']>[0];
+    await listenerInvoke(listener, { method: "GET", url: "/missing" }, response);
 
-    const res: any = {
-      setHeader: jest.fn(),
-      end: jest.fn(),
-      headersSent: false,
-      statusCode: 0,
-    };
-
-    const dispatched = router.dispatch(req, res);
-    expect(dispatched).toBe(true);
-    expect(handler).not.toHaveBeenCalled();
-    expect(res.statusCode).toBe(401);
-    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ status: 'error', detail: 'Unauthorized' }));
+    expect(response.statusCode).toBe(404);
+    expect(response.headers["content-type"]).toBe("application/json");
+    expect(response.end).toHaveBeenCalledWith(expect.stringContaining("not found"));
   });
 
-  it('accepts bearer tokens and enforces rate limits', () => {
-    const now = Date.now();
-    const nowSpy = jest.spyOn(Date, 'now')
-      .mockReturnValueOnce(now)
-      .mockReturnValueOnce(now)
-      .mockReturnValueOnce(now)
-      .mockReturnValueOnce(now + 2000);
+  it("wraps handler errors into 500 responses", async () => {
+    const router = new Router();
+    router.register({
+      method: "POST",
+      path: "/explode",
+      handler: () => {
+        throw new Error("boom");
+      },
+    });
 
-    const router = new Router({ basePath: '/api', authToken: 'secret-token', rateLimit: { windowMs: 1000, max: 2 } });
-    const handler = jest.fn();
-    router.register('/limited', handler);
+    const listener = router.createListener();
+    const response = createResponseStub();
 
-    const createReq = () =>
-      ({
-        url: '/api/limited',
-        method: 'GET',
-        headers: { authorization: 'Bearer secret-token' },
-        socket: { remoteAddress: '127.0.0.1' },
-      } as unknown as Parameters<Router['dispatch']>[0]);
+    await listenerInvoke(listener, { method: "POST", url: "/explode" }, response);
 
-    const createRes = () =>
-      ({
-        setHeader: jest.fn(),
-        end: jest.fn(),
-        headersSent: false,
-        statusCode: 0,
-      } as any);
+    expect(response.statusCode).toBe(500);
+    expect(response.headers["content-type"]).toBe("application/json");
+    expect(response.end).toHaveBeenCalledWith(expect.stringContaining("boom"));
+  });
 
-    expect(router.dispatch(createReq(), createRes())).toBe(true);
-    expect(handler).toHaveBeenCalledTimes(1);
+  it("leaves response open when handler manages streaming manually", async () => {
+    const router = new Router();
+    let invoked = false;
+    const handler: RouteDefinition["handler"] = () => {
+      // handler intentionally returns void to signal manual streaming
+      invoked = true;
+    };
 
-    expect(router.dispatch(createReq(), createRes())).toBe(true);
-    expect(handler).toHaveBeenCalledTimes(2);
+    router.register({
+      method: "GET",
+      path: "/stream",
+      handler,
+    });
 
-    const throttledRes = createRes();
-    expect(router.dispatch(createReq(), throttledRes)).toBe(true);
-    expect(handler).toHaveBeenCalledTimes(2);
-    expect(throttledRes.statusCode).toBe(429);
-    expect(throttledRes.end).toHaveBeenCalledWith(JSON.stringify({ status: 'error', detail: 'Too Many Requests' }));
+    const listener = router.createListener();
+    const response = createResponseStub();
 
-    const resetRes = createRes();
-    expect(router.dispatch(createReq(), resetRes)).toBe(true);
-    expect(handler).toHaveBeenCalledTimes(3);
+    await listenerInvoke(listener, { method: "GET", url: "/stream" }, response);
 
-    nowSpy.mockRestore();
+    expect(invoked).toBe(true);
+    expect(response.end).not.toHaveBeenCalled();
   });
 });

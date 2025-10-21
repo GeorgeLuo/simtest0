@@ -1,12 +1,10 @@
-# Mindset Prompts Index
+# mindset_prompts Index
 
-Use these prompts to align with the expected mindset before beginning a task.
+Load the appropriate mindset prompt before executing a task so the right decision frame is active.
 
-## Prompts
-- `Describing_Simulation_0_tasker_prompt.md` — Task generation mindset: how to stage work and write memories.
-- `Describing_Simulation_0_implementer_prompt.md` — Implementation mindset: executing tasks with methodology discipline.
-- `Describing_Simulation_0_integrator_prompt.md` — Integration mindset: validate usage from API surface without code deep dives.
-- `Describing_Simulation_0_aligner_prompt.md` — Alignment mindset: confirm workspace structure and logic match the spec.
-- `Describing_Simulation_0_optimizer_prompt.md` — Optimization mindset: improve runtime and memory while preserving behavior.
-
-Parent document: `../Describing_Simulation_0.md`.
+- `Describing_Simulation_0_tasker_prompt.md`: Guidance for generating and staging tasks across phases.
+- `Describing_Simulation_0_implementer_prompt.md`: Execution posture for coding tasks and journaling expectations.
+- `Describing_Simulation_0_packager_prompt.md`: Packaging mindset ensuring start-to-finish usability and start script readiness.
+- `Describing_Simulation_0_outsider_prompt.md`: Black-box evaluation mindset documenting observable behavior and discoverability gaps.
+- `Describing_Simulation_0_aligner_prompt.md`: Checklist for structural and behavioral conformance to the spec.
+- `Describing_Simulation_0_optimizer_prompt.md`: Optimization mindset focused on runtime and memory trade-offs without behavior drift.
