@@ -14,17 +14,21 @@ This document will serve as the source of truth for task generation. Bootstrappi
 
 - Implementer section of Agent Prompts section to a file with a name formed from the name of this document appended with *_implementer_prompt*
 
-- Integrator section of Agent Prompts section to a file with a name formed from the name of this document appended with *_integrator_prompt*
+- Packager section of Agent Prompts section to a file with a name formed from the name of this document appended with *_packager_prompt*
+
+- Outsider section of Agent Prompts section to a file with a name formed from the name of this document appended with *_outsider_prompt*
 
 - Master Prompt section to a file with a name formed from the name of this document appended with *_master_prompt_important*
 
+- Integration section of Codifying Simulations to a file with a name formed from the name of this document appended with *_outsider_integration*
+
 - API Map section to a file with a name formed from the name of this document appended with *_api_map*
+
+- Schedule of Work section to a file with a name formed from the name of this document appended with *_schedule_of_work*
 
 - Codifying Simulations section to a file with a name formed from the name of this document appended with *_codifying_simulations*
 
 - The text portion from the beginning of this document to the beginning of Codifying Simulations to a file with a name formed from the name of this document appended with *_theory*
-
-- Schedule of Work section to a file with a name formed from the name of this document appended with *_schedule_of_work*
 
 This file as-is should be transferred to *instruction_documents* and the structure (hierarchical header leveling) should be written to a table of contents, serving as a pseudo-index for topics. Preference is agents should take read segmented texts over the entire source after bootstrapping is completed (a point to emphasize in the *instruction_documents *index file).
 
@@ -45,12 +49,12 @@ The following maps the structure of the repository following bootstrapping.
 │   ├── mindset_prompts/
 │   │   ├── <this document's file name>_tasker_prompt.md
 │   │   ├── <this document's file name>_implementer_prompt.md
-│   │   ├── <this document's file name>_integrator_prompt.md
+│   │   ├── <this document's file name>_packager_prompt.md
+│   │   ├── <this document's file name>_outsider_prompt.md
 │   │   ├── <this document's file name>_aligner_prompt.md
 │   │   ├── <this document's file name>_optimizer_prompt.md
 │   │   └── index.md
-`│   ├── <this document’s file name>``_master_prompt_important``.md`
-
+│   ├── <this document's file name>_master_prompt_important.md
 │   ├── <this document's file name>_bootstraps.md
 │   ├── <this document's file name>_repository_structure.md
 │   ├── <this document's file name>_code_structure.md
@@ -58,12 +62,14 @@ The following maps the structure of the repository following bootstrapping.
 │   ├── <this document's file name>_codifying_simulations.md
 │   ├── <this document's file name>_theory.md
 │   ├── <this document's file name>_implementation_guidelines.md
+│   ├── <this document's file name>_outsider_integration.md
 │   ├── <this document's file name>_schedule_of_work.md
 │   ├── <this document's file name>_table_of_contents.md
 │   ├── <this file in original form copied>.md
 │   └── index.md
 ├── tools/
 │   ├── index.md
+│   ├── start.sh
 │   └── run_integration.sh
 ├── workspaces/
 │   └── <this document's file name>/
@@ -97,7 +103,9 @@ Ways memories capture assumptions extracted from this document that went into th
 
 #### Records
 
-Records are text files of the changes to be concretized. The filename should be a timestamp prepending a short title of changes. They are write-only. Records should be thought of as compression of the description of the state of the implementation, with more information density towards recent developments. In this way, a sequence of records should indicate the path towards completeness.
+Records are text files of the changes to be concretized. The filename should be a timestamp prepending a short title of changes and the author’s mindset. In this way, each file should obviously belong to a train of thought of a mindset.
+
+They are write-only. Records should be thought of as compression of the description of the state of the implementation, with more information density towards recent developments. In this way, a sequence of records should indicate the path towards completeness.
 
 #### Exceptions
 
@@ -106,5 +114,3 @@ The exceptions directory catalogs decisions which disagree with the spec. Except
 ### Checks
 
 The verifier is a script (*checks.sh*) that resides in the root directory (create this file if it does not exist). This is the access point to testing of the present artifact. All testing should be linked to the execution of the verifier script, taking care of the relative path to the artifact workspace. Running the script should validate the setup of the repository as well as artifact implementation, with an resultant output file written to a verifications directory (create if this does not exist). Each verification output file should be named with a timestamp.
-
-At this point all files in the directory structure should be understood, except those relevant to integration, which will be wholly explained later.

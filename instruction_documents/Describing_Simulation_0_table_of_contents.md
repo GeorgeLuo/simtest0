@@ -64,13 +64,6 @@
       - H4 Plugins
   - H2 Integration
     - H3 Artifacts
-    - H3 Steps
-      - H4 Build & Start Service
-      - H4 Learn Usage
-      - H4 Validate State Before Start of Simulation
-      - H4 Inject Valid Systems and Components
-      - H4 Start of Simulation
-      - H4 Validate Behavior
 - H1 Agentic Instructions
   - H2 Discoverability
   - H2 Bootstraps
@@ -86,7 +79,8 @@
     - H3 Tasker
       - H4 Task Staging
     - H3 Implementer
-    - H3 Integrator
+    - H3 Packager
+    - H3 Outsider
     - H3 Aligner
     - H3 Optimizer
     - H3 Master Prompt
@@ -115,3 +109,8 @@
     - H3 System
       - H4 Health
       - H4 Status
+- H1 Problems
+    - H3 Analytical Intractability
+    - H3 Computational Representability
+    - H3 Problem Selection
+    - H3 Case Study

@@ -501,49 +501,15 @@ Real-time injection of operations, system and component source code is a two-ste
 
 Following the implementation of the codebase described in codifying simulations, we implement an integration test to reveal gaps in execution and prove usability from the vantage of a user without prior knowledge. Usage can be knowable through probing the service.
 
-This stage is intended to massage the codebase towards spec alignment and the general pattern should be to test and make changes to the source code; if any step fails, resolve in the source code workspace.
+This stage is intended to massage the codebase towards spec alignment and the general pattern should be to test and make changes to the source code; an outsider makes observations and the implementer makes changes based on feedback.
+
+The big picture is we are assuming the role of a first-time user evaluating the project with a simulation in mind: temperature regulation. The user is curious and technically capable in modeling complex systems and hypothesizing their intermittent states. The user expects to be able to validate outputs of the product, that the simulation emits data approximately matching expectations.
+
+The start script within the tools directory is considered prior knowledge. The outsider knows by running the script, the product is ready for testing.
 
 ### Artifacts
 
 The steps to run integration should also be captured in the *run_integration.sh* script with comments for each step enumerated below.
-
-### Steps
-
-Prior Knowledge Assumption (PKA) will be used throughout this section to describe the assumed basis of familiarity with the project. Assume that each step aggregates on the PKA of previous steps.
-
-The big picture is we are assuming the role of a first-time user evaluating the project with a simulation in mind. The simulation to construct is a basic temperature control unit. This user should be able to derive the process to accomplish the goal without reviewing documents outside of the api surface. Capture sim-eval output as artifacts and computationally validate the simulation behavior with an artifact as proof.
-
-#### Build & Start Service
-
-The first step is to install dependencies and start the sim-eval service. Completeness of this step means output produces which port and address the service is running on.
-
-PKA: none, installation and running the service should be trivial.
-
-#### Learn Usage
-
-The second step is to validate that the api has a discoverable surface. The root domain should display the available api segments: simulation, evaluation, and codebase.
-
-PKA: the user should only have the sense to probe the root domain.
-
-#### Validate State Before Start of Simulation
-
-The third step is to validate that the sim-eval instance has not started and no events are emitted.
-
-PKA: from previous steps.
-
-#### Inject Valid Systems and Components
-
-The fourth step is to inject systems and components of the simulation. Read through documentation to understand system and component design, then navigate through the codebase for specific implementation patterns. This step is concluded when the sim-eval server accepts the injected files.
-
-PKA: from previous steps.
-
-#### Start of Simulation
-
-The fifth step is to start the simulation and verify behavior of event streams.
-
-#### Validate Behavior
-
-Determine if the streams produce actionable information. The script(s) should be stored under tools of the root directory, and proof artifacts should be stored in verifications of the root directory.
 
 # Agentic Instructions
 
@@ -577,17 +543,21 @@ This document will serve as the source of truth for task generation. Bootstrappi
 
 - Implementer section of Agent Prompts section to a file with a name formed from the name of this document appended with *_implementer_prompt*
 
-- Integrator section of Agent Prompts section to a file with a name formed from the name of this document appended with *_integrator_prompt*
+- Packager section of Agent Prompts section to a file with a name formed from the name of this document appended with *_packager_prompt*
+
+- Outsider section of Agent Prompts section to a file with a name formed from the name of this document appended with *_outsider_prompt*
 
 - Master Prompt section to a file with a name formed from the name of this document appended with *_master_prompt_important*
 
+- Integration section of Codifying Simulations to a file with a name formed from the name of this document appended with *_outsider_integration*
+
 - API Map section to a file with a name formed from the name of this document appended with *_api_map*
+
+- Schedule of Work section to a file with a name formed from the name of this document appended with *_schedule_of_work*
 
 - Codifying Simulations section to a file with a name formed from the name of this document appended with *_codifying_simulations*
 
 - The text portion from the beginning of this document to the beginning of Codifying Simulations to a file with a name formed from the name of this document appended with *_theory*
-
-- Schedule of Work section to a file with a name formed from the name of this document appended with *_schedule_of_work*
 
 This file as-is should be transferred to *instruction_documents* and the structure (hierarchical header leveling) should be written to a table of contents, serving as a pseudo-index for topics. Preference is agents should take read segmented texts over the entire source after bootstrapping is completed (a point to emphasize in the *instruction_documents *index file).
 
@@ -608,12 +578,12 @@ The following maps the structure of the repository following bootstrapping.
 │   ├── mindset_prompts/
 │   │   ├── <this document's file name>_tasker_prompt.md
 │   │   ├── <this document's file name>_implementer_prompt.md
-│   │   ├── <this document's file name>_integrator_prompt.md
+│   │   ├── <this document's file name>_packager_prompt.md
+│   │   ├── <this document's file name>_outsider_prompt.md
 │   │   ├── <this document's file name>_aligner_prompt.md
 │   │   ├── <this document's file name>_optimizer_prompt.md
 │   │   └── index.md
-`│   ├── <this document’s file name>``_master_prompt_important``.md`
-
+│   ├── <this document's file name>_master_prompt_important.md
 │   ├── <this document's file name>_bootstraps.md
 │   ├── <this document's file name>_repository_structure.md
 │   ├── <this document's file name>_code_structure.md
@@ -621,12 +591,14 @@ The following maps the structure of the repository following bootstrapping.
 │   ├── <this document's file name>_codifying_simulations.md
 │   ├── <this document's file name>_theory.md
 │   ├── <this document's file name>_implementation_guidelines.md
+│   ├── <this document's file name>_outsider_integration.md
 │   ├── <this document's file name>_schedule_of_work.md
 │   ├── <this document's file name>_table_of_contents.md
 │   ├── <this file in original form copied>.md
 │   └── index.md
 ├── tools/
 │   ├── index.md
+│   ├── start.sh
 │   └── run_integration.sh
 ├── workspaces/
 │   └── <this document's file name>/
@@ -660,7 +632,9 @@ Ways memories capture assumptions extracted from this document that went into th
 
 #### Records
 
-Records are text files of the changes to be concretized. The filename should be a timestamp prepending a short title of changes. They are write-only. Records should be thought of as compression of the description of the state of the implementation, with more information density towards recent developments. In this way, a sequence of records should indicate the path towards completeness.
+Records are text files of the changes to be concretized. The filename should be a timestamp prepending a short title of changes and the author’s mindset. In this way, each file should obviously belong to a train of thought of a mindset.
+
+They are write-only. Records should be thought of as compression of the description of the state of the implementation, with more information density towards recent developments. In this way, a sequence of records should indicate the path towards completeness.
 
 #### Exceptions
 
@@ -670,11 +644,9 @@ The exceptions directory catalogs decisions which disagree with the spec. Except
 
 The verifier is a script (*checks.sh*) that resides in the root directory (create this file if it does not exist). This is the access point to testing of the present artifact. All testing should be linked to the execution of the verifier script, taking care of the relative path to the artifact workspace. Running the script should validate the setup of the repository as well as artifact implementation, with an resultant output file written to a verifications directory (create if this does not exist). Each verification output file should be named with a timestamp.
 
-At this point all files in the directory structure should be understood, except those relevant to integration, which will be wholly explained later.
-
 ## Agent Prompts
 
-There are 2 mindsets defined for an agent to execute upon when building the repository during the first two phases. One to generate tasks, and one who implements tasks. During phase 3, the integrator is introduced as an *outsider* to massage the implementation towards usefulness. In phase 4, the aligner is introduced to audit the workspace for correctness regarding directory structure as outlined in the spec and business logic according to per-file specifications. Phase 5 adds the optimizer to improve efficiency without affecting behavior.
+The following are specific mindsets to adopt when completing a task.
 
 ### Tasker
 
@@ -712,13 +684,19 @@ When you are responsible for executing tasks, do so with respect to development 
 
 Important instruction documents: Schedule of Work, Codifying Simulations, Implementation Guidelines, API Map
 
-### Integrator
+### Packager
 
-The integrator mindset, when interrogating usage, acts as a third party without visibility of the full implementation document. This is not enforced with context management but rather intent management of the agent, for the reason that the integrator is also responsible for massaging the source code workspace.
+The packager is responsible for massaging the workspace artifact into an easily deployable state. This means in a few lines, the artifact can be up and running for an uninitiated user. As the packager follows implementation, the mindset resolves build and configuration issues as a focal point. The package produces a functional start script within the tools directory, running the product in the background and enumerating the access point.
 
-Practically this means you should not read the source code to understand usage, and instead base actions from the discoverable surface of the api.
+### Outsider
 
-Important instruction documents: Codifying Simulations, API Map
+The outsider mindset operates without any knowledge of the source code or spec (ignoring instruction documents besides this mindset definition and workspace source code in context). The outsider may create memories to track learnings for a consistent thought path, effectively resuming from a state of learned information. The outsider approaches sim-eval as a black box, treating only consumer facing documentation and the api as knowledge within bounds.
+
+The outsider should identify issues of discoverability and mismatched expectations of a fresh user and convey this to an implementing mindset; documenting behavioral observations, including artifacts towards reproduction of issues and not resolving them.
+
+Refer to the outsider integration instruction document for clarity on your specific directive.
+
+Important instruction documents: Integration
 
 ### Aligner
 
@@ -729,6 +707,8 @@ The aligner is charged with comparing the spec’s directory tree with the state
 - All business logic of implementations match the file descriptions of the specs
 
 - There are no extra source files or directories not found in the spec
+
+- All endpoints from the API map align with the spec
 
 Alignment is strict, meaning filenames must match for posterity sake. Practically, if a visitor is looking for any file from the spec, that exact file should be present in the correct place in the directory.
 
@@ -742,7 +722,7 @@ In executing optimization, prioritize run-time complexity over memory. Prioritiz
 
 ### Master Prompt
 
-Based on the directive and inherited context you have been given, determine your mindset (tasker, implementer, integrator, aligner, optimizer), familiarize with that mindset and execute as that mindset given the state of the project. When a task is completed, explicitly hand off responsibility of progress to the appropriate mindset by writing the delegation in the final output.
+Based on the directive and inherited context you have been given, determine your mindset (tasker, implementer, packager, outsider, aligner, optimizer), familiarize with that mindset through instruction documents and memories associated with the mindset and execute as that mindset given the state of the project. When a task is completed, explicitly hand off responsibility of progress to the appropriate mindset by writing the delegation in the final output.
 
 # Implementation Guidelines
 
@@ -820,15 +800,21 @@ Phase 2 — Artifact Creation
 
 - Validate until all tests pass.
 
-Phase 3 — Integration Test
+Phase 3 — Packaging
 
-- Implement integration script
+- Implement installation and execution of the artifact
+
+- Rectify emergent build issues
+
+Phase 4 — Integration Design
+
+- Implement integration script with emphasis on discoverability
 
 - Run test and correct gaps between execution and spec until all gaps are resolved
 
 - Produce artifacts as proof of implementation correctness
 
-Phase 4 — Structural & Behavioral Alignment
+Phase 5 — Structural & Behavioral Alignment
 
 - Check codebase against directory structure
 
@@ -838,7 +824,11 @@ Phase 4 — Structural & Behavioral Alignment
 
 - Descriptions of files match source code
 
-Phase 5 — Optimization
+- Check routes against API Map
+
+- No route is un-implemented and all paths match the spec
+
+Phase 6 — Optimization
 
 - Inspect codebase for optimizations run-time complexity and memory and refactor, validating changes do not break behavior using the integration test
 
@@ -949,3 +939,47 @@ The system endpoints expose health and state information of the sim-eval service
 #### Status
 
 (22) The status route reports the runtime status of both simulation and evaluation players, indicating whether they are running, paused, or idle.
+
+# Problems
+
+Before approaching specific applications of sim-eval, we should define what qualities of problems uniquely benefit from simulation.
+
+### Analytical Intractability
+
+We can intuit there are problems that are (or are more) *non-solvable*. In a mathematical sense, a system of equations where the values of the variables cannot be derived does not have a closed-form solution. The problem is *analytically intractable*. In control theory terms, the problem is *time-variant*, *nonlinear*.
+
+### Computational Representability
+
+At the same time, we can see problems that can be represented precisely as systems of equations can bear more sufficient solutions. So, problems with less *unknown unknowns* are more *computationally representable*; the closer a model’s formal components mirror the underlying causal reality described, the more valid and predictive the model is.
+
+### Problem Selection
+
+For our purposes, analytically tractable problems are a subset of computationally representable problems, but a problem that is analytically tractable lends to deterministic solvers (a calculator is especially suited for solving arithmetic). What are problems suited for simulation, both analytically intractable and computationally representable?
+
+In the following section, we will step through scenarios using what we’ve built to formulate strategies that have broad application towards simulation engineering.
+
+### Case Study
+
+Questions are formed of a specific objective and intent to discover causal values of levers to achieve the objective. Simulation is used to search for the specific objective from the universe of possible forms of the objective. Each path of this search, a single permutation of the effecting values is effectively a hypothetical (and hypotheticals can be simulated).
+
+Effectively we’re describing a flow: questions suggest some conceptual space for *levers*, another space for *objectives* and between them a space for *paths* from levers to objectives. A heuristics-based approach, through domain knowledge, can produce a path that is more efficient than exhaustive permutation sweeps and rigid calculation. 
+
+For example, if asked to sum two large numbers, 390234 and 512983, rather than starting with the least-significant digits and carrying over, we can intuit the first number is close to 400000 and the second 500000. We can sense the answer is around 900000. This approach is efficient but critically without precision; is it wholly useless?
+
+Let’s start with a question that is opaque to a non-technical audience and trivial to others with domain knowledge.
+
+**What coil and core geometry produces a uniform 0.5 T magnetic field within a 30 mm cubic target volume while minimizing copper loss and core mass?**
+
+Without domain knowledge, we can recognize:
+
+1. The solution is a description of “coil and core geometry”
+
+2. The solution is validated by producing “a uniform 0.5 T magnetic field within a 30 mm cubic target volume” in some representational form
+
+3. The best solution of all possible solutions minimizes “copper loss and core mass”
+
+1 and 3 pertain to the conceptual space of objectives. 2 pertains to the space of paths; how we validate a solution is a path through which the solution is derived.
+
+This proposition is generated by an LLM (Soln. 1.1):
+
+**Gapped C-yoke electromagnet, 30 mm gap, 60–80 mm Rogowski poles, ~400 turns × 30 A → 0.5 T uniform field, ~180 W loss.**

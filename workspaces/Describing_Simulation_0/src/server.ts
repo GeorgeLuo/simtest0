@@ -41,6 +41,26 @@ export class Server {
     }
 
     this.httpServer = http.createServer((req, res) => {
+      const path = normalizeUrlPath(typeof req?.url === 'string' ? req.url : undefined);
+      if (path === '/' && (req?.method === undefined || req.method === 'GET')) {
+        if (typeof res.writeHead === 'function') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+        }
+        if (typeof res.end === 'function') {
+          res.end(
+            JSON.stringify({
+              status: 'success',
+              message: 'SimEval service ready. Visit /api for endpoint metadata and documentation links.',
+              links: {
+                api: '/api',
+                information: '/api/information/api',
+              },
+            }),
+          );
+        }
+        return;
+      }
+
       const handled = this.router.dispatch(req, res);
       if (!handled) {
         if (typeof res.writeHead === 'function') {
@@ -136,4 +156,21 @@ export function createServer(options: BootstrapOptions): Server {
   });
 
   return new Server({ port: options.port, host: options.host, router });
+}
+
+function normalizeUrlPath(url: string | undefined): string {
+  if (!url) {
+    return '/';
+  }
+
+  const [path] = url.split('?');
+  if (!path) {
+    return '/';
+  }
+
+  if (path === '/') {
+    return '/';
+  }
+
+  return path.replace(/\/+$/, '') || '/';
 }

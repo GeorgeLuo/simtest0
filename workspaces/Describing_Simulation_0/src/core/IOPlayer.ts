@@ -22,7 +22,6 @@ export class IOPlayer extends Player {
   private readonly frameFilter: FrameFilter;
   private readonly handlers: InboundHandlerRegistry<IOPlayer>;
   private readonly unsubscribeInbound: () => void;
-  private readonly entityBuffer: Entity[] = [];
   private readonly componentBuffer: ComponentInstance<unknown>[] = [];
 
   constructor(
@@ -82,13 +81,12 @@ export class IOPlayer extends Player {
 
   private createFrameSnapshot(tick: number, context: SystemContext): Frame {
     const snapshot: Record<string, Record<string, unknown>> = Object.create(null);
+    const entityManager = context.entityManager;
+    const componentManager = context.componentManager;
 
-    this.populateEntityBuffer(context.entityManager);
-    for (let index = 0; index < this.entityBuffer.length; index += 1) {
-      const entity = this.entityBuffer[index];
-      const entityKey = String(entity);
-      snapshot[entityKey] = this.collectComponents(entity, context.componentManager);
-    }
+    entityManager.forEach((entity: Entity) => {
+      snapshot[String(entity)] = this.collectComponents(entity, componentManager);
+    });
 
     return {
       tick,
@@ -113,12 +111,6 @@ export class IOPlayer extends Player {
     return record;
   }
 
-  private populateEntityBuffer(entityManager: SystemContext['entityManager']): void {
-    this.entityBuffer.length = 0;
-    entityManager.forEach((entity) => {
-      this.entityBuffer.push(entity);
-    });
-  }
 }
 
 function extractMessageId(payload: unknown): string | null {
