@@ -1,9 +1,6 @@
-import { IOPlayer } from "../../IOPlayer.js";
-import { InboundMessage } from "./InboundMessage.js";
+import type { SystemContext } from '../../systems/System';
+import type { Acknowledgement } from '../outbound/Acknowledgement';
 
-export interface Operation<TPayload = unknown> {
-  execute(
-    player: IOPlayer,
-    message: InboundMessage<TPayload>,
-  ): void | Promise<void>;
+export interface Operation<TContext = SystemContext, TPayload = unknown> {
+  execute(context: TContext, payload: TPayload): Acknowledgement;
 }

@@ -1,155 +1,141 @@
-import { IncomingMessage, ServerResponse } from "node:http";
-import {
-  EVALUATION_FRAME_MESSAGE,
-  EvaluationPlayer,
-} from "../core/evalplayer/EvaluationPlayer.js";
-import { Bus } from "../core/messaging/Bus.js";
-import { InboundMessage } from "../core/messaging/inbound/InboundMessage.js";
-import { OutboundMessage } from "../core/messaging/outbound/OutboundMessage.js";
-import {
-  RouteContext,
-  RouteHandler,
-  Router,
-} from "./router.js";
-import {
-  publishWithAcknowledgement,
-  streamOutboundFrames,
-} from "./helpers.js";
+import type { Router } from './router';
+import type { EvaluationPlayer, FrameRecord } from '../core/evalplayer/EvaluationPlayer';
+import type { Bus } from '../core/messaging/Bus';
+import type { Frame } from '../core/messaging/outbound/Frame';
+import type { Acknowledgement } from '../core/messaging/outbound/Acknowledgement';
+import type { System } from '../core/systems/System';
+import type { ComponentType } from '../core/components/ComponentType';
 
-export const EVALUATION_ROUTE_PREFIX = "/evaluation";
-export const EVALUATION_FRAME_PATH = `${EVALUATION_ROUTE_PREFIX}/frame`;
-export const EVALUATION_SYSTEM_PATH = `${EVALUATION_ROUTE_PREFIX}/system`;
-export const EVALUATION_SYSTEM_ID_PATH = `${EVALUATION_SYSTEM_PATH}/:id`;
-export const EVALUATION_COMPONENT_PATH = `${EVALUATION_ROUTE_PREFIX}/component`;
-export const EVALUATION_COMPONENT_ID_PATH = `${EVALUATION_COMPONENT_PATH}/:id`;
-export const EVALUATION_STREAM_PATH = `${EVALUATION_ROUTE_PREFIX}/stream`;
+type OutboundMessage = Frame | Acknowledgement;
 
-const EVALUATION_SYSTEM_INJECT_MESSAGE = "evaluation.system.inject";
-const EVALUATION_SYSTEM_EJECT_MESSAGE = "evaluation.system.eject";
-const EVALUATION_COMPONENT_INJECT_MESSAGE = "evaluation.component.inject";
-const EVALUATION_COMPONENT_EJECT_MESSAGE = "evaluation.component.eject";
-
-export interface EvaluationRouteDependencies {
-  readonly player: EvaluationPlayer;
-  readonly inboundBus: Bus<InboundMessage>;
-  readonly outboundBus: Bus<OutboundMessage>;
-  readonly createMessageId: () => string;
-  readonly acknowledgementTimeoutMs?: number;
+export interface EvaluationSystemDescriptor {
+  modulePath: string;
+  exportName?: string;
 }
 
-export function registerEvaluationRoutes(
-  router: Router,
-  dependencies: EvaluationRouteDependencies,
-): void {
-  router.register({
-    method: "POST",
-    path: EVALUATION_FRAME_PATH,
-    handler: createMessageHandler(
-      dependencies,
-      EVALUATION_FRAME_MESSAGE,
-    ),
-  });
-
-  router.register({
-    method: "POST",
-    path: EVALUATION_SYSTEM_PATH,
-    handler: createMessageHandler(
-      dependencies,
-      EVALUATION_SYSTEM_INJECT_MESSAGE,
-    ),
-  });
-
-  router.register({
-    method: "DELETE",
-    path: EVALUATION_SYSTEM_ID_PATH,
-    handler: createMessageHandler(
-      dependencies,
-      EVALUATION_SYSTEM_EJECT_MESSAGE,
-      (context) => combinePayloadWithParams(context),
-    ),
-  });
-
-  router.register({
-    method: "POST",
-    path: EVALUATION_COMPONENT_PATH,
-    handler: createMessageHandler(
-      dependencies,
-      EVALUATION_COMPONENT_INJECT_MESSAGE,
-    ),
-  });
-
-  router.register({
-    method: "DELETE",
-    path: EVALUATION_COMPONENT_ID_PATH,
-    handler: createMessageHandler(
-      dependencies,
-      EVALUATION_COMPONENT_EJECT_MESSAGE,
-      (context) => combinePayloadWithParams(context),
-    ),
-  });
-
-  router.register({
-    method: "GET",
-    path: EVALUATION_STREAM_PATH,
-    handler: (context) => {
-      streamOutboundFrames({
-        request: context.request as IncomingMessage | null | undefined,
-        response: context.response as ServerResponse,
-        outboundBus: dependencies.outboundBus,
-        eventName: "evaluation",
-      });
-    },
-  });
+export interface EvaluationComponentDescriptor {
+  modulePath: string;
+  exportName?: string;
 }
 
-function createMessageHandler(
-  dependencies: EvaluationRouteDependencies,
-  messageType: string,
-  payloadFactory: (context: RouteContext) => unknown = extractBody,
-): RouteHandler {
-  return async (context) => {
-    const acknowledgement = await publishWithAcknowledgement(
-      {
-        inboundBus: dependencies.inboundBus,
-        outboundBus: dependencies.outboundBus,
-        createMessageId: dependencies.createMessageId,
-      },
-      messageType,
-      {
-        payload: payloadFactory(context),
-        acknowledgementTimeoutMs: dependencies.acknowledgementTimeoutMs,
-      },
-    );
+type ControllableEvaluationPlayer = EvaluationPlayer & {
+  injectSystem: (payload: { system: System }) => string;
+  ejectSystem: (payload: { system?: System; systemId?: string }) => boolean;
+};
 
-    const status =
-      acknowledgement.status === "success" ? 200 : 500;
+export interface EvaluationRouteDeps {
+  player: ControllableEvaluationPlayer;
+  outboundBus: Bus<OutboundMessage>;
+  loadSystem: (descriptor: EvaluationSystemDescriptor) => Promise<System>;
+  loadComponent: (descriptor: EvaluationComponentDescriptor) => Promise<ComponentType<unknown>>;
+}
 
-    return {
-      status,
-      body: { acknowledgement },
-    };
+export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDeps): void {
+  const respondSuccess = (res: any, messageId?: string, extras: Record<string, unknown> = {}) => {
+    res.json?.({ status: 'success', messageId, ...extras });
   };
-}
 
-function extractBody(
-  context: RouteContext,
-): unknown {
-  return context.body === undefined ? {} : context.body;
-}
+  const respondError = (res: any, messageId: string | undefined, detail: string, status = 400) => {
+    res.statusCode = status;
+    res.json?.({ status: 'error', messageId, detail });
+  };
 
-function combinePayloadWithParams(
-  context: RouteContext,
-): unknown {
-  const body = context.body;
-  const params = context.params ?? {};
+  router.register('/evaluation/frame', (req: any, res: any) => {
+    const payload = req.body as FrameRecord & { messageId?: string };
+    deps.player.injectFrame(payload);
+    respondSuccess(res, payload.messageId);
+  });
 
-  if (body === undefined) {
-    return { ...params };
-  }
+  router.register('/evaluation/system/inject', async (req: any, res: any) => {
+    const messageId = req.body?.messageId as string | undefined;
+    const descriptor = req.body?.system as EvaluationSystemDescriptor | undefined;
 
-  if (typeof body === "object" && body !== null && !Array.isArray(body)) {
-    return { ...(body as Record<string, unknown>), ...params };
-  }
+    if (!descriptor?.modulePath) {
+      respondError(res, messageId, 'Missing system descriptor');
+      return;
+    }
 
-  return { body, ...params };
+    try {
+      const system = await deps.loadSystem(descriptor);
+      const systemId = deps.player.injectSystem({ system });
+      respondSuccess(res, messageId, { systemId });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'System injection failed';
+      respondError(res, messageId, detail);
+    }
+  });
+
+  router.register('/evaluation/system/eject', (req: any, res: any) => {
+    const messageId = req.body?.messageId as string | undefined;
+    const systemId = typeof req.body?.systemId === 'string' ? req.body.systemId : undefined;
+    if (!systemId) {
+      respondError(res, messageId, 'Missing system identifier');
+      return;
+    }
+
+    const removed = deps.player.ejectSystem({ systemId });
+    if (!removed) {
+      respondError(res, messageId, 'System not found', 404);
+      return;
+    }
+
+    respondSuccess(res, messageId, { systemId });
+  });
+
+  router.register('/evaluation/component/inject', async (req: any, res: any) => {
+    const messageId = req.body?.messageId as string | undefined;
+    const descriptor = req.body?.component as EvaluationComponentDescriptor | undefined;
+
+    if (!descriptor?.modulePath) {
+      respondError(res, messageId, 'Missing component descriptor');
+      return;
+    }
+
+    try {
+      const component = await deps.loadComponent(descriptor);
+      deps.player.registerComponent(component);
+      respondSuccess(res, messageId);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Component injection failed';
+      respondError(res, messageId, detail);
+    }
+  });
+
+  router.register('/evaluation/component/eject', (req: any, res: any) => {
+    const messageId = req.body?.messageId as string | undefined;
+    const componentId = req.body?.componentId as string | undefined;
+
+    if (!componentId) {
+      respondError(res, messageId, 'Missing component identifier');
+      return;
+    }
+
+    deps.player.removeComponent(componentId);
+    respondSuccess(res, messageId);
+  });
+
+  router.register('/evaluation/stream', (req: any, res: any) => {
+    res.writeHead?.(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    res.flushHeaders?.();
+
+    const heartbeatInterval = setInterval(() => {
+      res.write?.(':heartbeat\n\n');
+    }, 15000);
+
+    const unsubscribe = deps.outboundBus.subscribe((message) => {
+      res.write?.(`data: ${JSON.stringify(message)}\n\n`);
+    });
+
+    req.on?.('close', () => {
+      unsubscribe?.();
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
+      res.end?.();
+    });
+  });
 }

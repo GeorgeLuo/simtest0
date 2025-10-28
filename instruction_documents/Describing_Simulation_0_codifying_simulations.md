@@ -363,12 +363,46 @@ Real-time injection of operations, system and component source code is a two-ste
 
 Following the implementation of the codebase described in codifying simulations, we implement an integration test to reveal gaps in execution and prove usability from the vantage of a user without prior knowledge. Usage can be knowable through probing the service.
 
-This stage is intended to massage the codebase towards spec alignment and the general pattern should be to test and make changes to the source code; an outsider makes observations and the implementer makes changes based on feedback.
-
-The big picture is we are assuming the role of a first-time user evaluating the project with a simulation in mind: temperature regulation. The user is curious and technically capable in modeling complex systems and hypothesizing their intermittent states. The user expects to be able to validate outputs of the product, that the simulation emits data approximately matching expectations.
-
-The start script within the tools directory is considered prior knowledge. The outsider knows by running the script, the product is ready for testing.
+This stage is intended to massage the codebase towards spec alignment and the general pattern should be to test and make changes to the source code; if any step fails, resolve in the source code workspace.
 
 ### Artifacts
 
 The steps to run integration should also be captured in the *run_integration.sh* script with comments for each step enumerated below.
+
+### Steps
+
+Prior Knowledge Assumption (PKA) will be used throughout this section to describe the assumed basis of familiarity with the project. Assume that each step aggregates on the PKA of previous steps.
+
+The big picture is we are assuming the role of a first-time user evaluating the project with a simulation in mind. The simulation to construct is a basic temperature control unit. This user should be able to derive the process to accomplish the goal without reviewing documents outside of the api surface. Capture sim-eval output as artifacts and computationally validate the simulation behavior with an artifact as proof.
+
+#### Build & Start Service
+
+The first step is to install dependencies and start the sim-eval service. Completeness of this step means output produces which port and address the service is running on.
+
+PKA: none, installation and running the service should be trivial.
+
+#### Learn Usage
+
+The second step is to validate that the api has a discoverable surface. The root domain should display the available api segments: simulation, evaluation, and codebase.
+
+PKA: the user should only have the sense to probe the root domain.
+
+#### Validate State Before Start of Simulation
+
+The third step is to validate that the sim-eval instance has not started and no events are emitted.
+
+PKA: from previous steps.
+
+#### Inject Valid Systems and Components
+
+The fourth step is to inject systems and components of the simulation. Read through documentation to understand system and component design, then navigate through the codebase for specific implementation patterns. This step is concluded when the sim-eval server accepts the injected files.
+
+PKA: from previous steps.
+
+#### Start of Simulation
+
+The fifth step is to start the simulation and verify behavior of event streams.
+
+#### Validate Behavior
+
+Determine if the streams produce actionable information. The script(s) should be stored under tools of the root directory, and proof artifacts should be stored in verifications of the root directory.

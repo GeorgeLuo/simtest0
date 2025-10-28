@@ -1,111 +1,131 @@
-import { ComponentManager } from "./components/ComponentManager.js";
-import { EntityManager } from "./entity/EntityManager.js";
-import { Player } from "./Player.js";
-import { Bus } from "./messaging/Bus.js";
-import { InboundHandlerRegistry } from "./messaging/inbound/InboundHandlerRegistry.js";
-import { InboundMessage } from "./messaging/inbound/InboundMessage.js";
-import { Frame } from "./messaging/outbound/Frame.js";
-import {
-  FrameFilter,
-  IdentityFrameFilter,
-} from "./messaging/outbound/FrameFilter.js";
-import { OutboundMessage } from "./messaging/outbound/OutboundMessage.js";
-import { errorAck } from "./messaging/outbound/Acknowledgement.js";
-import { SystemManager } from "./systems/SystemManager.js";
+import { Player } from './Player';
+import type { SystemManager } from './systems/SystemManager';
+import type { Bus } from './messaging/Bus';
+import type { Frame } from './messaging/outbound/Frame';
+import type { FrameFilter } from './messaging/outbound/FrameFilter';
+import type { Acknowledgement } from './messaging/outbound/Acknowledgement';
+import { InboundHandlerRegistry } from './messaging/inbound/InboundHandlerRegistry';
+import type { SystemContext } from './systems/System';
+import type { Entity } from './entity/Entity';
+import type { ComponentInstance } from './components/ComponentType';
 
-interface IOPlayerOptions {
-  entityManager: EntityManager;
-  componentManager: ComponentManager;
-  systemManager: SystemManager;
-  inboundBus: Bus<InboundMessage>;
-  outboundBus: Bus<OutboundMessage>;
-  inboundRegistry: InboundHandlerRegistry;
-  frameFilter?: FrameFilter;
+interface InboundMessage {
+  type?: string;
+  payload?: unknown;
 }
 
+type OutboundMessage = Frame | Acknowledgement;
+
 export class IOPlayer extends Player {
+  private readonly inbound: Bus<unknown>;
+  private readonly outbound: Bus<OutboundMessage>;
+  private readonly frameFilter: FrameFilter;
+  private readonly handlers: InboundHandlerRegistry<IOPlayer>;
   private readonly unsubscribeInbound: () => void;
-  protected readonly frameFilter: FrameFilter;
+  private readonly entityBuffer: Entity[] = [];
+  private readonly componentBuffer: ComponentInstance<unknown>[] = [];
 
-  constructor(options: IOPlayerOptions) {
-    const {
-      entityManager,
-      componentManager,
-      systemManager,
-      inboundBus,
-      outboundBus,
-      inboundRegistry,
-      frameFilter,
-    } = options;
-
-    super(entityManager, componentManager, systemManager);
-    this.outboundBus = outboundBus;
-    this.inboundRegistry = inboundRegistry;
-    this.frameFilter = frameFilter ?? new IdentityFrameFilter();
-
-    this.unsubscribeInbound = inboundBus.subscribe((message) => {
-      void this.handleInbound(message);
-    });
+  constructor(
+    systemManager: SystemManager,
+    inbound: Bus<unknown>,
+    outbound: Bus<OutboundMessage>,
+    frameFilter: FrameFilter,
+    handlers?: InboundHandlerRegistry<IOPlayer>,
+    cycleIntervalMs?: number,
+  ) {
+    super(systemManager, cycleIntervalMs);
+    this.inbound = inbound;
+    this.outbound = outbound;
+    this.frameFilter = frameFilter;
+    this.handlers = handlers ?? new InboundHandlerRegistry<IOPlayer>();
+    this.unsubscribeInbound = this.inbound.subscribe((message) => this.handleInbound(message));
   }
 
-  protected readonly outboundBus: Bus<OutboundMessage>;
-  private readonly inboundRegistry: InboundHandlerRegistry;
-
-  dispose(): void {
-    this.unsubscribeInbound();
+  protected getInboundHandlers(): InboundHandlerRegistry<IOPlayer> {
+    return this.handlers;
   }
 
-  protected override onAfterStep(): void {
-    this.emitFrame();
+  protected override onAfterCycle(tick: number, context: SystemContext): void {
+    const frame = this.createFrameSnapshot(tick, context);
+    this.publishFrame(frame);
   }
 
-  private async handleInbound(message: InboundMessage): Promise<void> {
-    const handler = this.inboundRegistry.get(message.type);
-    if (!handler) {
-      this.outboundBus.publish({
-        type: "acknowledgement",
-        acknowledgement: errorAck(
-          message.id,
-          `No handler registered for message type '${message.type}'`,
-        ),
-      });
+  protected handleInbound(message: unknown): void {
+    const inboundMessage = message as InboundMessage | undefined;
+    if (!inboundMessage || typeof inboundMessage.type !== 'string') {
       return;
     }
 
-    const acknowledgement = await handler.handle(this, message);
-    this.outboundBus.publish({
-      type: "acknowledgement",
-      acknowledgement,
-    });
+    try {
+      const acknowledgement = this.handlers.handle(inboundMessage.type, this, inboundMessage.payload);
+      if (acknowledgement) {
+        this.outbound.publish(acknowledgement);
+      }
+    } catch (error) {
+      const messageId = extractMessageId(inboundMessage.payload);
+      if (!messageId) {
+        return;
+      }
+
+      this.outbound.publish({
+        messageId,
+        status: 'error',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
-  private emitFrame(): void {
-    const entities: Frame["entities"] = [];
-    this.entityManager.forEachEntity((entity) => {
-      const serializedComponents: Array<{ type: string; data: unknown }> = [];
-      this.componentManager.forEachComponent(entity, (component) => {
-        serializedComponents.push({
-          type: component.type.key,
-          data: component.data,
-        });
-      });
-
-      entities.push({
-        id: entity,
-        components: serializedComponents,
-      });
-    });
-
-    const frame: Frame = {
-      tick: this.getTick(),
-      entities,
-    };
-
+  protected publishFrame(frame: Frame): void {
     const filtered = this.frameFilter.apply(frame);
+    this.outbound.publish(filtered);
+  }
 
-    this.outboundBus.publish({
-      type: "frame",
-      frame: filtered,
+  private createFrameSnapshot(tick: number, context: SystemContext): Frame {
+    const snapshot: Record<string, Record<string, unknown>> = Object.create(null);
+
+    this.populateEntityBuffer(context.entityManager);
+    for (let index = 0; index < this.entityBuffer.length; index += 1) {
+      const entity = this.entityBuffer[index];
+      const entityKey = String(entity);
+      snapshot[entityKey] = this.collectComponents(entity, context.componentManager);
+    }
+
+    return {
+      tick,
+      entities: snapshot,
+    };
+  }
+
+  private collectComponents(
+    entity: Entity,
+    componentManager: SystemContext['componentManager'],
+  ): Record<string, unknown> {
+    const componentCount = componentManager.collectComponents(entity, this.componentBuffer);
+    if (componentCount === 0) {
+      return Object.create(null);
+    }
+
+    const record: Record<string, unknown> = Object.create(null);
+    for (let index = 0; index < componentCount; index += 1) {
+      const component = this.componentBuffer[index];
+      record[component.type.id] = component.payload;
+    }
+    return record;
+  }
+
+  private populateEntityBuffer(entityManager: SystemContext['entityManager']): void {
+    this.entityBuffer.length = 0;
+    entityManager.forEach((entity) => {
+      this.entityBuffer.push(entity);
     });
   }
+}
+
+function extractMessageId(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const candidate = (payload as { messageId?: unknown }).messageId;
+  return typeof candidate === 'string' && candidate ? candidate : null;
 }

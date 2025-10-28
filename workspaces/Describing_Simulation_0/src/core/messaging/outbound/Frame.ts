@@ -1,17 +1,5 @@
-import { Entity } from "../../entity/Entity.js";
-
-export interface ComponentSnapshot {
-  readonly type: string;
-  readonly data: unknown;
-}
-
-export interface EntitySnapshot {
-  readonly id: Entity;
-  readonly components: ComponentSnapshot[];
-}
-
+// Skeleton for Frame structure capturing simulation state snapshots.
 export interface Frame {
-  readonly tick: number;
-  readonly entities: EntitySnapshot[];
+  tick: number;
+  entities: Record<string, unknown>;
 }
-

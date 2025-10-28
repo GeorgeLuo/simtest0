@@ -32,21 +32,15 @@ Phase 2 — Artifact Creation
 
 - Validate until all tests pass.
 
-Phase 3 — Packaging
+Phase 3 — Integration Test
 
-- Implement installation and execution of the artifact
-
-- Rectify emergent build issues
-
-Phase 4 — Integration Design
-
-- Implement integration script with emphasis on discoverability
+- Implement integration script
 
 - Run test and correct gaps between execution and spec until all gaps are resolved
 
 - Produce artifacts as proof of implementation correctness
 
-Phase 5 — Structural & Behavioral Alignment
+Phase 4 — Structural & Behavioral Alignment
 
 - Check codebase against directory structure
 
@@ -56,10 +50,6 @@ Phase 5 — Structural & Behavioral Alignment
 
 - Descriptions of files match source code
 
-- Check routes against API Map
-
-- No route is un-implemented and all paths match the spec
-
-Phase 6 — Optimization
+Phase 5 — Optimization
 
 - Inspect codebase for optimizations run-time complexity and memory and refactor, validating changes do not break behavior using the integration test

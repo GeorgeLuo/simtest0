@@ -1,5 +1,0 @@
-PID control replay succeeded:
-- Simulation tick counter advanced continuously during the 5s SSE sample.
-- `/simulation/stream` delivered simulation frames instead of keep-alive-only comments.
-- Injecting `simulation/systems/PIDControlSystem.js` returned HTTP 200 with `status: success`.
-- Evaluation bus still reports `running: false`, but evaluation frames are available via the stream bridge.

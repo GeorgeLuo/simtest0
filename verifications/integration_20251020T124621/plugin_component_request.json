@@ -1,1 +1,0 @@
-{"path": "simulation/components/ThermostatComponent.ts", "content": "// ThermostatComponent defines the payload tracked on entities.\nexport interface ThermostatComponent {\n  setPointCelsius: number;\n  measuredCelsius: number;\n}\n\nexport const DEFAULT_THERMOSTAT_COMPONENT: ThermostatComponent = {\n  setPointCelsius: 22,\n  measuredCelsius: 20,\n};\n"}

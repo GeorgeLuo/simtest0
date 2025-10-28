@@ -1,185 +1,99 @@
-import { describe, expect, it, vi } from "vitest";
-import { ComponentManager } from "../../components/ComponentManager.js";
-import { EntityManager } from "../../entity/EntityManager.js";
-import { Bus } from "../../messaging/Bus.js";
-import { InboundHandlerRegistry } from "../../messaging/inbound/InboundHandlerRegistry.js";
-import { InboundMessage } from "../../messaging/inbound/InboundMessage.js";
-import { MessageHandler } from "../../messaging/inbound/MessageHandler.js";
-import { OutboundMessage } from "../../messaging/outbound/OutboundMessage.js";
-import { Frame } from "../../messaging/outbound/Frame.js";
-import { FrameFilter } from "../../messaging/outbound/FrameFilter.js";
-import { Acknowledgement } from "../../messaging/outbound/Acknowledgement.js";
-import { SystemManager } from "../../systems/SystemManager.js";
-import {
-  EvaluationPlayer,
-  EVALUATION_FRAME_COMPONENT,
-  EVALUATION_FRAME_MESSAGE,
-} from "../EvaluationPlayer.js";
-import { InjectFrameOperation } from "../operations/InjectFrame.js";
+import { EvaluationPlayer, EvaluationMessageType } from '../EvaluationPlayer';
+import { InboundHandlerRegistry } from '../../messaging/inbound/InboundHandlerRegistry';
+import { EntityManager } from '../../entity/EntityManager';
+import { ComponentManager } from '../../components/ComponentManager';
+import { SystemManager } from '../../systems/SystemManager';
+import { Bus } from '../../messaging/Bus';
+import { FrameFilter } from '../../messaging/outbound/FrameFilter';
+import type { Frame } from '../../messaging/outbound/Frame';
+import type { Acknowledgement } from '../../messaging/outbound/Acknowledgement';
+import type { ComponentType } from '../../components/ComponentType';
+import type { SystemContext } from '../../systems/System';
 
-interface EvaluationPlayerTestContext {
-  player: EvaluationPlayer;
-  inboundBus: Bus<InboundMessage>;
-  outboundBus: Bus<OutboundMessage>;
-  inboundRegistry: InboundHandlerRegistry;
-  componentManager: ComponentManager;
-  entityManager: EntityManager;
-  events: OutboundMessage[];
-  dispose: () => void;
-}
+describe('EvaluationPlayer', () => {
+  const createPlayer = () => {
+    const entityManager = new EntityManager();
+    const componentManager = new ComponentManager();
+    const systemManager = new SystemManager(entityManager, componentManager);
+    const inboundBus = new Bus<unknown>();
+    const outboundBus = new Bus<Frame | Acknowledgement>();
+    const frameFilter = new FrameFilter();
+    const handlers = new InboundHandlerRegistry<EvaluationPlayer>();
 
-const createContext = (options?: {
-  frameFilter?: FrameFilter;
-}): EvaluationPlayerTestContext => {
-  const componentManager = new ComponentManager();
-  const entityManager = new EntityManager(componentManager);
-  const systemManager = new SystemManager();
-  const inboundBus = new Bus<InboundMessage>();
-  const outboundBus = new Bus<OutboundMessage>();
-  const inboundRegistry = new InboundHandlerRegistry();
-  const player = new EvaluationPlayer({
-    componentManager,
-    entityManager,
-    systemManager,
-    inboundBus,
-    outboundBus,
-    inboundRegistry,
-    frameFilter: options?.frameFilter,
-  });
-
-  const events: OutboundMessage[] = [];
-  outboundBus.subscribe((event) => {
-    events.push(event);
-  });
-
-  return {
-    player,
-    inboundBus,
-    outboundBus,
-    inboundRegistry,
-    componentManager,
-    entityManager,
-    events,
-    dispose: () => player.dispose(),
+    const player = new EvaluationPlayer(systemManager, inboundBus, outboundBus, frameFilter, handlers);
+    return { player, inboundBus, outboundBus, frameFilter };
   };
-};
 
-const isAcknowledgementEvent = (
-  event: OutboundMessage,
-): event is { type: "acknowledgement"; acknowledgement: Acknowledgement } =>
-  event.type === "acknowledgement";
+  it('stores frames, persists ECS entities, and publishes filtered frame on inject', () => {
+    const { player, outboundBus, frameFilter } = createPlayer();
+    const payload = { messageId: 'f-1', frame: { tick: 1, entities: {} } as Frame };
+    const filteredFrame = { tick: 1, entities: { filtered: true } } as unknown as Frame;
+    const applySpy = jest.spyOn(frameFilter, 'apply').mockReturnValue(filteredFrame);
 
-const waitForAck = async (
-  events: OutboundMessage[],
-  messageId: string,
-  status: "success" | "error" = "success",
-) => {
-  await vi.waitFor(() => {
-    const acknowledgementEvent = events
-      .filter(isAcknowledgementEvent)
-      .find((event) => event.acknowledgement.messageId === messageId);
-    expect(acknowledgementEvent).toBeDefined();
-    expect(acknowledgementEvent?.acknowledgement.status).toBe(status);
-  });
-};
+    const publishedFrames: Frame[] = [];
+    outboundBus.subscribe((message) => {
+      if (message && typeof message === 'object' && 'tick' in message) {
+        publishedFrames.push(message as Frame);
+      }
+    });
 
-const publishFrameMessage = (
-  ctx: EvaluationPlayerTestContext,
-  frame: Frame,
-  id: string,
-) => {
-  const message: InboundMessage = {
-    id,
-    type: EVALUATION_FRAME_MESSAGE,
-    payload: {
-      frame,
-    },
-  };
-  ctx.inboundBus.publish(message);
-  return message;
-};
+    player.injectFrame(payload);
 
-describe("EvaluationPlayer", () => {
-  it("registers the evaluation frame handler on construction", () => {
-    const ctx = createContext();
+    expect(player.getFrames()).toEqual([payload]);
+    expect(applySpy).toHaveBeenCalledWith(payload.frame);
+    expect(publishedFrames).toContain(filteredFrame);
 
-    expect(ctx.inboundRegistry.get(EVALUATION_FRAME_MESSAGE)).toBeDefined();
-
-    ctx.dispose();
+    const context = (player as unknown as { getContext(): SystemContext }).getContext();
+    const entities = context.entityManager.list();
+    expect(entities).toHaveLength(1);
+    const [entity] = entities;
+    const components = context.componentManager.getComponents(entity);
+    expect(components).toHaveLength(1);
+    expect(components[0]?.type.id).toBe('evaluation.frame');
+    expect(components[0]?.payload).toBe(payload.frame);
   });
 
-  it("stores ingested frames as component instances and acknowledges success", async () => {
-    const ctx = createContext();
-    const frameA: Frame = { tick: 1, entities: [] };
-    const frameB: Frame = { tick: 2, entities: [] };
-
-    const msgA = publishFrameMessage(ctx, frameA, "frame-a");
-    await waitForAck(ctx.events, msgA.id);
-
-    const msgB = publishFrameMessage(ctx, frameB, "frame-b");
-    await waitForAck(ctx.events, msgB.id);
-
-    const entities = ctx.componentManager.getEntitiesWithComponent(
-      EVALUATION_FRAME_COMPONENT,
-    );
-    expect(entities).toHaveLength(2);
-
-    const storedFrames = entities.map((entity) =>
-      ctx.componentManager.getComponent(entity, EVALUATION_FRAME_COMPONENT),
-    );
-
-    expect(storedFrames).toContainEqual(frameA);
-    expect(storedFrames).toContainEqual(frameB);
-
-    ctx.dispose();
-  });
-
-  it("applies the frame filter before publishing outbound frames", async () => {
-    const filteredFrame: Frame = { tick: 99, entities: [] };
-    const frameFilter: FrameFilter = {
-      apply: vi.fn(() => filteredFrame),
+  it('registers and removes component definitions', () => {
+    const { player } = createPlayer();
+    const component: ComponentType<{ value: number }> = {
+      id: 'temperature',
+      validate: jest.fn(() => true),
     };
-    const ctx = createContext({ frameFilter });
-    const frame: Frame = { tick: 10, entities: [] };
 
-    const message = publishFrameMessage(ctx, frame, "filter-test");
-    await waitForAck(ctx.events, message.id);
+    player.registerComponent(component);
+    expect(player.getRegisteredComponents()).toEqual([component]);
 
-    expect(frameFilter.apply).toHaveBeenCalledTimes(1);
-    expect(frameFilter.apply).toHaveBeenCalledWith(
-      expect.objectContaining({ tick: frame.tick }),
-    );
-
-    const frameEvents = ctx.events.filter(
-      (event): event is { type: "frame"; frame: Frame } =>
-        event.type === "frame",
-    );
-    expect(frameEvents.at(-1)?.frame).toBe(filteredFrame);
-
-    ctx.dispose();
+    const removed = player.removeComponent(component.id);
+    expect(removed).toBe(true);
+    expect(player.getRegisteredComponents()).toEqual([]);
   });
 
-  it("surfaces error acknowledgements when frame ingestion throws", async () => {
-    const ctx = createContext();
-    const originalHandler = ctx.inboundRegistry.get(EVALUATION_FRAME_MESSAGE);
-    expect(originalHandler).toBeDefined();
+  it('acknowledges inbound inject frame messages', () => {
+    const entityManager = new EntityManager();
+    const componentManager = new ComponentManager();
+    const systemManager = new SystemManager(entityManager, componentManager);
+    const inboundBus = new Bus<any>();
+    const outboundBus = new Bus<any>();
+    const frameFilter = new FrameFilter();
+    const player = new EvaluationPlayer(systemManager, inboundBus, outboundBus, frameFilter);
 
-    if (!originalHandler) {
-      return;
-    }
+    const acknowledgements: any[] = [];
+    outboundBus.subscribe((message) => {
+      if (message && typeof message === 'object' && 'status' in message) {
+        acknowledgements.push(message);
+      }
+    });
 
-    const failingHandler = new MessageHandler([new InjectFrameOperation()]);
-    const ingestSpy = vi
-      .spyOn(ctx.player, "ingestFrame")
-      .mockImplementation(() => {
-        throw new Error("failed to ingest");
-      });
-    ctx.inboundRegistry.register(EVALUATION_FRAME_MESSAGE, failingHandler);
+    inboundBus.publish({
+      type: EvaluationMessageType.INJECT_FRAME,
+      payload: { messageId: 'frame-1', frame: { tick: 1, entities: {} } },
+    });
 
-    const message = publishFrameMessage(ctx, { tick: 5, entities: [] }, "fail");
-    await waitForAck(ctx.events, message.id, "error");
+    expect(acknowledgements).toContainEqual({ messageId: 'frame-1', status: 'success' });
+    expect(player.getFrames()).toHaveLength(1);
 
-    ingestSpy.mockRestore();
-    ctx.dispose();
+    const context = (player as unknown as { getContext(): SystemContext }).getContext();
+    const entities = context.entityManager.list();
+    expect(entities).toHaveLength(1);
   });
 });

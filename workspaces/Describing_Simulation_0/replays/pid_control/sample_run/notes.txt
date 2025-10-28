@@ -1,5 +1,0 @@
-Observed discrepancies during PID control attempt:
-- Simulation start acknowledged, but tick counter stays at 0.
-- SSE stream emits keep-alive comments only; no simulation frames.
-- System injection fails: HTTP 500, message "No handler registered for message type 'simulation.system.inject'".
-- Evaluation player remains stopped, so no evaluation frames appear.

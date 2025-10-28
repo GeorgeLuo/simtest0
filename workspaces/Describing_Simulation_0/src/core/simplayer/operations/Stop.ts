@@ -1,12 +1,14 @@
-import { IOPlayer } from "../../IOPlayer.js";
-import { InboundMessage } from "../../messaging/inbound/InboundMessage.js";
-import { Operation } from "../../messaging/inbound/Operation.js";
-import { SIMULATION_STOP_MESSAGE } from "../messages.js";
+import type { IOPlayer } from '../../IOPlayer';
+import type { Acknowledgement } from '../../messaging/outbound/Acknowledgement';
+import type { Operation } from '../../messaging/inbound/Operation';
 
-export class StopOperation implements Operation {
-  execute(player: IOPlayer, _message: InboundMessage): void {
-    player.stop();
-  }
+export interface StopPayload {
+  messageId: string;
 }
 
-export const STOP_OPERATION_MESSAGE = SIMULATION_STOP_MESSAGE;
+export class Stop implements Operation<IOPlayer, StopPayload> {
+  execute(player: IOPlayer, payload: StopPayload): Acknowledgement {
+    player.stop();
+    return { messageId: payload.messageId, status: 'success' };
+  }
+}
