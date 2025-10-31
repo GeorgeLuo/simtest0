@@ -27,6 +27,7 @@ export interface StartOptions {
   cycleIntervalMs?: number;
   authToken?: string | null;
   rateLimit?: RateLimitOptions | null;
+  autoStartEvaluation?: boolean;
 }
 
 export interface RateLimitOptions {
@@ -43,6 +44,7 @@ export async function start(options: StartOptions = {}): Promise<Server> {
   const cycleIntervalMs = options.cycleIntervalMs;
   const authToken = resolveAuthToken(options.authToken);
   const rateLimit = resolveRateLimit(options.rateLimit);
+  const autoStartEvaluation = options.autoStartEvaluation ?? false;
 
   const informationSegments = [
     {
@@ -148,7 +150,19 @@ export async function start(options: StartOptions = {}): Promise<Server> {
     rateLimit,
   });
 
+  const originalStop = typeof server.stop === 'function' ? server.stop.bind(server) : null;
+  if (originalStop) {
+    server.stop = async () => {
+      simulation.player.stop();
+      evaluation.player.stop();
+      await originalStop();
+    };
+  }
+
   await server.start();
+  if (autoStartEvaluation) {
+    evaluation.player.start();
+  }
   log(`SimEval server listening on http://${host ?? 'localhost'}:${port}`);
   return server;
 }

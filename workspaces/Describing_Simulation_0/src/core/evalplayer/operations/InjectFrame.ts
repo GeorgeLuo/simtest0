@@ -8,6 +8,9 @@ export interface InjectFramePayload extends FrameRecord {
 
 export class InjectFrame implements Operation<EvaluationPlayer, InjectFramePayload> {
   execute(player: EvaluationPlayer, payload: InjectFramePayload): Acknowledgement {
+    if (typeof (player as { start?: () => void }).start === 'function') {
+      (player as { start: () => void }).start();
+    }
     player.injectFrame(payload);
     return { messageId: payload.messageId, status: 'success' };
   }

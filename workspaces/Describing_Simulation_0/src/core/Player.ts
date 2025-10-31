@@ -119,6 +119,9 @@ export class Player {
 
       this.executeCycle();
     }, this.cycleIntervalMs);
+    if (typeof (this.cycleTimer as NodeJS.Timeout).unref === 'function') {
+      (this.cycleTimer as NodeJS.Timeout).unref();
+    }
   }
 
   private clearTimer(): void {

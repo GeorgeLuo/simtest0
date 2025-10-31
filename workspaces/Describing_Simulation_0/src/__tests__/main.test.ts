@@ -23,7 +23,13 @@ describe('main start()', () => {
 
     mockedCreateServer.mockReturnValue(serverMock);
 
-    const result = await start({ port: 4100, host: '0.0.0.0', rootDir: '/tmp/root', log });
+    const result = await start({
+      port: 4100,
+      host: '0.0.0.0',
+      rootDir: '/tmp/root',
+      log,
+      autoStartEvaluation: false,
+    });
 
     expect(mockedCreateServer).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -65,7 +71,7 @@ describe('main start()', () => {
 
     mockedCreateServer.mockReturnValue(serverMock);
 
-    await start({ log });
+    await start({ log, autoStartEvaluation: false });
 
     expect(mockedCreateServer).toHaveBeenCalledWith(expect.objectContaining({ port: 5123 }));
     expect(log).toHaveBeenCalledWith(expect.stringContaining('5123'));
@@ -79,7 +85,7 @@ describe('main start()', () => {
     const log = jest.fn();
     mockedCreateServer.mockReturnValue(serverMock);
 
-    await start({ log, cycleIntervalMs: 5 });
+    await start({ log, cycleIntervalMs: 5, autoStartEvaluation: false });
 
     const serverArgs = mockedCreateServer.mock.calls[0]?.[0];
     expect(serverArgs).toBeDefined();
@@ -121,7 +127,7 @@ describe('main start()', () => {
       return serverMock;
     });
 
-    await start({ log });
+    await start({ log, autoStartEvaluation: false });
 
     const frame = { tick: 7, entities: { foo: {} } };
     capturedOptions.simulation.outboundBus.publish(frame);
@@ -144,5 +150,8 @@ describe('main start()', () => {
       entityManager: { list(): unknown[] };
     };
     expect(evaluationContext.entityManager.list()).toHaveLength(1);
+
+    (capturedOptions.evaluation.player as { stop(): void }).stop();
+    (capturedOptions.simulation.player as { stop(): void }).stop();
   });
 });
