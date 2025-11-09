@@ -2,6 +2,16 @@
 # Provision a Morphcloud instance with the SimEval server from this repository.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ARCHIVE_PATH="$(mktemp -t simeval-bundle-XXXXXX.tar.gz)"
+BUNDLE_ITEMS=("workspaces/Describing_Simulation_0")
+HAS_INSTRUCTIONS=0
+if [[ -d "$ROOT_DIR/instruction_documents" ]]; then
+  BUNDLE_ITEMS+=("instruction_documents")
+  HAS_INSTRUCTIONS=1
+fi
+
 usage() {
   cat <<'USAGE'
 Usage: morphcloud_build_instance.sh --snapshot SNAPSHOT_ID [options]
@@ -15,16 +25,17 @@ Required:
 Optional:
   --name NAME             Metadata name for the instance (default: sim-eval-<timestamp>)
   --metadata key=value    Extra metadata to attach (repeatable)
-  --ttl-seconds N         TTL for the instance
+  --disk-size MB          Disk size in MB for the new instance (default: 2048)
   --repo-url URL          Git repository to clone (default: https://github.com/GeorgeLuo/simtest0.git)
   --repo-branch BRANCH    Branch to checkout (default: main)
   --service-name NAME     Name for systemd + exposed HTTP service (default: simeval)
   --port N                Port to bind SimEval (default: 3000)
   --host HOST             Host binding (default: 0.0.0.0)
   --auth-token TOKEN      Auth token (default: random hex)
+  --no-auth               Disable auth entirely (omit token)
   --rate-window MS        Rate limit window (default: 60000)
   --rate-max COUNT        Rate limit max (default: 120)
-  --swap-size SIZE        Swapfile size (default: 256M)
+  --swap-size SIZE        Swapfile size (default: 1G)
   --no-expose             Skip morphcloud instance expose-http
   --auth-mode MODE        expose-http auth mode (none|api_key, default: none)
   --skip-tests            Skip npm test step
@@ -61,19 +72,21 @@ INSTANCE_NAME="sim-eval-$(date +%Y%m%d%H%M%S)"
 SERVICE_NAME="simeval"
 REPO_URL="https://github.com/GeorgeLuo/simtest0.git"
 REPO_BRANCH="main"
-REMOTE_ROOT="/root/simtest0"
-WORKSPACE_SUBPATH="workspaces/Describing_Simulation_0"
+REMOTE_WORKSPACE="/root/Describing_Simulation_0"
+REMOTE_BUNDLE_DIR="/root/simeval_bundle"
+REMOTE_ARCHIVE="/root/simeval_bundle.tar.gz"
 HOST_BIND="0.0.0.0"
 PORT="3000"
 AUTH_TOKEN=""
+AUTH_TOKEN_SUPPLIED=0
 RATE_WINDOW="60000"
 RATE_MAX="120"
-SWAP_SIZE="256M"
+SWAP_SIZE="1G"
 EXPOSE_HTTP=1
 EXPOSE_AUTH_MODE="none"
 SKIP_TESTS=0
 KEEP_ON_FAILURE=0
-TTL_SECONDS=""
+DISK_SIZE="2048"
 METADATA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -90,8 +103,8 @@ while [[ $# -gt 0 ]]; do
       METADATA_ARGS+=("$2")
       shift 2
       ;;
-    --ttl-seconds)
-      TTL_SECONDS="$2"
+    --disk-size)
+      DISK_SIZE="$2"
       shift 2
       ;;
     --repo-url)
@@ -116,7 +129,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     --auth-token)
       AUTH_TOKEN="$2"
+      AUTH_TOKEN_SUPPLIED=1
       shift 2
+      ;;
+    --no-auth)
+      AUTH_TOKEN=""
+      AUTH_TOKEN_SUPPLIED=1
+      shift
       ;;
     --rate-window)
       RATE_WINDOW="$2"
@@ -172,22 +191,44 @@ require_cmd jq
   exit 1
 }
 
-if [[ -z "$AUTH_TOKEN" ]]; then
+if [[ -z "$AUTH_TOKEN" && $AUTH_TOKEN_SUPPLIED -eq 0 ]]; then
   AUTH_TOKEN="$(generate_auth_token)"
 fi
 
-START_ARGS=(morphcloud instance start "$SNAPSHOT_ID" --metadata "name=$INSTANCE_NAME" --json)
+cleanup_archive() {
+  rm -f "$ARCHIVE_PATH"
+}
+
+trap cleanup_archive EXIT
+
+LOCAL_WORKSPACE="$ROOT_DIR/workspaces/Describing_Simulation_0"
+log "Preparing local workspace artifacts"
+npm --prefix "$LOCAL_WORKSPACE" install >/dev/null
+npm --prefix "$LOCAL_WORKSPACE" run build >/dev/null
+
+log "Packaging workspace bundle..."
+tar -czf "$ARCHIVE_PATH" -C "$ROOT_DIR" "${BUNDLE_ITEMS[@]}"
+
+BOOT_ARGS=(morphcloud instance boot "$SNAPSHOT_ID" --metadata "name=$INSTANCE_NAME")
 for md in "${METADATA_ARGS[@]}"; do
-  START_ARGS+=(--metadata "$md")
+  BOOT_ARGS+=(--metadata "$md")
 done
-if [[ -n "$TTL_SECONDS" ]]; then
-  START_ARGS+=(--ttl-seconds "$TTL_SECONDS")
+if [[ -n "$DISK_SIZE" ]]; then
+  BOOT_ARGS+=(--disk-size "$DISK_SIZE")
 fi
 
 log "Booting instance from snapshot $SNAPSHOT_ID..."
-START_OUTPUT="$("${START_ARGS[@]}")"
-INSTANCE_ID="$(echo "$START_OUTPUT" | jq -r '.id')"
-INTERNAL_IP="$(echo "$START_OUTPUT" | jq -r '.networking.internal_ip')"
+BOOT_OUTPUT="$("${BOOT_ARGS[@]}" | tr -d '\r')"
+INSTANCE_ID="$(echo "$BOOT_OUTPUT" | awk '/Instance booted:/ {print $3}' | tail -n 1)"
+
+if [[ -z "$INSTANCE_ID" ]]; then
+  echo "Failed to determine instance ID from morphcloud output." >&2
+  echo "$BOOT_OUTPUT" >&2
+  exit 1
+fi
+
+INSTANCE_JSON="$(morphcloud instance get "$INSTANCE_ID")"
+INTERNAL_IP="$(echo "$INSTANCE_JSON" | jq -r '.networking.internal_ip')"
 
 if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "null" ]]; then
   echo "Failed to create instance." >&2
@@ -196,6 +237,7 @@ fi
 
 PROVISION_SUCCESS=0
 cleanup() {
+  cleanup_archive
   if [[ $PROVISION_SUCCESS -eq 0 && -n ${INSTANCE_ID:-} ]]; then
     if [[ $KEEP_ON_FAILURE -eq 0 ]]; then
       log "Stopping failed instance $INSTANCE_ID"
@@ -215,24 +257,61 @@ while true; do
 done
 log "Instance $INSTANCE_ID is ready."
 
+wait_for_ssh() {
+  local attempts=0
+  while [[ $attempts -lt 30 ]]; do
+    if morphcloud instance ssh "$INSTANCE_ID" -- 'true' >/dev/null 2>&1; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    sleep 2
+  done
+  echo "SSH not ready after waiting." >&2
+  exit 1
+}
+
+wait_for_ssh
+
+log "Uploading workspace bundle"
+morphcloud instance copy "$ARCHIVE_PATH" "$INSTANCE_ID:$REMOTE_ARCHIVE"
+
+ssh_exec() {
+  local cmd="$*"
+  local escaped_cmd=${cmd//\'/\'\\\'\'}
+  local remote_cmd="bash -lc '$escaped_cmd'"
+  morphcloud instance ssh "$INSTANCE_ID" -- "$remote_cmd"
+}
+
 ssh_run() {
   local desc="$1"
   shift
   local cmd="$*"
   log "$desc"
-  morphcloud instance ssh "$INSTANCE_ID" -- bash -lc "$cmd"
+  ssh_exec "$cmd"
 }
 
 ssh_run "Updating apt package lists" "apt-get update"
-ssh_run "Installing base packages" "DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg git build-essential apt-transport-https"
+ssh_run "Installing base packages" "DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg git"
 ssh_run "Installing Node.js 20.x" "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs"
-ssh_run "Configuring swapfile ($SWAP_SIZE)" "if [[ ! -f /swapfile ]]; then fallocate -l $SWAP_SIZE /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi"
+ssh_run "Cleaning apt cache" "apt-get clean"
+ssh_run "Configuring swapfile ($SWAP_SIZE)" "
+if [[ ! -f /swapfile ]]; then
+  (fallocate -l $SWAP_SIZE /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(( ${SWAP_SIZE%G} * 1024 )))
+  chmod 600 /swapfile
+  mkswap /swapfile >/dev/null
+  swapon /swapfile
+  sed -i '/\\/swapfile/d' /etc/fstab
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi"
 
-ssh_run "Cloning repository $REPO_URL ($REPO_BRANCH)" "rm -rf '$REMOTE_ROOT' && git clone --depth 1 --branch '$REPO_BRANCH' '$REPO_URL' '$REMOTE_ROOT'"
-REMOTE_WORKSPACE="$REMOTE_ROOT/$WORKSPACE_SUBPATH"
+ssh_run "Extracting workspace bundle" "rm -rf '$REMOTE_WORKSPACE' '$REMOTE_BUNDLE_DIR' && mkdir -p '$REMOTE_BUNDLE_DIR' && tar -xzf '$REMOTE_ARCHIVE' -C '$REMOTE_BUNDLE_DIR'"
+ssh_run "Placing workspace files" "mv '$REMOTE_BUNDLE_DIR/workspaces/Describing_Simulation_0' '$REMOTE_WORKSPACE'"
+if [[ $HAS_INSTRUCTIONS -eq 1 ]]; then
+  ssh_run "Copying instruction documents" "rm -rf '$REMOTE_WORKSPACE/instruction_documents' && cp -R '$REMOTE_BUNDLE_DIR/instruction_documents' '$REMOTE_WORKSPACE/instruction_documents'"
+fi
+ssh_run "Cleaning bundle artifacts" "rm -rf '$REMOTE_BUNDLE_DIR' '$REMOTE_ARCHIVE'"
 
 ssh_run "Installing workspace dependencies" "cd '$REMOTE_WORKSPACE' && npm install"
-ssh_run "Building workspace" "cd '$REMOTE_WORKSPACE' && npm run build"
 if [[ $SKIP_TESTS -eq 0 ]]; then
   ssh_run "Running workspace tests" "cd '$REMOTE_WORKSPACE' && npm test"
 else
@@ -281,6 +360,7 @@ else
 fi
 
 PROVISION_SUCCESS=1
+cleanup_archive
 trap - EXIT
 
 cat <<SUMMARY
