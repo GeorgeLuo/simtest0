@@ -16,6 +16,11 @@ import {
   type InformationDocument,
   type InformationSegment,
 } from './routes/information';
+import { registerSystemRoutes } from './routes/system';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const packageJson = require('../package.json');
+const SERVER_VERSION: string = typeof packageJson?.version === 'string' ? packageJson.version : '0.0.0';
 
 export interface ServerOptions {
   port: number;
@@ -129,6 +134,7 @@ export interface BootstrapOptions {
 
 export function createServer(options: BootstrapOptions): Server {
   const router = new Router({ basePath: '/api', authToken: options.authToken, rateLimit: options.rateLimit });
+  const bootTime = Date.now();
 
   registerSimulationRoutes(router, {
     player: options.simulation.player,
@@ -153,6 +159,13 @@ export function createServer(options: BootstrapOptions): Server {
     segments: options.information.segments,
     documents: options.information.documents,
     readDocument: options.information.readDocument,
+  });
+
+  registerSystemRoutes(router, {
+    getUptimeMs: () => Date.now() - bootTime,
+    version: SERVER_VERSION,
+    simulation: options.simulation.player,
+    evaluation: options.evaluation.player,
   });
 
   return new Server({ port: options.port, host: options.host, router });

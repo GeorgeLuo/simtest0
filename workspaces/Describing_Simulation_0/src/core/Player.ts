@@ -17,6 +17,14 @@ interface EjectSystemPayload {
  * on a fixed interval. Subclasses can hook into the lifecycle to expose
  * messaging or additional orchestration concerns.
  */
+export type PlayerState = 'running' | 'paused' | 'idle';
+
+export interface PlayerStatus {
+  state: PlayerState;
+  tick: number;
+  systemCount: number;
+}
+
 export class Player {
   protected readonly systemManager: SystemManager;
   protected readonly cycleIntervalMs: number;
@@ -162,5 +170,14 @@ export class Player {
         this.idsBySystem.delete(system);
       }
     }
+  }
+
+  describe(): PlayerStatus {
+    const state: PlayerState = this.isRunning ? 'running' : this.tick > 0 ? 'paused' : 'idle';
+    return {
+      state,
+      tick: this.tick,
+      systemCount: this.systemsById.size,
+    };
   }
 }
