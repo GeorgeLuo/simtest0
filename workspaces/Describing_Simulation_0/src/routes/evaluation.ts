@@ -46,7 +46,20 @@ export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDe
     respondSuccess(res, payload.messageId);
   });
 
-  router.register('/evaluation/system/inject', async (req: any, res: any) => {
+  const registerPaths = (paths: string[], handler: (req: any, res: any) => void) => {
+    for (const path of paths) {
+      router.register(path, handler);
+    }
+  };
+
+  const resolveIdentifier = (req: any, key: string): string | undefined => {
+    const fromBody = typeof req.body?.[key] === 'string' ? req.body[key] : undefined;
+    const fromParams = typeof req.params?.[key] === 'string' ? req.params[key] : undefined;
+    const fromQuery = typeof req.query?.[key] === 'string' ? req.query[key] : undefined;
+    return fromBody ?? fromParams ?? fromQuery;
+  };
+
+  const injectSystemHandler = async (req: any, res: any) => {
     const messageId = req.body?.messageId as string | undefined;
     const descriptor = req.body?.system as EvaluationSystemDescriptor | undefined;
 
@@ -63,11 +76,13 @@ export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDe
       const detail = error instanceof Error ? error.message : 'System injection failed';
       respondError(res, messageId, detail);
     }
-  });
+  };
 
-  router.register('/evaluation/system/eject', (req: any, res: any) => {
+  registerPaths(['/evaluation/system/inject', '/evaluation/system'], injectSystemHandler);
+
+  const ejectSystemHandler = (req: any, res: any) => {
     const messageId = req.body?.messageId as string | undefined;
-    const systemId = typeof req.body?.systemId === 'string' ? req.body.systemId : undefined;
+    const systemId = resolveIdentifier(req, 'systemId');
     if (!systemId) {
       respondError(res, messageId, 'Missing system identifier');
       return;
@@ -80,9 +95,11 @@ export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDe
     }
 
     respondSuccess(res, messageId, { systemId });
-  });
+  };
 
-  router.register('/evaluation/component/inject', async (req: any, res: any) => {
+  registerPaths(['/evaluation/system/eject', '/evaluation/system/:systemId'], ejectSystemHandler);
+
+  const injectComponentHandler = async (req: any, res: any) => {
     const messageId = req.body?.messageId as string | undefined;
     const descriptor = req.body?.component as EvaluationComponentDescriptor | undefined;
 
@@ -99,11 +116,13 @@ export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDe
       const detail = error instanceof Error ? error.message : 'Component injection failed';
       respondError(res, messageId, detail);
     }
-  });
+  };
 
-  router.register('/evaluation/component/eject', (req: any, res: any) => {
+  registerPaths(['/evaluation/component/inject', '/evaluation/component'], injectComponentHandler);
+
+  const ejectComponentHandler = (req: any, res: any) => {
     const messageId = req.body?.messageId as string | undefined;
-    const componentId = req.body?.componentId as string | undefined;
+    const componentId = resolveIdentifier(req, 'componentId');
 
     if (!componentId) {
       respondError(res, messageId, 'Missing component identifier');
@@ -112,7 +131,9 @@ export function registerEvaluationRoutes(router: Router, deps: EvaluationRouteDe
 
     deps.player.removeComponent(componentId);
     respondSuccess(res, messageId);
-  });
+  };
+
+  registerPaths(['/evaluation/component/eject', '/evaluation/component/:componentId'], ejectComponentHandler);
 
   router.register('/evaluation/stream', (req: any, res: any) => {
     res.writeHead?.(200, {

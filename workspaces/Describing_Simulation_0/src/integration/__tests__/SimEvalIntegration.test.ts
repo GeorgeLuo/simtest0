@@ -29,7 +29,14 @@ describe('Sim-Eval integration harness', () => {
       stop: jest.fn(),
       injectSystem: jest.fn(),
       ejectSystem: jest.fn(),
-    } as unknown as IOPlayer;
+      registerComponent: jest.fn(),
+      removeComponent: jest.fn(),
+    } as unknown as IOPlayer & {
+      injectSystem: jest.Mock;
+      ejectSystem: jest.Mock;
+      registerComponent: jest.Mock;
+      removeComponent: jest.Mock;
+    };
 
     const evaluationPlayer = {
       injectSystem: jest.fn(),
@@ -45,6 +52,7 @@ describe('Sim-Eval integration harness', () => {
         player: simulationPlayer,
         outboundBus: { subscribe: jest.fn(() => jest.fn()) },
         loadSystem: jest.fn(async () => ({}) as unknown as any),
+        loadComponent: jest.fn(async () => ({ id: 'sim.component', validate: () => true })),
       },
       evaluation: {
         player: evaluationPlayer,
@@ -56,6 +64,7 @@ describe('Sim-Eval integration harness', () => {
         rootDir: '/repo',
         listDir: jest.fn(async () => ['file.ts']),
         readFile: jest.fn(async () => 'content'),
+        writeFile: jest.fn(async () => undefined),
       },
       information: {
         segments: [

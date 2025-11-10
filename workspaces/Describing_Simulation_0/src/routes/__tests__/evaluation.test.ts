@@ -53,20 +53,26 @@ describe('evaluation routes', () => {
 
     registerEvaluationRoutes(router, deps);
 
-    expect(router.register).toHaveBeenCalledTimes(6);
-
     const frameHandler = routes.get('/evaluation/frame');
     const injectSystemHandler = routes.get('/evaluation/system/inject');
+    const injectSystemAlias = routes.get('/evaluation/system');
     const ejectSystemHandler = routes.get('/evaluation/system/eject');
+    const ejectSystemAlias = routes.get('/evaluation/system/:systemId');
     const injectComponentHandler = routes.get('/evaluation/component/inject');
+    const injectComponentAlias = routes.get('/evaluation/component');
     const ejectComponentHandler = routes.get('/evaluation/component/eject');
+    const ejectComponentAlias = routes.get('/evaluation/component/:componentId');
     const streamHandler = routes.get('/evaluation/stream');
 
     expect(frameHandler).toBeDefined();
     expect(injectSystemHandler).toBeDefined();
+    expect(injectSystemAlias).toBe(injectSystemHandler);
     expect(ejectSystemHandler).toBeDefined();
+    expect(ejectSystemAlias).toBe(ejectSystemHandler);
     expect(injectComponentHandler).toBeDefined();
+    expect(injectComponentAlias).toBe(injectComponentHandler);
     expect(ejectComponentHandler).toBeDefined();
+    expect(ejectComponentAlias).toBe(ejectComponentHandler);
     expect(streamHandler).toBeDefined();
 
     const frameRes = { json: jest.fn() };
@@ -91,6 +97,15 @@ describe('evaluation routes', () => {
       status: 'success',
       messageId: 'sys-2',
       systemId: 'system-abc',
+    });
+
+    const ejectSystemParamRes = { json: jest.fn(), statusCode: 200 };
+    ejectSystemAlias?.({ params: { systemId: 'system-alias' }, body: { messageId: 'sys-3' } }, ejectSystemParamRes);
+    expect(deps.player.ejectSystem).toHaveBeenCalledWith({ system: undefined, systemId: 'system-alias' });
+    expect(ejectSystemParamRes.json).toHaveBeenCalledWith({
+      status: 'success',
+      messageId: 'sys-3',
+      systemId: 'system-alias',
     });
 
     const componentRes = { json: jest.fn(), statusCode: 200 };
@@ -171,6 +186,17 @@ describe('evaluation routes', () => {
     expect(res.json).toHaveBeenCalledWith({
       status: 'error',
       messageId: 'missing',
+      detail: 'System not found',
+    });
+
+    (deps.player.ejectSystem as jest.Mock).mockReturnValueOnce(false);
+    const aliasHandler = routes.get('/evaluation/system/:systemId');
+    const aliasRes = { json: jest.fn(), statusCode: 200 };
+    aliasHandler?.({ params: { systemId: 'missing' }, body: { messageId: 'missing-alias' } }, aliasRes);
+    expect(aliasRes.statusCode).toBe(404);
+    expect(aliasRes.json).toHaveBeenCalledWith({
+      status: 'error',
+      messageId: 'missing-alias',
       detail: 'System not found',
     });
   });

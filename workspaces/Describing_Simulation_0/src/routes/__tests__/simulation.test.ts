@@ -25,9 +25,13 @@ describe('simulation routes', () => {
       stop: jest.fn(),
       injectSystem: jest.fn(() => 'system-123'),
       ejectSystem: jest.fn(() => true),
+      registerComponent: jest.fn(),
+      removeComponent: jest.fn(() => true),
     } as unknown as Pick<IOPlayer, 'start' | 'pause' | 'stop'> & {
       injectSystem: jest.Mock;
       ejectSystem: jest.Mock;
+      registerComponent: jest.Mock;
+      removeComponent: jest.Mock;
     };
 
     const unsubscribe = jest.fn();
@@ -35,11 +39,10 @@ describe('simulation routes', () => {
       subscribe: jest.fn(() => unsubscribe),
     } as unknown as Bus<Frame | Acknowledgement> & { subscribe: jest.Mock };
 
-    const loadSystem = jest.fn<Promise<System>, [SimulationSystemDescriptor]>(
-      async () => ({} as unknown as System),
-    );
+    const loadSystem = jest.fn<Promise<System>, [SimulationSystemDescriptor]>(async () => ({} as System));
+    const loadComponent = jest.fn(async () => ({ id: 'component', validate: () => true }));
 
-    return { player, outboundBus, loadSystem, unsubscribe };
+    return { player, outboundBus, loadSystem, loadComponent, unsubscribe };
   };
 
   it('registers control endpoints and invokes player hooks', async () => {
@@ -52,13 +55,25 @@ describe('simulation routes', () => {
     const pauseHandler = map.get('/simulation/pause');
     const stopHandler = map.get('/simulation/stop');
     const injectHandler = map.get('/simulation/inject');
+    const injectAlias = map.get('/simulation/system');
     const ejectHandler = map.get('/simulation/eject');
+    const ejectAlias = map.get('/simulation/system/:systemId');
+    const componentHandler = map.get('/simulation/component');
+    const componentAlias = map.get('/simulation/component/inject');
+    const componentEjectHandler = map.get('/simulation/component/:componentId');
+    const componentEjectAlias = map.get('/simulation/component/eject');
 
     expect(startHandler).toBeDefined();
     expect(pauseHandler).toBeDefined();
     expect(stopHandler).toBeDefined();
     expect(injectHandler).toBeDefined();
+    expect(injectAlias).toBe(injectHandler);
     expect(ejectHandler).toBeDefined();
+    expect(ejectAlias).toBe(ejectHandler);
+    expect(componentHandler).toBeDefined();
+    expect(componentAlias).toBe(componentHandler);
+    expect(componentEjectHandler).toBeDefined();
+    expect(componentEjectAlias).toBe(componentEjectHandler);
 
     const createRes = () => ({ json: jest.fn() });
 
@@ -92,6 +107,20 @@ describe('simulation routes', () => {
       systemId: 'system-123',
     });
 
+    const componentRes = createRes();
+    await componentHandler?.(
+      { body: { messageId: 'comp-1', component: { modulePath: 'plugins/component.js' } } },
+      componentRes,
+    );
+    expect(deps.loadComponent).toHaveBeenCalledWith({ modulePath: 'plugins/component.js' });
+    expect(deps.player.registerComponent).toHaveBeenCalled();
+    expect(componentRes.json).toHaveBeenCalledWith({ status: 'success', messageId: 'comp-1' });
+
+    const componentEjectRes = createRes();
+    componentEjectHandler?.({ params: { componentId: 'temperature' }, body: { messageId: 'comp-2' } }, componentEjectRes);
+    expect(deps.player.removeComponent).toHaveBeenCalledWith('temperature');
+    expect(componentEjectRes.json).toHaveBeenCalledWith({ status: 'success', messageId: 'comp-2' });
+
     expect((deps.player.start as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
     expect((deps.player.pause as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
     expect((deps.player.stop as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
@@ -117,7 +146,7 @@ describe('simulation routes', () => {
     expect(deps.loadSystem).not.toHaveBeenCalled();
   });
 
-  it('returns errors for missing or unknown systemId on eject', () => {
+  it('returns errors for missing or unknown systemId on eject', async () => {
     const { router, map } = createRouter();
     const deps = createDeps();
     (deps.player.ejectSystem as jest.Mock).mockReturnValueOnce(false);
@@ -140,6 +169,26 @@ describe('simulation routes', () => {
       status: 'error',
       messageId: 'not-found',
       detail: 'System not found',
+    });
+
+    const componentHandler = map.get('/simulation/component');
+    const compMissingRes = { json: jest.fn(), statusCode: 200 };
+    await componentHandler?.({ body: { messageId: 'comp-missing' } }, compMissingRes);
+    expect(compMissingRes.statusCode).toBe(400);
+    expect(compMissingRes.json).toHaveBeenCalledWith({
+      status: 'error',
+      messageId: 'comp-missing',
+      detail: 'Missing component descriptor',
+    });
+
+    const componentEjectHandler = map.get('/simulation/component/:componentId');
+    const compEjectRes = { json: jest.fn(), statusCode: 200 };
+    componentEjectHandler?.({ body: { messageId: 'comp-eject' } }, compEjectRes);
+    expect(compEjectRes.statusCode).toBe(400);
+    expect(compEjectRes.json).toHaveBeenCalledWith({
+      status: 'error',
+      messageId: 'comp-eject',
+      detail: 'Missing component identifier',
     });
   });
 

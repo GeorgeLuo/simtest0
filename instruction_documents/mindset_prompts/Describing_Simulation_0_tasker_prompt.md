@@ -27,3 +27,4 @@ Task definitions should:
 Collections of tasks should be written as memory files.
 
 Important instruction documents: Schedule of Work, Bootstraps, Codifying Simulations
+

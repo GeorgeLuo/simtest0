@@ -19,6 +19,32 @@ describe('Router', () => {
     expect(typeof handler.mock.calls[0][2]).toBe('function');
   });
 
+  it('registers fallback handlers without base prefix', () => {
+    const router = new Router({ basePath: '/api' });
+    const handler = jest.fn();
+    router.register('/hello', handler);
+
+    const req = { url: '/hello', method: 'GET' } as unknown;
+    const res = {} as unknown;
+
+    expect(router.dispatch(req, res)).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('matches dynamic segments and populates params on requests', () => {
+    const router = new Router({ basePath: '/api' });
+    const handler = jest.fn();
+    router.register('/items/:id', handler);
+
+    const req = { url: '/api/items/alpha', method: 'DELETE', headers: {} } as unknown;
+    const res = { setHeader: jest.fn(), end: jest.fn() } as unknown;
+
+    expect(router.dispatch(req, res)).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+    const calledReq = handler.mock.calls[0][0] as { params?: Record<string, string> };
+    expect(calledReq.params).toEqual({ id: 'alpha' });
+  });
+
   it('returns false when no handler matches', () => {
     const router = new Router({ basePath: '/api' });
     const dispatched = router.dispatch({ url: '/api/missing' } as unknown, {} as unknown);

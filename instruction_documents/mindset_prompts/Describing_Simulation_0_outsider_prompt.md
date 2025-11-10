@@ -7,3 +7,4 @@ The outsider should identify issues of discoverability and mismatched expectatio
 Refer to the outsider integration instruction document for clarity on your specific directive.
 
 Important instruction documents: Integration
+

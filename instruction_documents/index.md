@@ -1,22 +1,28 @@
 # Instruction Documents Index
 
-Review this index before diving into the instruction set. Start with the table of contents to orient on available topics in `Describing_Simulation_0.md`.
+Review this index before diving into the instruction set. Start with `Describing_Simulation_0_table_of_contents.md` to map the document hierarchy, then jump into the extracts listed below as needed.
 
-## Files
-- `Describing_Simulation_0.md` — Full original Describing_Simulation_0.md preserved for reference.
-- `Describing_Simulation_0_bootstraps.md` — Bootstrapping directives for repository structure and context management.
-- `Describing_Simulation_0_repository_structure.md` — Expected repository tree and required artifacts post-bootstrap.
-- `Describing_Simulation_0_code_structure.md` — Source tree layout for core, routing, and plugin directories.
-- `Describing_Simulation_0_codifying_simulations.md` — Detailed instructions on building simulations from specs.
-- `Describing_Simulation_0_outsider_integration.md` — Outsider-guided integration workflow and artifacts.
-- `Describing_Simulation_0_implementation_guidelines.md` — Implementation methodology, including test-driven process.
-- `Describing_Simulation_0_api_map.md` — Endpoint inventory with behavioral notes for the sim-eval surface.
-- `Describing_Simulation_0_master_prompt_important.md` — Master mindset selection prompt for agents.
-- `Describing_Simulation_0_schedule_of_work.md` — Phase roadmap and checkpoints for the project.
-- `Describing_Simulation_0_table_of_contents.md` — Heading map for Describing_Simulation_0.md (H1-H4).
-- `Describing_Simulation_0_theory.md` — Conceptual foundations up to the Codifying Simulations section.
-- `Describing_Simulation_0_workspace_structure.md` — Workspace directory usage for implementation snapshots.
+## Orientation
+- `Describing_Simulation_0.md` — Source-of-truth manuscript; keep it immutable.
+- `Describing_Simulation_0_table_of_contents.md` — Heading outline (H1–H4) for quick navigation.
 
-Additional prompts: see `mindset_prompts/index.md`.
+## Specification Extracts
+- `Describing_Simulation_0_theory.md` — Conceptual groundwork through the pre-Codifying sections.
+- `Describing_Simulation_0_codifying_simulations.md` — Full Codifying Simulations chapter, covering scaffolding through IX. Sim-Eval Server.
+- `Describing_Simulation_0_outsider_integration.md` — Integration checkpoint detailing outsider workflows and artifacts.
+- `Describing_Simulation_0_api_map.md` — Enumerated HTTP surface plus behavioral notes.
+
+## Bootstrapping & Workspace
+- `Describing_Simulation_0_bootstraps.md` — Bootstrapping directives plus index requirements.
+- `Describing_Simulation_0_repository_structure.md` — Expected repository tree after bootstrapping.
+- `Describing_Simulation_0_code_structure.md` — Source tree layout for core, routing, and plugins.
+- `Describing_Simulation_0_workspace_structure.md` — Guidance for managing `workspaces/` per revision.
+- `Describing_Simulation_0_schedule_of_work.md` — Phased roadmap and checkpoint summary.
+
+## Implementation Process
+- `Describing_Simulation_0_implementation_guidelines.md` — Methodology notes with TDD workflow.
+- `Describing_Simulation_0_master_prompt_important.md` — Master prompt governing mindset selection and handoffs.
+
+Additional prompts live under `mindset_prompts/index.md`.
 
 Source of truth: `Describing_Simulation_0.md`.

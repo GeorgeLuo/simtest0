@@ -39,3 +39,4 @@ Stage 4: Implement Logic
 Stage 5: Validate
 
 └─ Run tests → Errors → Iterate until green
+

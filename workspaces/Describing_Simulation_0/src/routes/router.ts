@@ -14,9 +14,16 @@ export interface RouterOptions {
   };
 }
 
+interface DynamicRouteEntry {
+  pattern: RegExp;
+  keys: string[];
+  handler: RouteHandler;
+}
+
 export class Router {
   private readonly basePath: string;
   private readonly routes = new Map<string, RouteHandler>();
+  private readonly dynamicRoutes: DynamicRouteEntry[] = [];
   private readonly authToken?: string;
   private readonly rateLimit?: {
     windowMs: number;
@@ -31,14 +38,29 @@ export class Router {
   }
 
   register(path: string, handler: RouteHandler): void {
-    const normalizedPath = this.normalizeRegisteredPath(path);
-    this.routes.set(normalizedPath, handler);
+    const cleaned = ensureLeadingSlash(stripTrailingSlash(path)) || '/';
+    const normalizedPath = this.normalizeRegisteredPath(cleaned);
+    this.addRoute(normalizedPath, handler);
+
+    if (this.basePath) {
+      this.addRoute(cleaned, handler);
+    }
   }
 
   dispatch(req: unknown, res: unknown): boolean {
     const url = typeof (req as { url?: unknown }).url === 'string' ? (req as { url: string }).url : '';
     const path = stripQueryAndTrailingSlash(url);
-    const handler = this.routes.get(path);
+    let handler = this.routes.get(path);
+    let params: Record<string, string> | null = null;
+
+    if (!handler) {
+      const dynamicMatch = this.matchDynamicRoute(path);
+      if (dynamicMatch) {
+        handler = dynamicMatch.handler;
+        params = dynamicMatch.params;
+      }
+    }
+
     if (!handler) {
       return false;
     }
@@ -62,6 +84,18 @@ export class Router {
         sendError(response, 429, { status: 'error', detail: 'Too Many Requests' });
         return true;
       }
+
+      if (params) {
+        (incoming as { params?: Record<string, string> }).params = {
+          ...(incoming as { params?: Record<string, string> }).params,
+          ...params,
+        };
+      }
+    } else if (params) {
+      (req as { params?: Record<string, string> }).params = {
+        ...(req as { params?: Record<string, string> }).params,
+        ...params,
+      };
     }
 
     if (response) {
@@ -95,9 +129,48 @@ export class Router {
   }
 
   private normalizeRegisteredPath(path: string): string {
-    const cleaned = ensureLeadingSlash(stripTrailingSlash(path));
-    const combined = `${this.basePath}${cleaned}`;
-    return combined === '' ? '/' : stripTrailingSlash(combined) || '/';
+    if (!this.basePath) {
+      return stripTrailingSlash(path) || '/';
+    }
+
+    if (path === '/') {
+      return this.basePath;
+    }
+
+    return stripTrailingSlash(`${this.basePath}${path}`) || '/';
+  }
+
+  private addRoute(path: string, handler: RouteHandler): void {
+    const normalized = stripTrailingSlash(path) || '/';
+    if (normalized.includes(':')) {
+      const entry = compileDynamicRoute(normalized, handler);
+      this.dynamicRoutes.push(entry);
+      return;
+    }
+
+    this.routes.set(normalized, handler);
+  }
+
+  private matchDynamicRoute(
+    path: string,
+  ): { handler: RouteHandler; params: Record<string, string> } | null {
+    for (const route of this.dynamicRoutes) {
+      const matches = route.pattern.exec(path);
+      if (!matches) {
+        continue;
+      }
+
+      const params: Record<string, string> = {};
+      route.keys.forEach((key, index) => {
+        const value = matches[index + 1];
+        if (key && value !== undefined) {
+          params[key] = value;
+        }
+      });
+      return { handler: route.handler, params };
+    }
+
+    return null;
   }
 
   private consumeRateLimit(req: IncomingMessage): boolean {
@@ -131,6 +204,33 @@ function normalizeBasePath(basePath: string): string {
   }
 
   return stripTrailingSlash(ensureLeadingSlash(basePath));
+}
+
+function compileDynamicRoute(path: string, handler: RouteHandler): DynamicRouteEntry {
+  const keys: string[] = [];
+  const pattern = path
+    .split('/')
+    .map((segment) => {
+      if (!segment) {
+        return '';
+      }
+      if (segment.startsWith(':')) {
+        keys.push(segment.slice(1));
+        return '([^/]+)';
+      }
+      return escapeRegex(segment);
+    })
+    .join('/');
+
+  return {
+    handler,
+    keys,
+    pattern: new RegExp(`^${pattern}$`),
+  };
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function ensureLeadingSlash(path: string): string {

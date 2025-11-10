@@ -11,3 +11,4 @@ The start script within the tools directory is considered prior knowledge. The o
 ### Artifacts
 
 The steps to run integration should also be captured in the *run_integration.sh* script with comments for each step enumerated below.
+

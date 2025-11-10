@@ -18,14 +18,14 @@ describe('information routes', () => {
     const readDocument = jest.fn(async (filename: string) => `# ${filename}`);
 
     const segments = [
-      { id: 'simulation', title: 'Simulation', description: 'Control loop', path: '/api/simulation' },
-      { id: 'evaluation', title: 'Evaluation', description: 'Inspect metrics', path: '/api/evaluation' },
+      { id: 'simulation', title: 'Simulation', description: 'Control loop', path: '/simulation' },
+      { id: 'evaluation', title: 'Evaluation', description: 'Inspect metrics', path: '/evaluation' },
     ];
 
     const documents = [
-      { id: 'api', title: 'API', description: 'Endpoint summary', filename: '/docs/api.md' },
+      { id: 'api.md', title: 'API', description: 'Endpoint summary', filename: '/docs/api.md' },
       {
-        id: 'describing-simulation',
+        id: 'Describing_Simulation.md',
         title: 'Orientation',
         description: 'Key ECS notes',
         filename: '/docs/Describing_Simulation.md',
@@ -36,8 +36,8 @@ describe('information routes', () => {
 
     const rootHandler = map.get('/');
     const indexHandler = map.get('/information');
-    const apiHandler = map.get('/information/api');
-    const docHandler = map.get('/information/describing-simulation');
+    const apiHandler = map.get('/information/api.md');
+    const docHandler = map.get('/information/Describing_Simulation.md');
 
     expect(rootHandler).toBeDefined();
     expect(indexHandler).toBeDefined();
@@ -72,7 +72,7 @@ describe('information routes', () => {
     await apiHandler?.({}, apiRes);
     expect(readDocument).toHaveBeenCalledWith('/docs/api.md');
     expect(apiRes.json).toHaveBeenCalledWith({
-      id: 'api',
+      id: 'api.md',
       title: 'API',
       description: 'Endpoint summary',
       content: '# /docs/api.md',
@@ -82,7 +82,7 @@ describe('information routes', () => {
     await docHandler?.({}, docRes);
     expect(readDocument).toHaveBeenCalledWith('/docs/Describing_Simulation.md');
     expect(docRes.json).toHaveBeenCalledWith({
-      id: 'describing-simulation',
+      id: 'Describing_Simulation.md',
       title: 'Orientation',
       description: 'Key ECS notes',
       content: '# /docs/Describing_Simulation.md',

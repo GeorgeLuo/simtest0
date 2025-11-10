@@ -55,4 +55,26 @@ describe('SimulationPlayer', () => {
       ]),
     );
   });
+
+  it('registers and removes component definitions', () => {
+    const entityManager = new EntityManager();
+    const componentManager = new ComponentManager();
+    const systemManager = new SystemManager(entityManager, componentManager);
+    const inboundBus = new Bus<any>();
+    const outboundBus = new Bus<any>();
+    const frameFilter = new FrameFilter();
+    const player = new SimulationPlayer(systemManager, inboundBus, outboundBus, frameFilter);
+
+    const component = {
+      id: 'simulation.temperature',
+      validate: () => true,
+    };
+
+    player.registerComponent(component);
+    expect(player.getRegisteredComponents()).toEqual([component]);
+
+    const removed = player.removeComponent(component.id);
+    expect(removed).toBe(true);
+    expect(player.getRegisteredComponents()).toEqual([]);
+  });
 });

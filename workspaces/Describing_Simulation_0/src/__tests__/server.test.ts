@@ -56,7 +56,7 @@ describe('Server', () => {
     expect(closeMock).toHaveBeenCalledTimes(1);
   });
 
-  it('responds with api guidance at root without invoking router', async () => {
+  it('delegates root requests to router', async () => {
     const listenMock = jest.fn((port: number, host: string | undefined, cb: () => void) => {
       cb();
     });
@@ -74,7 +74,7 @@ describe('Server', () => {
     });
 
     const router = {
-      dispatch: jest.fn().mockReturnValue(false),
+      dispatch: jest.fn().mockReturnValue(true),
     } as unknown as Router & { dispatch: jest.Mock };
 
     const server = new Server({ port: 3000, host: '127.0.0.1', router });
@@ -88,12 +88,8 @@ describe('Server', () => {
 
     capturedHandler({ url: '/', method: 'GET' }, res);
 
-    expect(router.dispatch).not.toHaveBeenCalled();
-    expect(res.writeHead).toHaveBeenCalledWith(200, { 'Content-Type': 'application/json' });
-    expect(res.end).toHaveBeenCalledTimes(1);
-
-    const payload = JSON.parse(res.end.mock.calls[0][0]);
-    expect(payload.links.api).toBe('/api');
+    expect(router.dispatch).toHaveBeenCalledWith({ url: '/', method: 'GET' }, res);
+    expect(res.writeHead).not.toHaveBeenCalledWith(404);
 
     await server.stop();
     expect(closeMock).toHaveBeenCalledTimes(1);

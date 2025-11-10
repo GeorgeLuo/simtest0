@@ -112,5 +112,5 @@
 - H1 Problems
     - H3 Analytical Intractability
     - H3 Computational Representability
-    - H3 Problem Selection
-    - H3 Case Study
+    - H3 Topology of Questions
+      - H4 Dart Search

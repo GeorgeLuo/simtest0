@@ -13,7 +13,7 @@ import { Bus } from './core/messaging/Bus';
 import { FrameFilter } from './core/messaging/outbound/FrameFilter';
 import type { Frame } from './core/messaging/outbound/Frame';
 import type { Acknowledgement } from './core/messaging/outbound/Acknowledgement';
-import type { SimulationSystemDescriptor } from './routes/simulation';
+import type { SimulationSystemDescriptor, SimulationComponentDescriptor } from './routes/simulation';
 import type { EvaluationComponentDescriptor, EvaluationSystemDescriptor } from './routes/evaluation';
 import { System, type SystemContext } from './core/systems/System';
 
@@ -51,31 +51,31 @@ export async function start(options: StartOptions = {}): Promise<Server> {
       id: 'simulation',
       title: 'Simulation',
       description: 'Control playback, inject systems, and stream frames.',
-      path: '/api/simulation',
+      path: '/simulation',
     },
     {
       id: 'evaluation',
       title: 'Evaluation',
       description: 'Inject evaluation systems/components, ingest frames, and receive evaluation output.',
-      path: '/api/evaluation',
+      path: '/evaluation',
     },
     {
       id: 'codebase',
       title: 'Codebase',
       description: 'Browse project files to support plugin composition.',
-      path: '/api/codebase',
+      path: '/codebase',
     },
   ];
 
   const informationDocuments = [
     {
-      id: 'api',
+      id: 'api.md',
       title: 'SimEval API Overview',
       description: 'Endpoint summary for simulation, evaluation, and codebase routes.',
       filename: path.join(informationDir, 'api.md'),
     },
     {
-      id: 'describing-simulation',
+      id: 'Describing_Simulation.md',
       title: 'Describing Simulation Orientation',
       description: 'High-level ECS concepts and extension workflow.',
       filename: path.join(informationDir, 'Describing_Simulation.md'),
@@ -95,7 +95,7 @@ export async function start(options: StartOptions = {}): Promise<Server> {
   };
 
   const loadComponent = async (
-    descriptor: EvaluationComponentDescriptor,
+    descriptor: EvaluationComponentDescriptor | SimulationComponentDescriptor,
   ): Promise<ComponentType<unknown>> => {
     const resolved = await resolvePath(rootDir, descriptor.modulePath);
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -129,6 +129,7 @@ export async function start(options: StartOptions = {}): Promise<Server> {
       player: simulation.player,
       outboundBus: simulation.outboundBus,
       loadSystem,
+      loadComponent,
     },
     evaluation: {
       player: evaluation.player,
@@ -140,6 +141,7 @@ export async function start(options: StartOptions = {}): Promise<Server> {
       rootDir,
       listDir: listDirectory,
       readFile: readFileFromRoot,
+      writeFile: writeFileToRoot,
     },
     information: {
       segments: informationSegments,
@@ -267,6 +269,30 @@ async function readFileFromRoot(rootDir: string, relativePath: string): Promise<
   }
 
   return fs.readFile(target, 'utf8');
+}
+
+async function writeFileToRoot(
+  rootDir: string,
+  relativePath: string,
+  content: string,
+  options?: { overwrite?: boolean },
+): Promise<void> {
+  const target = await resolvePath(rootDir, relativePath);
+  const directory = path.dirname(target);
+  await fs.mkdir(directory, { recursive: true });
+
+  if (!options?.overwrite) {
+    try {
+      await fs.stat(target);
+      throw new Error(`File already exists: ${relativePath}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  await fs.writeFile(target, content, 'utf8');
 }
 
 async function resolvePath(rootDir: string, relativePath: string): Promise<string> {

@@ -290,10 +290,6 @@ ssh_run() {
   ssh_exec "$cmd"
 }
 
-ssh_run "Updating apt package lists" "apt-get update"
-ssh_run "Installing base packages" "DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg git"
-ssh_run "Installing Node.js 20.x" "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs"
-ssh_run "Cleaning apt cache" "apt-get clean"
 ssh_run "Configuring swapfile ($SWAP_SIZE)" "
 if [[ ! -f /swapfile ]]; then
   (fallocate -l $SWAP_SIZE /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=$(( ${SWAP_SIZE%G} * 1024 )))
@@ -303,6 +299,10 @@ if [[ ! -f /swapfile ]]; then
   sed -i '/\\/swapfile/d' /etc/fstab
   echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi"
+ssh_run "Updating apt package lists" "apt-get update"
+ssh_run "Installing base packages" "DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg git"
+ssh_run "Installing Node.js 20.x" "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs"
+ssh_run "Cleaning apt cache" "apt-get clean"
 
 ssh_run "Extracting workspace bundle" "rm -rf '$REMOTE_WORKSPACE' '$REMOTE_BUNDLE_DIR' && mkdir -p '$REMOTE_BUNDLE_DIR' && tar -xzf '$REMOTE_ARCHIVE' -C '$REMOTE_BUNDLE_DIR'"
 ssh_run "Placing workspace files" "mv '$REMOTE_BUNDLE_DIR/workspaces/Describing_Simulation_0' '$REMOTE_WORKSPACE'"
@@ -346,7 +346,8 @@ WantedBy=multi-user.target"
 ssh_run "Installing /etc/systemd/system/${SERVICE_NAME}.service" "cat <<'EOF' > /etc/systemd/system/${SERVICE_NAME}.service
 $SERVICE_BLOCK
 EOF"
-ssh_run "Enabling ${SERVICE_NAME}.service" "systemctl daemon-reload && systemctl enable --now ${SERVICE_NAME}.service"
+ssh_run "Enabling ${SERVICE_NAME}.service" "systemctl daemon-reload && systemctl enable ${SERVICE_NAME}.service"
+ssh_run "Restarting ${SERVICE_NAME}.service" "systemctl restart ${SERVICE_NAME}.service"
 ssh_run "Service status" "systemctl status --no-pager ${SERVICE_NAME}.service"
 
 PUBLIC_URL=""

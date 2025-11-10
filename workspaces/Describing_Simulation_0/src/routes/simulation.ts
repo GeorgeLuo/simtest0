@@ -4,21 +4,30 @@ import type { Bus } from '../core/messaging/Bus';
 import type { Frame } from '../core/messaging/outbound/Frame';
 import type { Acknowledgement } from '../core/messaging/outbound/Acknowledgement';
 import type { System } from '../core/systems/System';
+import type { ComponentType } from '../core/components/ComponentType';
 
 type OutboundMessage = Frame | Acknowledgement;
 
 type ControllableIOPlayer = Pick<IOPlayer, 'start' | 'pause' | 'stop'> & {
   injectSystem: (payload: { system: System }) => string;
   ejectSystem: (payload: { system?: System; systemId?: string }) => boolean;
+  registerComponent: (component: ComponentType<unknown>) => void;
+  removeComponent: (componentId: string) => boolean;
 };
 
 export interface SimulationRouteDeps {
   player: ControllableIOPlayer;
   outboundBus: Bus<OutboundMessage>;
   loadSystem: (descriptor: SimulationSystemDescriptor) => Promise<System>;
+  loadComponent: (descriptor: SimulationComponentDescriptor) => Promise<ComponentType<unknown>>;
 }
 
 export interface SimulationSystemDescriptor {
+  modulePath: string;
+  exportName?: string;
+}
+
+export interface SimulationComponentDescriptor {
   modulePath: string;
   exportName?: string;
 }
@@ -48,7 +57,20 @@ export function registerSimulationRoutes(router: Router, deps: SimulationRouteDe
     respondSuccess(res, req.body?.messageId);
   });
 
-  router.register('/simulation/inject', async (req: any, res: any) => {
+  const registerPaths = (paths: string[], handler: (req: any, res: any) => void) => {
+    for (const path of paths) {
+      router.register(path, handler);
+    }
+  };
+
+  const resolveIdentifier = (req: any, key: string): string | undefined => {
+    const fromBody = typeof req.body?.[key] === 'string' ? req.body[key] : undefined;
+    const fromParams = typeof req.params?.[key] === 'string' ? req.params[key] : undefined;
+    const fromQuery = typeof req.query?.[key] === 'string' ? req.query[key] : undefined;
+    return fromBody ?? fromParams ?? fromQuery;
+  };
+
+  const injectSystemHandler = async (req: any, res: any) => {
     const messageId = req.body?.messageId as string | undefined;
     const descriptor = req.body?.system as SimulationSystemDescriptor | undefined;
 
@@ -65,11 +87,13 @@ export function registerSimulationRoutes(router: Router, deps: SimulationRouteDe
       const detail = error instanceof Error ? error.message : 'System injection failed';
       respondError(res, messageId, detail);
     }
-  });
+  };
 
-  router.register('/simulation/eject', (req: any, res: any) => {
+  registerPaths(['/simulation/inject', '/simulation/system'], injectSystemHandler);
+
+  const ejectSystemHandler = (req: any, res: any) => {
     const messageId = req.body?.messageId as string | undefined;
-    const systemId = typeof req.body?.systemId === 'string' ? req.body.systemId : undefined;
+    const systemId = resolveIdentifier(req, 'systemId');
     if (!systemId) {
       respondError(res, messageId, 'Missing system identifier');
       return;
@@ -82,7 +106,45 @@ export function registerSimulationRoutes(router: Router, deps: SimulationRouteDe
     }
 
     respondSuccess(res, messageId, { systemId });
-  });
+  };
+
+  registerPaths(['/simulation/eject', '/simulation/system/:systemId'], ejectSystemHandler);
+
+  const injectComponentHandler = async (req: any, res: any) => {
+    const messageId = req.body?.messageId as string | undefined;
+    const descriptor = req.body?.component as SimulationComponentDescriptor | undefined;
+
+    if (!descriptor?.modulePath) {
+      respondError(res, messageId, 'Missing component descriptor');
+      return;
+    }
+
+    try {
+      const component = await deps.loadComponent(descriptor);
+      deps.player.registerComponent(component);
+      respondSuccess(res, messageId);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Component injection failed';
+      respondError(res, messageId, detail);
+    }
+  };
+
+  registerPaths(['/simulation/component/inject', '/simulation/component'], injectComponentHandler);
+
+  const ejectComponentHandler = (req: any, res: any) => {
+    const messageId = req.body?.messageId as string | undefined;
+    const componentId = resolveIdentifier(req, 'componentId');
+
+    if (!componentId) {
+      respondError(res, messageId, 'Missing component identifier');
+      return;
+    }
+
+    deps.player.removeComponent(componentId);
+    respondSuccess(res, messageId);
+  };
+
+  registerPaths(['/simulation/component/eject', '/simulation/component/:componentId'], ejectComponentHandler);
 
   router.register('/simulation/stream', (req: any, res: any) => {
     res.writeHead?.(200, {

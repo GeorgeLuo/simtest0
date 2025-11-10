@@ -105,3 +105,4 @@ The system endpoints expose health and state information of the sim-eval service
 #### Status
 
 (22) The status route reports the runtime status of both simulation and evaluation players, indicating whether they are running, paused, or idle.
+

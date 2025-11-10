@@ -1,10 +1,10 @@
-# API Surface Contracts
+# API Surface Contracts (2025-11-09)
 
-Our HTTP interface hangs off a single router rooted at `/api`, and every change assumes that contract stays intact.
+The router still anchors under `/api` for auth/rate limiting, but every spec endpoint now has a canonical alias (e.g. `/simulation`, `/evaluation`, `/information/*.md`, `/codebase/*`, `/health`, `/status`) so clients can follow `Describing_Simulation_0.md` literally while existing `/api/...` consumers continue to work. When registering new routes:
 
-- `createServer` anchors the router under `/api` and serves a JSON handshake on `/`, so new endpoints must be registered through `Router` to inherit auth, rate limiting, and JSON helpers (`workspaces/Describing_Simulation_0/src/server.ts`, `workspaces/Describing_Simulation_0/src/routes/router.ts`). The spec’s `/api/health` and `/api/status` routes are now implemented via `workspaces/Describing_Simulation_0/src/routes/system.ts`, so any future runtime metadata should flow through that module.
-- Shared-secret auth and throttling are enforced inside the router and mirrored by automation via `SIMEVAL_AUTH_TOKEN`, `SIMEVAL_RATE_WINDOW_MS`, and `SIMEVAL_RATE_MAX`; the Phase 6 auth rollout (`memory/records/20251012222000_phase6_task3_auth_rate_limiting.md`) and `workspaces/Describing_Simulation_0/README.md` document the expectations that callers propagate those values.
-- JSON routes respond through `res.json` after the router’s body parsing, while SSE routes flush headers and stream heartbeats (`workspaces/Describing_Simulation_0/src/routes/simulation.ts`, `workspaces/Describing_Simulation_0/src/routes/evaluation.ts`); the integration harness in `tools/run_integration.js` asserts this behavior.
-- Discoverability depends on mirrored updates to `src/routes/information/` and the workspace README—Phase 3 Task 2 (`memory/records/20251007191920_phase3_task2_information_routes.md`) shows the pattern we follow whenever the API surface shifts.
+- Always call `router.register('/path', handler)` so the helper mirrors it both under `/api/path` and the canonical `/path` alias; this keeps the spec-compliant surface and the historical `/api` paths in sync (`workspaces/Describing_Simulation_0/src/routes/router.ts`).
+- Root discoverability now flows through the information routes: `/` returns the segments/documents JSON that previously lived at `/api`, and the doc IDs are literal filenames (e.g. `api.md`, `Describing_Simulation.md`). Keep those filenames stable whenever we re-extract documents (`workspaces/Describing_Simulation_0/src/routes/information.ts`, `src/main.ts`).
+- System-level probes are enforced through `registerSystemRoutes`, so health/status additions should go there rather than inventing new prefixes.
+- Shared-secret auth + rate limiting are still enforced centrally; when adding scripts or tests that hit the service, remember to pass `Authorization` and exercise both alias families so regressions surface early.
 
-When expanding the surface area, plan the work so code, documentation, and automation move in lockstep; otherwise, we break the discoverability guarantees baked into prior phases.
+Net: treat `/api/...` as an implementation detail and `/simulation`, `/evaluation`, etc. as the user contract; every change must preserve both until we deliberately deprecate the legacy prefix.

@@ -4,7 +4,11 @@ import type { IOPlayer } from './core/IOPlayer';
 import type { System } from './core/systems/System';
 import type { ComponentType } from './core/components/ComponentType';
 import { Router } from './routes/router';
-import { registerSimulationRoutes, type SimulationSystemDescriptor } from './routes/simulation';
+import {
+  registerSimulationRoutes,
+  type SimulationSystemDescriptor,
+  type SimulationComponentDescriptor,
+} from './routes/simulation';
 import {
   registerEvaluationRoutes,
   type EvaluationSystemDescriptor,
@@ -46,26 +50,6 @@ export class Server {
     }
 
     this.httpServer = http.createServer((req, res) => {
-      const path = normalizeUrlPath(typeof req?.url === 'string' ? req.url : undefined);
-      if (path === '/' && (req?.method === undefined || req.method === 'GET')) {
-        if (typeof res.writeHead === 'function') {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-        }
-        if (typeof res.end === 'function') {
-          res.end(
-            JSON.stringify({
-              status: 'success',
-              message: 'SimEval service ready. Visit /api for endpoint metadata and documentation links.',
-              links: {
-                api: '/api',
-                information: '/api/information/api',
-              },
-            }),
-          );
-        }
-        return;
-      }
-
       const handled = this.router.dispatch(req, res);
       if (!handled) {
         if (typeof res.writeHead === 'function') {
@@ -105,9 +89,15 @@ export interface BootstrapOptions {
   port: number;
   host?: string;
   simulation: {
-    player: IOPlayer;
+    player: IOPlayer & {
+      injectSystem: (payload: { system: System }) => string;
+      ejectSystem: (payload: { system?: System; systemId?: string }) => boolean;
+      registerComponent: (component: ComponentType<unknown>) => void;
+      removeComponent: (componentId: string) => boolean;
+    };
     outboundBus: unknown;
     loadSystem: (descriptor: SimulationSystemDescriptor) => Promise<System>;
+    loadComponent: (descriptor: SimulationComponentDescriptor) => Promise<ComponentType<unknown>>;
   };
   evaluation: {
     player: EvaluationPlayer;
@@ -119,6 +109,7 @@ export interface BootstrapOptions {
     rootDir: string;
     listDir: (root: string, relative: string) => Promise<string[]>;
     readFile: (root: string, relative: string) => Promise<string>;
+    writeFile: (root: string, relative: string, content: string, options?: { overwrite?: boolean }) => Promise<void>;
   };
   information: {
     segments: InformationSegment[];
@@ -140,6 +131,7 @@ export function createServer(options: BootstrapOptions): Server {
     player: options.simulation.player,
     outboundBus: options.simulation.outboundBus as any,
     loadSystem: options.simulation.loadSystem,
+    loadComponent: options.simulation.loadComponent,
   });
 
   registerEvaluationRoutes(router, {
@@ -153,6 +145,7 @@ export function createServer(options: BootstrapOptions): Server {
     rootDir: options.codebase.rootDir,
     listDir: options.codebase.listDir,
     readFile: options.codebase.readFile,
+    writeFile: options.codebase.writeFile,
   });
 
   registerInformationRoutes(router, {
@@ -169,21 +162,4 @@ export function createServer(options: BootstrapOptions): Server {
   });
 
   return new Server({ port: options.port, host: options.host, router });
-}
-
-function normalizeUrlPath(url: string | undefined): string {
-  if (!url) {
-    return '/';
-  }
-
-  const [path] = url.split('?');
-  if (!path) {
-    return '/';
-  }
-
-  if (path === '/') {
-    return '/';
-  }
-
-  return path.replace(/\/+$/, '') || '/';
 }

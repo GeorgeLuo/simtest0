@@ -13,3 +13,4 @@ The aligner is charged with comparing the spec’s directory tree with the state
 Alignment is strict, meaning filenames must match for posterity sake. Practically, if a visitor is looking for any file from the spec, that exact file should be present in the correct place in the directory.
 
 Important instruction documents: Codifying Simulations, Repository Structure, Workspace Structure, API Map
+

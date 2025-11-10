@@ -11,6 +11,7 @@ import { Pause, type PausePayload } from './operations/Pause';
 import { Stop, type StopPayload } from './operations/Stop';
 import { InjectSystem, type InjectSystemPayload } from './operations/InjectSystem';
 import { EjectSystem, type EjectSystemPayload } from './operations/EjectSystem';
+import type { ComponentType } from '../components/ComponentType';
 
 type OutboundMessage = Frame | Acknowledgement;
 
@@ -23,6 +24,8 @@ export const SimulationMessageType = {
 } as const;
 
 export class SimulationPlayer extends IOPlayer {
+  private readonly componentTypes = new Map<string, ComponentType<unknown>>();
+
   constructor(
     systemManager: SystemManager,
     inbound: Bus<unknown>,
@@ -33,6 +36,18 @@ export class SimulationPlayer extends IOPlayer {
   ) {
     super(systemManager, inbound, outbound, frameFilter, handlers, cycleIntervalMs);
     this.registerDefaultHandlers();
+  }
+
+  registerComponent<T>(component: ComponentType<T>): void {
+    this.componentTypes.set(component.id, component);
+  }
+
+  removeComponent(componentId: string): boolean {
+    return this.componentTypes.delete(componentId);
+  }
+
+  getRegisteredComponents(): ComponentType<unknown>[] {
+    return Array.from(this.componentTypes.values());
   }
 
   private registerDefaultHandlers(): void {
