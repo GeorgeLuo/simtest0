@@ -24,6 +24,9 @@ const AUTH_HEADER_VALUE = RAW_AUTH_TOKEN
   : null;
 
 async function main() {
+  const cliOptions = parseCliOptions(process.argv.slice(2));
+  console.log(`[benchmark] GC sampling mode: ${cliOptions.gcMode}`);
+
   const rootDir = path.resolve(__dirname, '..');
   const workspaceDir = path.join(rootDir, 'workspaces', 'Describing_Simulation_0');
   const distMainPath = path.join(workspaceDir, 'dist', 'main.js');
@@ -39,7 +42,7 @@ async function main() {
   let systemId;
   try {
     systemId = await injectTemperatureSystem();
-    const results = await measureSimulationPerformance();
+    const results = await measureSimulationPerformance(cliOptions);
     await persistBaseline(rootDir, results);
     console.log('[benchmark] Benchmark completed successfully.');
   } finally {
@@ -68,7 +71,7 @@ async function injectTemperatureSystem() {
   const response = await fetchJson('POST', '/api/simulation/inject', {
     messageId: 'benchmark-inject',
     system: {
-      modulePath: 'plugins/simulation/systems/temperatureControlSystem.js',
+      modulePath: 'test_plugins/simulation/temperatureControlSystem.js',
       exportName: 'createTemperatureControlSystem',
     },
   });
@@ -92,7 +95,7 @@ async function ejectSimulationSystem(systemId) {
   await fetchJson('POST', '/api/simulation/eject', { messageId: 'benchmark-eject', systemId });
 }
 
-async function measureSimulationPerformance() {
+async function measureSimulationPerformance(options = DEFAULT_BENCHMARK_OPTIONS) {
   console.log(`[benchmark] Measuring ${TARGET_TICKS} simulation ticks...`);
 
   const streamController = new AbortController();
@@ -111,6 +114,9 @@ async function measureSimulationPerformance() {
   const decoder = new TextDecoder();
   let buffer = '';
 
+  if (options.gc.beforeSample) {
+    runOptionalGc('before-start-sample');
+  }
   const startMemory = captureMemoryUsage();
   const startTime = process.hrtime.bigint();
 
@@ -177,6 +183,9 @@ async function measureSimulationPerformance() {
   }
 
   const endTime = lastTickTime ?? process.hrtime.bigint();
+  if (options.gc.afterSample) {
+    runOptionalGc('before-end-sample');
+  }
   const endMemory = captureMemoryUsage();
 
   const elapsedNs = endTime - (firstTickTime ?? startTime);
@@ -220,6 +229,64 @@ function computeMemoryDelta(before, after) {
       return [metric, after[metric] - before[metric]];
     }),
   );
+}
+
+function runOptionalGc(stage) {
+  if (typeof global.gc !== 'function') {
+    return;
+  }
+
+  try {
+    global.gc();
+  } catch (error) {
+    console.warn(`[benchmark] Failed to run GC before ${stage}:`, error);
+  }
+}
+
+const DEFAULT_BENCHMARK_OPTIONS = Object.freeze({
+  gcMode: 'none',
+  gc: Object.freeze({
+    beforeSample: false,
+    afterSample: false,
+  }),
+});
+
+const VALID_GC_MODES = new Set(['none', 'before', 'after', 'both']);
+
+function parseCliOptions(argv) {
+  const gcMode = resolveGcMode(argv);
+  return {
+    gcMode,
+    gc: {
+      beforeSample: gcMode === 'before' || gcMode === 'both',
+      afterSample: gcMode === 'after' || gcMode === 'both',
+    },
+  };
+}
+
+function resolveGcMode(argv) {
+  let candidate = 'none';
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === '--gc-mode' && typeof argv[index + 1] === 'string') {
+      candidate = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (token.startsWith('--gc-mode=')) {
+      const [, value] = token.split('=');
+      if (value) {
+        candidate = value;
+      }
+    }
+  }
+
+  if (VALID_GC_MODES.has(candidate)) {
+    return candidate;
+  }
+
+  console.warn(`[benchmark] Unknown --gc-mode value "${candidate}", defaulting to "none".`);
+  return 'none';
 }
 
 function isFrameMessage(value) {

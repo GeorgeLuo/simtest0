@@ -10,7 +10,7 @@ This abridged reference points new operators to the broader simulation design no
 
 ## Extension Workflow
 1. Inspect the codebase via `/api/codebase/tree` and `/api/codebase/file` to locate extension points under `plugins/`.
-2. Author new systems or components following the patterns documented in `instruction_documents/Describing_Simulation_0_codifying_simulations.md`.
+2. Author new systems or components following the patterns documented in `instruction_documents/Describing_Simulation_0_simeval_codifying_simulations.md`.
 3. Upload the assets through the simulation or evaluation injection endpoints.
 4. Start the simulation and observe outbound streams to validate behaviour; rerun uploads as needed.
 

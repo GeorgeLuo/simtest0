@@ -31,7 +31,7 @@ Optional:
   --service-name NAME     Name for systemd + exposed HTTP service (default: simeval)
   --port N                Port to bind SimEval (default: 3000)
   --host HOST             Host binding (default: 0.0.0.0)
-  --auth-token TOKEN      Auth token (default: random hex)
+  --auth-token TOKEN      Auth token (default: disabled)
   --no-auth               Disable auth entirely (omit token)
   --rate-window MS        Rate limit window (default: 60000)
   --rate-max COUNT        Rate limit max (default: 120)
@@ -53,18 +53,6 @@ require_cmd() {
     echo "Missing required command: $1" >&2
     exit 1
   }
-}
-
-generate_auth_token() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 16
-    return
-  fi
-
-  python - <<'PY'
-import secrets
-print(secrets.token_hex(16))
-PY
 }
 
 SNAPSHOT_ID=""
@@ -191,10 +179,6 @@ require_cmd jq
   exit 1
 }
 
-if [[ -z "$AUTH_TOKEN" && $AUTH_TOKEN_SUPPLIED -eq 0 ]]; then
-  AUTH_TOKEN="$(generate_auth_token)"
-fi
-
 cleanup_archive() {
   rm -f "$ARCHIVE_PATH"
 }
@@ -210,9 +194,11 @@ log "Packaging workspace bundle..."
 tar -czf "$ARCHIVE_PATH" -C "$ROOT_DIR" "${BUNDLE_ITEMS[@]}"
 
 BOOT_ARGS=(morphcloud instance boot "$SNAPSHOT_ID" --metadata "name=$INSTANCE_NAME")
-for md in "${METADATA_ARGS[@]}"; do
-  BOOT_ARGS+=(--metadata "$md")
-done
+if ((${#METADATA_ARGS[@]})); then
+  for md in "${METADATA_ARGS[@]}"; do
+    BOOT_ARGS+=(--metadata "$md")
+  done
+fi
 if [[ -n "$DISK_SIZE" ]]; then
   BOOT_ARGS+=(--disk-size "$DISK_SIZE")
 fi
@@ -364,6 +350,13 @@ PROVISION_SUCCESS=1
 cleanup_archive
 trap - EXIT
 
+AUTH_HEADER_CMD=""
+AUTH_TOKEN_DISPLAY="<disabled>"
+if [[ -n "$AUTH_TOKEN" ]]; then
+  AUTH_HEADER_CMD="-H 'Authorization: $AUTH_TOKEN' "
+  AUTH_TOKEN_DISPLAY="$AUTH_TOKEN"
+fi
+
 cat <<SUMMARY
 
 Provisioning complete.
@@ -371,11 +364,11 @@ Instance ID: $INSTANCE_ID
 Internal IP: $INTERNAL_IP
 Service: ${SERVICE_NAME}.service
 Port: $PORT
-Auth token: $AUTH_TOKEN
+Auth token: $AUTH_TOKEN_DISPLAY
 Public URL: ${PUBLIC_URL:-<not exposed>}
 
 Sample health check:
-  curl -sS -H 'Authorization: $AUTH_TOKEN' ${PUBLIC_URL:-http://<internal-ip>:$PORT}/api
+  curl -sS ${AUTH_HEADER_CMD}${PUBLIC_URL:-http://<internal-ip>:$PORT}/api
 
 Stop command:
   morphcloud instance stop $INSTANCE_ID

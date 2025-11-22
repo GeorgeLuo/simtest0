@@ -40,7 +40,7 @@ export async function start(options: StartOptions = {}): Promise<Server> {
   const port = resolvePort(options.port);
   const host = options.host ?? process.env.SIMEVAL_HOST ?? process.env.HOST;
   const rootDir = options.rootDir ?? path.resolve(__dirname, '..');
-  const informationDir = path.join(rootDir, 'src', 'routes', 'information');
+  const instructionDir = await resolveInstructionDir(rootDir);
   const cycleIntervalMs = options.cycleIntervalMs;
   const authToken = resolveAuthToken(options.authToken);
   const rateLimit = resolveRateLimit(options.rateLimit);
@@ -70,15 +70,15 @@ export async function start(options: StartOptions = {}): Promise<Server> {
   const informationDocuments = [
     {
       id: 'api.md',
-      title: 'SimEval API Overview',
-      description: 'Endpoint summary for simulation, evaluation, and codebase routes.',
-      filename: path.join(informationDir, 'api.md'),
+      title: 'SimEval API Map',
+      description: 'Full HTTP surface as defined in Describing_Simulation_0_simeval_api_map.md.',
+      filename: path.join(instructionDir, 'Describing_Simulation_0_simeval_api_map.md'),
     },
     {
       id: 'Describing_Simulation.md',
-      title: 'Describing Simulation Orientation',
-      description: 'High-level ECS concepts and extension workflow.',
-      filename: path.join(informationDir, 'Describing_Simulation.md'),
+      title: 'Describing Simulation — Source Manuscript',
+      description: 'Complete specification copied verbatim from Describing_Simulation_0.md.',
+      filename: path.join(instructionDir, 'Describing_Simulation_0.md'),
     },
   ];
 
@@ -212,6 +212,34 @@ function resolveRateLimit(candidate?: RateLimitOptions | null): RateLimitOptions
 
 function isValidRateLimit(value: RateLimitOptions): boolean {
   return Number.isFinite(value.windowMs) && value.windowMs > 0 && Number.isFinite(value.max) && value.max > 0;
+}
+
+async function resolveInstructionDir(rootDir: string): Promise<string> {
+  const candidates = [
+    path.join(rootDir, 'instruction_documents'),
+    path.join(rootDir, '..', 'instruction_documents'),
+    path.join(rootDir, '..', '..', 'instruction_documents'),
+  ];
+
+  for (const candidate of candidates) {
+    if (await directoryExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Unable to locate instruction_documents directory. Checked: ${candidates.join(', ')}`);
+}
+
+async function directoryExists(candidate: string): Promise<boolean> {
+  try {
+    const stats = await fs.stat(candidate);
+    return stats.isDirectory();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return false;
+    }
+    throw error;
+  }
 }
 
 interface PlayerBundle<TPlayer extends IOPlayer> {

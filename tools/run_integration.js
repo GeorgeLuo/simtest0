@@ -122,7 +122,7 @@ async function injectTemperatureSystem(host, port) {
     body: JSON.stringify({
       messageId: 'integration-inject',
       system: {
-        modulePath: 'plugins/simulation/systems/temperatureControlSystem.js',
+        modulePath: 'test_plugins/simulation/temperatureControlSystem.js',
         exportName: 'createTemperatureControlSystem',
       },
     }),

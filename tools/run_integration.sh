@@ -10,7 +10,7 @@ echo "----------------------"
 echo "1. Build workspace artifacts"
 npm --prefix "$WORKSPACE_DIR" run build
 
-# Steps 2-5 — See instruction_documents/Describing_Simulation_0_codifying_simulations.md.
+# Steps 2-5 — See instruction_documents/Describing_Simulation_0_simeval_codifying_simulations.md.
 # The node automation performs these sequentially:
 # 2. Start the SimEval server programmatically.
 # 3. Probe the API landing page for discoverability metadata.

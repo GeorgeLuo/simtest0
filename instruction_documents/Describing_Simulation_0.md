@@ -1,4 +1,4 @@
-# Describing Simulation
+# Ch. 1. Describing Simulation
 
 Suppose we were to define an agent responsible for solving hypotheticals with quantitative approaches. The general strategy would be to model the relevant systems, determine the values to set in the systems, and compute the result.
 
@@ -497,6 +497,114 @@ The entire source documentation is copied here.
 
 Real-time injection of operations, system and component source code is a two-step process. First the source code is uploaded and plugin files are placed into the appropriate directory. Once acknowledged as a success response with system identifier, a further api call will add the system to the sequence of player evaluation.
 
+# API Map
+
+For readability, this is an enumeration of all the available endpoints of a sim-eval server, followed by reiteration of their functions covered in Checkpoint IX.
+
+```
+(1)   GET    /                                      
+(2)   GET    /information/Describing_Simulation.md   
+(3)   GET    /information/api.md                    
+(4)   POST   /simulation/start                      
+(5)   POST   /simulation/pause                      
+(6)   POST   /simulation/stop                       
+(7)   POST   /simulation/system                     
+(8)   DELETE /simulation/system/:id                 
+(9)   POST   /simulation/component                  
+(10)  DELETE /simulation/component/:id              
+(11)  GET    /simulation/stream                     
+(12)  POST   /evaluation/frame                      
+(13)  POST   /evaluation/system                     
+(14)  DELETE /evaluation/system/:id                 
+(15)  POST   /evaluation/component                  
+(16)  DELETE /evaluation/component/:id              
+(17)  GET    /evaluation/stream                     
+(18)  GET    /codebase/tree                         
+(19)  GET    /codebase/file?path=<filepath>         
+(20)  POST   /codebase/plugin                       
+(21)  GET    /health                                
+(22)  GET    /status  
+```
+### Root Domain
+
+(1) The root domain returns a node with maximal discoverability, being semantically dense but minimal in redundancy. From the information returned here, we can navigate through the universe of knowledge around sim-eval. Concretely it reveals the existence of a path for informational files.
+
+### Informational
+
+The information branch of endpoints contains the theory of sim-eval and the surface of sim-eval management.
+
+#### Source Spec
+
+(2) The source spec is an exhaustive explanation of the theory of sim-eval.
+
+#### Management Surface
+
+(3) The api enumerates all the endpoints (at the top of API Map section) and provides an explanation for their usage
+
+### Simulation
+
+The simulation branch of endpoints governs the execution and control of the simulation player. Each route manipulates the runtime environment or its constituent systems and components.
+
+#### Start
+
+(4) The start command initiates the simulation loop, beginning cyclical evaluation of all active systems in sequence until paused or stopped.
+
+#### Pause
+
+(5) The pause command suspends the simulation at its current tick, preserving all component and entity states for later continuation.
+
+#### Stop
+
+(6) The stop command halts the simulation and clears the environment, returning the engine to an initialized state without active entities or systems.
+
+#### System Injection
+
+(7) The system injection route allows dynamic addition of systems during runtime, extending environment behavior without service restart.
+
+#### System Ejection
+
+(8) The system ejection route removes a system from the execution sequence, immediately ceasing its participation in environment updates.
+
+#### Component Injection
+
+(9) The component injection route attaches new component definitions to entities, enabling new signals or state representations.
+
+#### Component Ejection
+
+(10) The component ejection route removes component definitions from entities, retracting signals from the environment.
+
+#### Stream
+
+(11) The simulation stream emits serialized frames of the environment at each tick. This endpoint provides continuous visibility into the simulation’s internal state and is used for real-time analysis or playback.
+
+### Codebase
+
+The codebase branch of endpoints exposes introspection of the repository and runtime plugin management, allowing users and agents to read, modify, and extend the source environment.
+
+#### Directory Tree
+
+(18) The tree route returns the full directory structure of the project repository, allowing traversal through source files and plugin directories.
+
+#### File Retrieval
+
+(19) The file retrieval route returns the raw text of a source file given its path, enabling inspection of system and component implementations.
+
+#### Plugin Upload
+
+(20) The plugin upload route receives source code for new systems, components, or operations and places them in the appropriate plugin directory. Acknowledgement confirms successful placement and registration.
+
+### System
+
+The system endpoints expose health and state information of the sim-eval service.
+
+#### Health
+
+(21) The health route returns the operational state of the service, including version, uptime, and readiness to handle requests.
+
+#### Status
+
+(22) The status route reports the runtime status of both simulation and evaluation players, indicating whether they are running, paused, or idle.
+
 ## Integration
 
 Following the implementation of the codebase described in codifying simulations, we implement an integration test to reveal gaps in execution and prove usability from the vantage of a user without prior knowledge. Usage can be knowable through probing the service.
@@ -510,6 +618,8 @@ The start script within the tools directory is considered prior knowledge. The o
 ### Artifacts
 
 The steps to run integration should also be captured in the *run_integration.sh* script with comments for each step enumerated below.
+
+# 
 
 # Agentic Instructions
 
@@ -529,37 +639,41 @@ Discoverability in the conceptual space requires care in mapping. You use a glos
 
 ## Bootstraps
 
-This document will serve as the source of truth for task generation. Bootstrapping is a process that is independent of generation of the sim-eval codebase itself. For context management, we will divide and store as files into a directory of root, *instruction_documents* (create if this does not exist):
+This document will serve as the source of truth for task generation. Bootstrapping is a process that is independent of generation of the sim-eval codebase itself. Using this chapter, Describing Simulation as source material, we will divide and store as files into a directory of root, *instruction_documents* (create if this does not exist):
 
-- Bootstraps section to a file with a name formed from the name of this document appended with *_bootstraps*
+- Bootstraps section to a file with a name formed from the name of this document appended with *_simeval_bootstraps*
 
-- Repository Structure section to a file with a name formed from the name of this document appended with *_repository_structure*
+- Repository Structure section to a file with a name formed from the name of this document appended with *_simeval_repository_structure*
 
-- Code Structure section to a file with a name formed from the name of this document appended with *_code_structure*
+- Code Structure section to a file with a name formed from the name of this document appended with *_simeval_code_structure*
 
 - A *mindset_prompts* directory containing:
 
-- Tasker section of Agent Prompts section to a file with a name formed from the name of this document appended with *_tasker_prompt*
+- Tasker section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_tasker_prompt*
 
-- Implementer section of Agent Prompts section to a file with a name formed from the name of this document appended with *_implementer_prompt*
+- Implementer section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_implementer_prompt*
 
-- Packager section of Agent Prompts section to a file with a name formed from the name of this document appended with *_packager_prompt*
+- Packager section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_packager_prompt*
 
-- Outsider section of Agent Prompts section to a file with a name formed from the name of this document appended with *_outsider_prompt*
+- Outsider section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_outsider_prompt*
 
-- Master Prompt section to a file with a name formed from the name of this document appended with *_master_prompt_important*
+- Aligner section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_aligner_prompt*
 
-- Integration section of Codifying Simulations to a file with a name formed from the name of this document appended with *_outsider_integration*
+- Optimizer section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_optimizer_prompt*
 
-- API Map section to a file with a name formed from the name of this document appended with *_api_map*
+- Master Prompt section to a file with a name formed from the name of this document appended with *_simeval_master_prompt_important*
 
-- Schedule of Work section to a file with a name formed from the name of this document appended with *_schedule_of_work*
+- Integration section of Codifying Simulations to a file with a name formed from the name of this document appended with *_simeval_outsider_integration*
 
-- Codifying Simulations section to a file with a name formed from the name of this document appended with *_codifying_simulations*
+- API Map section to a file with a name formed from the name of this document appended with *_simeval_api_map*
 
-- The text portion from the beginning of this document to the beginning of Codifying Simulations to a file with a name formed from the name of this document appended with *_theory*
+- Schedule of Work section to a file with a name formed from the name of this document appended with *_simeval_schedule_of_work*
 
-This file as-is should be transferred to *instruction_documents* and the structure (hierarchical header leveling) should be written to a table of contents, serving as a pseudo-index for topics. Preference is agents should take read segmented texts over the entire source after bootstrapping is completed (a point to emphasize in the *instruction_documents *index file).
+- Codifying Simulations section to a file with a name formed from the name of this document appended with *_simeval_codifying_simulations*
+
+- The text portion from the beginning of this document to the beginning of Codifying Simulations to a file with a name formed from the name of this document appended with *_simeval**_theory*
+
+This chapter as-is should be transferred to *instruction_documents* and the structure (hierarchical header leveling) should be written to a table of contents, serving as a pseudo-index for topics. Preference is agents should take read segmented texts over the entire source after bootstrapping is completed (a point to emphasize in the *instruction_documents *index file).
 
 Review and create an index for the *instruction_documents* directory mapping file names to a summary of file contents. Additionally create an index within the prompts directory enumerating file contents.
 
@@ -576,24 +690,24 @@ The following maps the structure of the repository following bootstrapping.
 ├── checks.sh
 ├── instruction_documents/
 │   ├── mindset_prompts/
-│   │   ├── <this document's file name>_tasker_prompt.md
-│   │   ├── <this document's file name>_implementer_prompt.md
-│   │   ├── <this document's file name>_packager_prompt.md
-│   │   ├── <this document's file name>_outsider_prompt.md
-│   │   ├── <this document's file name>_aligner_prompt.md
-│   │   ├── <this document's file name>_optimizer_prompt.md
+│   │   ├── <this document's file name>_simeval_tasker_prompt.md
+│   │   ├── <this document's file name>_simeval_implementer_prompt.md
+│   │   ├── <this document's file name>_simeval_packager_prompt.md
+│   │   ├── <this document's file name>_simeval_outsider_prompt.md
+│   │   ├── <this document's file name>_simeval_aligner_prompt.md
+│   │   ├── <this document's file name>_simeval_optimizer_prompt.md
 │   │   └── index.md
-│   ├── <this document's file name>_master_prompt_important.md
-│   ├── <this document's file name>_bootstraps.md
-│   ├── <this document's file name>_repository_structure.md
-│   ├── <this document's file name>_code_structure.md
-│   ├── <this document's file name>_API_map.md
-│   ├── <this document's file name>_codifying_simulations.md
-│   ├── <this document's file name>_theory.md
-│   ├── <this document's file name>_implementation_guidelines.md
-│   ├── <this document's file name>_outsider_integration.md
-│   ├── <this document's file name>_schedule_of_work.md
-│   ├── <this document's file name>_table_of_contents.md
+│   ├── <this document's file name>_simeval_master_prompt_important.md
+│   ├── <this document's file name>_simeval_bootstraps.md
+│   ├── <this document's file name>_simeval_repository_structure.md
+│   ├── <this document's file name>_simeval_code_structure.md
+│   ├── <this document's file name>_simeval_API_map.md
+│   ├── <this document's file name>_simeval_codifying_simulations.md
+│   ├── <this document's file name>_simeval_theory.md
+│   ├── <this document's file name>_simeval_implementation_guidelines.md
+│   ├── <this document's file name>_simeval_outsider_integration.md
+│   ├── <this document's file name>_simeval_schedule_of_work.md
+│   ├── <this document's file name>_simeval_table_of_contents.md
 │   ├── <this file in original form copied>.md
 │   └── index.md
 ├── tools/
@@ -724,9 +838,11 @@ In executing optimization, prioritize run-time complexity over memory. Prioritiz
 
 Based on the directive and inherited context you have been given, determine your mindset (tasker, implementer, packager, outsider, aligner, optimizer), familiarize with that mindset through instruction documents and memories associated with the mindset and execute as that mindset given the state of the project. When a task is completed, explicitly hand off responsibility of progress to the appropriate mindset by writing the delegation in the final output.
 
+# 
+
 # Implementation Guidelines
 
-The appendix contains helpful documents for reference throughout the implementation process. The meta-level guidance is intended to reduce error (hallucinations) by enforcing the definition of intent prior to execution.
+The chapter appendix contains helpful documents for reference throughout the implementation process. The meta-level guidance is intended to reduce error (hallucinations) by enforcing the definition of intent prior to execution.
 
 ## Methodology
 
@@ -766,9 +882,7 @@ Stage 5: Validate
 
 └─ Run tests → Errors → Iterate until green
 
-# Schedule of Work
-
-This section outlines the implementation stages, primarily useful for the tasker to determine units of work.
+## Schedule of Work
 
 Phase 1 — Bootstrapping
 
@@ -832,113 +946,108 @@ Phase 6 — Optimization
 
 - Inspect codebase for optimizations run-time complexity and memory and refactor, validating changes do not break behavior using the integration test
 
-# API Map
 
-For readability, this is an enumeration of all the available endpoints of a sim-eval server, followed by reiteration of their functions covered in Checkpoint IX.
+# Ch. 2. Implementing Simulations
 
-```
-(1)   GET    /                                      
-(2)   GET    /information/Describing_Simulation.md   
-(3)   GET    /information/api.md                    
-(4)   POST   /simulation/start                      
-(5)   POST   /simulation/pause                      
-(6)   POST   /simulation/stop                       
-(7)   POST   /simulation/system                     
-(8)   DELETE /simulation/system/:id                 
-(9)   POST   /simulation/component                  
-(10)  DELETE /simulation/component/:id              
-(11)  GET    /simulation/stream                     
-(12)  POST   /evaluation/frame                      
-(13)  POST   /evaluation/system                     
-(14)  DELETE /evaluation/system/:id                 
-(15)  POST   /evaluation/component                  
-(16)  DELETE /evaluation/component/:id              
-(17)  GET    /evaluation/stream                     
-(18)  GET    /codebase/tree                         
-(19)  GET    /codebase/file?path=<filepath>         
-(20)  POST   /codebase/plugin                       
-(21)  GET    /health                                
-(22)  GET    /status  
-```
-### Root Domain
+At this point, you should have a semi-portable simeval engine with an api for initializing and running ECS patterned programs. Earlier we’ve stated the benefit of ECS in orderly environment definition through the inherent modularity of systems. How do we maximize this benefit, and what are anti-patterns that negate this benefit?
 
-(1) The root domain returns a node with maximal discoverability, being semantically dense but minimal in redundancy. From the information returned here, we can navigate through the universe of knowledge around sim-eval. Concretely it reveals the existence of a path for informational files.
+## System Design
 
-### Informational
+An individual system should be limited to the smallest scope of causality possible. This is not a precise directive, as like deciding when to use interfacing in OOP. Systems can technically be discretized until they are loops of a single operation with business logic concentrated in component filtering.
 
-The information branch of endpoints contains the theory of sim-eval and the surface of sim-eval management.
+Towards a common vocabulary, we’ll summarize the general structure of a system (to be clear, we’re describing parts of a for-each loop):
 
-#### Source Spec
+- Filter: the mechanism that sits at the top of a system to generate the iteration source, being all entities with certain components as the scope
 
-(2) The source spec is an exhaustive explanation of the theory of sim-eval.
+- Transformation: the business logic that actions on each entity selected by the filter, propagating change in through entities and components
 
-#### Management Surface
+The transformation to action upon all these entities should compute with all these specific components and most of the business logic should be relevant to most of the entities. It is an anti-pattern to lean substantially on case logic in systems, hinting at suboptimal component definition. We should have some sense that transformations should create or modify entities and components outside of that initial filtering in order for change to propagate. It is an anti-pattern to transform the same component states multiple times in a single pass, leading to hidden states.
 
-(3) The api enumerates all the endpoints (at the top of API Map section) and provides an explanation for their usage
+## Component Design
 
-### Simulation
+The vocabulary we’ll use to describe components:
 
-The simulation branch of endpoints governs the execution and control of the simulation player. Each route manipulates the runtime environment or its constituent systems and components.
+- Type: the component type matched by the class name of a component, like a literal name of a field
 
-#### Start
+- Value: the internal payload of data captured by a specific component instance, with a defined schema
 
-(4) The start command initiates the simulation loop, beginning cyclical evaluation of all active systems in sequence until paused or stopped.
+Typing internal to the payload of components is an anti-pattern, being impossible to index by the ECS engine. The schema of component values being multi-parameter is an anti-pattern for the same reason. For the same amount of information captured for an entity, it is better to have more components with less data per component than to have fewer components with more data.
 
-#### Pause
+## Testing
 
-(5) The pause command suspends the simulation at its current tick, preserving all component and entity states for later continuation.
+Fundamentally the ECS engine was defined with object-oriented building blocks, which lends to test-driven development, given the discretized nature of inputs and verifiable outputs. TDD works well with highly vertical code as with flat architectures. With ECS implementations of world behavior, TDD is less meaningful. You can verify the behavior of individual systems with high coverage, but the canonical systems transform the environment in ways that are very noisy.
 
-#### Stop
+Systems may be non-commutative. This simply means a seeded environment transformed by system A and then by system B may not lead to the same state after transformation through system B and then system A. We can see this with textual builder patterns: function A appends text and function B capitalizes text. A followed by B results in a fully capitalized string, but B followed by A results in mixed casing.
 
-(6) The stop command halts the simulation and clears the environment, returning the engine to an initialized state without active entities or systems.
+### On Absolute Validation
 
-#### System Injection
+Let’s try to approximate what perfect verification of an ECS implementation looks like. You have a seeded environment state and you have every intermediate component state from system to system until you have the state of the environment as it enters the next state. You verify that each component value is correctly transformed through the frame. This is still approximate; there very well could be multiple touches to components within a single system (anti-pattern as it is). That aside, while technically feasible, this is not practical. We’ve only verified a frame of a nearly infinite number of permutations of component values. This would certainly be unrealistic to employ in an iterative development pattern.
 
-(7) The system injection route allows dynamic addition of systems during runtime, extending environment behavior without service restart.
+Testing of ECS implementations should orient around validation of causality within the environment rather than validation of behavior of code. This is analogous to code coverage; test code may be shorter or longer to achieve the same amount of coverage and there is intuition that shorter achieves coverage with less redundancy (lines of code visited). Repetitive visitation is not inherently bad, but signals testing for the sake of making sure code acts like code, that computers act like computers. Sufficiency of verification of code is measured by coverage, but coverage itself is graded against redundancy and for behavior.
 
-#### System Ejection
+Revisiting the fact that ECS was developed for modern game development we can expect some parallels in testing with frontend. Visual mediums consider smoothing of edges to be desirable, contrary to autonomous codebases which treat smoothing as obfuscation. A game that renders out-of-bounds spaces and self-recovers in a few frames or a login page that logs the user out on an operation due to an expired token is smoothing behavior, tolerable. A helper function that catches exceptions and simply returns default values is intolerable.
 
-(8) The system ejection route removes a system from the execution sequence, immediately ceasing its participation in environment updates.
+ECS for simulation, unlike a game engine, demands the high threshold of causal veracity as with an autonomous codebase, but cannot lean solely on unit testing and is incomplete still with additional perceptual testing strategies.
 
-#### Component Injection
+### Causal Validation
 
-(9) The component injection route attaches new component definitions to entities, enabling new signals or state representations.
+The next approach assumes simulation as leading to observations of emergent phenomena through understood phenomena. Extending this framing, emergent phenomena cannot be verified, only what is understood can be. This is useful towards accepting that the sum validity of causal transformation of each phenomenon over some time frame is as meaningful as the theoretical perfect verification over that same time frame. For our purposes, the parts of the sum are centered around components.
 
-#### Component Ejection
+We can realistically formalize expectations around a component type through a time-series, given a seeded environment that includes a stimulus producing an understood change. For example, we should expect a ball’s position component to predictably be affected by forces acting upon the ball. If we had an environment defined with a system for gravitational force and seeded this environment with a ball, the frames captured by the playback of this simulation should show the ball’s descent.
 
-(10) The component ejection route removes component definitions from entities, retracting signals from the environment.
+In summary, validating an understood phenomenon in ECS can be achieved through:
 
-#### Stream
+1. Seed environment with initial conditions expected to give rise to the phenomenon
 
-(11) The simulation stream emits serialized frames of the environment at each tick. This endpoint provides continuous visibility into the simulation’s internal state and is used for real-time analysis or playback.
+2. Run the simulation to capture environment behavior through simeval output streams
 
-### Codebase
+3. Verify stream data for the phenomenon
 
-The codebase branch of endpoints exposes introspection of the repository and runtime plugin management, allowing users and agents to read, modify, and extend the source environment.
+A system in isolation expresses only understood phenomena (this must be true as codification of a system is an effort of codification of phenomena). As systems are introduced to the environment, the number of phenomena within the environment grows to exceed the sum of the understood phenomena per system. With few systems, we have semi-understood phenomena, things that we can intuit, but at a certain point we begin to see emergent phenomena. The validation process enumerated above lends to a gradual process towards verifying ECS environments up to the point of semi-understood phenomena in order to build confidence in observance of emergent phenomena. In a sense, we are finding a way to “trust our eyes.”
 
-#### Directory Tree
+### Boundaries of Veracity
 
-(18) The tree route returns the full directory structure of the project repository, allowing traversal through source files and plugin directories.
+Bluntly, validation is not fun, but unit and perception based testing is rote (in a positive sense). Unit testing is bounded by coverage and perception based testing on permutations of interaction. The causal validation approach described above is not bounded in a computational sense. It requires some heuristic understanding of the intent of a world model. The unbounded nature flows down to the implementation of tests, there is no coverage measurement nor interaction matrix.
 
-#### File Retrieval
+We might attempt to define a framework or find universality through a rules based approach. If we’re validating output streams, a BRMS (business rules management system) can serve to define checks such as one-and-only-one entity definition and component lifecycles. This approach has computational scalability with modularity of condition definitions. While a rules engine is attractive for these reasons, BRMS mismatches where conditional statements in simulation are too dimensionally rich. We are back to wrangling the absolute validation problem.
 
-(19) The file retrieval route returns the raw text of a source file given its path, enabling inspection of system and component implementations.
+Despite the impracticality of BRMS for simulation, we can observe rule definition is very tractable. Similar to behavioral testing’s “when I click this, then I should observe this,” we can define “when this happens, then I should observe this.” To align with simulation space:
 
-#### Plugin Upload
+“With an environment state A, through the passage of time T, we should observe event(s) E.”
 
-(20) The plugin upload route receives source code for new systems, components, or operations and places them in the appropriate plugin directory. Acknowledgement confirms successful placement and registration.
+BRMS as a compilation engine for the evaluator of the statement is impractical, but it is trivial to define these types of statements; from what can be described comes what is understood. Further, their definition sums to the edge of semi-understood phenomena (which is as far as we need to achieve).
 
-### System
+Towards grounding our thoughts we’ll formalize expectations of a validation design pattern that scales:
 
-The system endpoints expose health and state information of the sim-eval service.
+- Semi-structured natural language statements are constructed to define understood phenomena
 
-#### Health
+- Statements are codified as verifiers which consume frames from a simulation run
 
-(21) The health route returns the operational state of the service, including version, uptime, and readiness to handle requests.
+- Updates to the world model which should reflect the same understood phenomena re-use the same verifiers
 
-#### Status
+And we’ll proceed to define agentic instructions to generally implement simulations before returning to the ball physics problem for a concrete test against the assumptions of this section.
 
-(22) The status route reports the runtime status of both simulation and evaluation players, indicating whether they are running, paused, or idle.
+# Agentic Instructions
+
+This section is intended for consumption by a coding agent to first localize knowledge from within this document to a filesystem context towards implementation of a specific world model. This world model is to be expressed as plugins of components and systems to use within simeval. The instructions proceed to define a verification strategy to serve as evolving guardrails for iterative development.
+
+## Bootstraps
+
+Using this chapter, Implementing Simulations, as source material, we will divide and store as files into a directory of root, *instruction_documents* (create if this does not exist):
+
+- Bootstraps section to a file with a name *impl_bootstraps*
+
+- Repository Structure section to a file with a name *impl_repository_structure*
+
+- A *mindset_prompts* directory containing:
+
+- Tasker section of Agent Prompts section to a file with a name formed from the name of this document appended with *_tasker_prompt*
+
+- Master Prompt section to a file with a name *impl_master_prompt_important*
+
+- The text of this chapter prior to Agentic Instructions, Implementing Simulations, to a file with a name formed from the name of this document appended with *_theory*
+
+This chapter as-is should be transferred to *instruction_documents* and the structure (hierarchical header leveling) should be written to a table of contents, serving as a pseudo-index for topics. Preference is agents should take read segmented texts over the entire source after bootstrapping is completed (a point to emphasize in the *instruction_documents *index file).
 
 # Problems
 
@@ -952,21 +1061,29 @@ We can intuit there are problems that are (or are more) *non-solvable*. In a mat
 
 At the same time, we can see problems that can be represented precisely as systems of equations can bear more sufficient solutions. So, problems with less *unknown unknowns* are more *computationally representable*; the closer a model’s formal components mirror the underlying causal reality described, the more valid and predictive the model is.
 
-### Problem Selection
+For our purposes, analytically tractable problems are a subset of computationally representable problems, but a problem that is analytically tractable lends to deterministic solvers (a calculator is especially suited for solving arithmetic). Problems suited for simulation are both analytically intractable and computationally representable.
 
-For our purposes, analytically tractable problems are a subset of computationally representable problems, but a problem that is analytically tractable lends to deterministic solvers (a calculator is especially suited for solving arithmetic). What are problems suited for simulation, both analytically intractable and computationally representable?
+### Topology of Questions
 
-In the following section, we will step through scenarios using what we’ve built to formulate strategies that have broad application towards simulation engineering.
+Questions are formed of a specific objective and intent to discover causal values of levers towards achieving that objective. Simulation is used to search for the specific objective from the universe of possible forms of the objective. Each path of this search, a single permutation of the effecting values is effectively a hypothetical (and hypotheticals can be simulated).
 
-### Case Study
+Effectively we’re describing a flow: questions suggest some conceptual space for *levers*, another space for *objectives* and between them a space for *paths* from levers to objectives. A heuristics-based approach, through domain knowledge, can produce a path that is more efficient than exhaustive permutation sweeps and rigid calculation. To summarize the three conceptual spaces:
 
-Questions are formed of a specific objective and intent to discover causal values of levers to achieve the objective. Simulation is used to search for the specific objective from the universe of possible forms of the objective. Each path of this search, a single permutation of the effecting values is effectively a hypothetical (and hypotheticals can be simulated).
+Levers travel on paths towards objectives.
 
-Effectively we’re describing a flow: questions suggest some conceptual space for *levers*, another space for *objectives* and between them a space for *paths* from levers to objectives. A heuristics-based approach, through domain knowledge, can produce a path that is more efficient than exhaustive permutation sweeps and rigid calculation. 
+If asked to sum two large numbers, 390234 and 512983, rather than starting with the least-significant digits and carrying over, we can intuit the first number is close to 400000 and the second 500000. We can sense the answer is around 900000. In this example, the addends exist in the conceptual space of levers, the summation operator exists in the paths, and the sum in that of objectives.
 
-For example, if asked to sum two large numbers, 390234 and 512983, rather than starting with the least-significant digits and carrying over, we can intuit the first number is close to 400000 and the second 500000. We can sense the answer is around 900000. This approach is efficient but critically without precision; is it wholly useless?
+The above example is illustrative of how the topology works, we can agree it’s pedantic; the problem is unsolved. In defense of the topology, this is because the problem is analytically tractible. To allay skepticism, let’s approach a question where we work *backwards*.
 
-Let’s start with a question that is opaque to a non-technical audience and trivial to others with domain knowledge.
+## Maze Problem
+
+We’ll pose a case that maps well to our topology while being more practical: a maze. Suppose you had an environment that is a flat maze. This maze can be represented as a coordinate system where movement in the vertical or horizontal plane is possible or impossible. A traverser is placed in the maze and knows there is a target somewhere in the maze.
+
+Within the conceptual space of paths are the literal paths to the target. It includes the strategies to find the path. The conceptual space of levers includes decisioning parameters to the strategies, such as turn selection. The space of objectives includes the target endpoint and requirements that distinguish the success of different strategies and parameters, such as step count.
+
+#### Dart Search
+
+Starting with a question that is opaque to a non-technical audience and trivial to others with domain knowledge (Case 1):
 
 **What coil and core geometry produces a uniform 0.5 T magnetic field within a 30 mm cubic target volume while minimizing copper loss and core mass?**
 
@@ -978,8 +1095,50 @@ Without domain knowledge, we can recognize:
 
 3. The best solution of all possible solutions minimizes “copper loss and core mass”
 
-1 and 3 pertain to the conceptual space of objectives. 2 pertains to the space of paths; how we validate a solution is a path through which the solution is derived.
+*To be clear, what we’d consider the solution to the problem is not pointing at the objective space in our topology. The solution is not the objective, rather the solution pertains to the space of levers.*
 
-This proposition is generated by an LLM (Soln. 1.1):
+1 and 3 pertain to the conceptual space of objectives. 2 pertains to the space of paths; how we validate a solution is a path through which the solution is derived. The solution space is constrained by all possible forms of coil and core geometry. This informs the path space as being constrained to all paths that can lead to a description of coil and core geometry. The path selected informs the levers. Holding selection within one of the three conceptual spaces limits selection space of the nearest, and calcifies the form of the third.
 
-**Gapped C-yoke electromagnet, 30 mm gap, 60–80 mm Rogowski poles, ~400 turns × 30 A → 0.5 T uniform field, ~180 W loss.**
+We’ll start with a strategy that naively takes LLM responses and look to refine the solution with a multi-dimensional search through the solution space. To start, we’ll name the levers and enumerate how they are represented to capture coil and core geometry.
+
+| Lever | Representation |
+|---|---|
+| Geometry family | c-yoke, h-yoke, or helmholtz |
+| Pole profile | flat, Rogowski, or custom spline |
+| Gap | meters |
+| Pole diameter | meters |
+| Pole profile radius | meters |
+| Yoke cross-section | meters2 |
+| Yoke path length | meters |
+| Core material | low carbon steel, silicon steel, NiFe, or ferrite |
+| Turns | count |
+| Current | Amperes |
+| Wire cross-section | meters |
+| Winding pack factor | multiplier |
+| Coil axial length | meters |
+| Coil radial thickness | meters |
+| Cooling method | natural convection, forced air, or liquid |
+
+**Table 1.1**: Representing levers in Case 1
+
+This proposition for the values of the levers is generated by an LLM (Soln. 1.1):
+
+| Lever | Value |
+|---|---|
+| Geometry family | c-yoke |
+| Pole profile | Rogowski |
+| Gap | 0.030 |
+| Pole diameter | 0.070 |
+| Pole profile radius | 0.035 |
+| Yoke cross-section | 0.0013 |
+| Yoke path length | 0.25 |
+| Core material | low carbon steel |
+| Turns | 400 |
+| Current | 25 |
+| Wire cross-section | 6x10-6 |
+| Winding pack factor | 0.60 |
+| Coil axial length | 0.10 |
+| Coil radial thickness | 0.022 |
+| Cooling method | forced air |
+
+**Table 1.2**: Lever values to solve Case 1

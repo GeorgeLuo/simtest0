@@ -10,7 +10,15 @@ describe('codebase routes', () => {
       }),
     } as unknown as Router & { register: jest.Mock };
 
-    const listDir = jest.fn(async () => ['fileA.ts']);
+    const listDir = jest.fn(async (_root: string, relative: string) => {
+      if (relative === 'src') {
+        return ['components/', 'index.ts'];
+      }
+      if (relative === 'src/components') {
+        return ['Button.tsx'];
+      }
+      throw new Error(`Unexpected path: ${relative}`);
+    });
     const readFile = jest.fn(async () => 'file-content');
     const writeFile = jest.fn(async () => undefined);
 
@@ -28,12 +36,39 @@ describe('codebase routes', () => {
     const treeRes = createAsyncRes();
     await treeHandler?.({ query: { path: 'src' } }, treeRes);
     expect(listDir).toHaveBeenCalledWith('/repo', 'src');
-    expect(treeRes.json).toHaveBeenCalledWith({ entries: ['fileA.ts'] });
+    expect(treeRes.json).toHaveBeenCalledWith({
+      path: 'src',
+      entries: ['components/', 'index.ts'],
+      tree: {
+        name: 'src',
+        path: 'src',
+        type: 'directory',
+        entries: [
+          {
+            name: 'components',
+            path: 'src/components',
+            type: 'directory',
+            entries: [
+              {
+                name: 'Button.tsx',
+                path: 'src/components/Button.tsx',
+                type: 'file',
+              },
+            ],
+          },
+          {
+            name: 'index.ts',
+            path: 'src/index.ts',
+            type: 'file',
+          },
+        ],
+      },
+    });
 
     const fileRes = createAsyncRes();
     await fileHandler?.({ query: { path: 'src/fileA.ts' } }, fileRes);
     expect(readFile).toHaveBeenCalledWith('/repo', 'src/fileA.ts');
-    expect(fileRes.json).toHaveBeenCalledWith({ content: 'file-content' });
+    expect(fileRes.json).toHaveBeenCalledWith({ path: 'src/fileA.ts', content: 'file-content' });
 
     const pluginRes = createAsyncRes();
     await pluginHandler?.(
@@ -56,6 +91,49 @@ describe('codebase routes', () => {
       detail: 'Plugins must be written under the plugins/ directory',
     });
     expect(writeFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns descriptive errors for invalid tree or file paths', async () => {
+    const map = new Map<string, (req: any, res: any) => unknown>();
+    const router = {
+      register: jest.fn((path: string, handler: (req: any, res: any) => unknown) => {
+        map.set(path, handler);
+      }),
+    } as unknown as Router & { register: jest.Mock };
+
+    const missingError = Object.assign(new Error('missing path'), { code: 'ENOENT' });
+    const listDir = jest.fn(async () => {
+      throw missingError;
+    });
+    const readFile = jest.fn(async () => {
+      throw new Error('Path is not a file: src');
+    });
+    const writeFile = jest.fn(async () => undefined);
+
+    registerCodebaseRoutes(router, { rootDir: '/repo', listDir, readFile, writeFile });
+
+    const treeHandler = map.get('/codebase/tree');
+    const treeRes = { json: jest.fn(), statusCode: 200 };
+    await treeHandler?.({ query: { path: 'missing' } }, treeRes);
+    expect(treeRes.statusCode).toBe(404);
+    expect(treeRes.json).toHaveBeenCalledWith({ status: 'error', detail: 'Path not found' });
+
+    const fileHandler = map.get('/codebase/file');
+    const missingPathRes = { json: jest.fn(), statusCode: 200 };
+    await fileHandler?.({ query: {} }, missingPathRes);
+    expect(missingPathRes.statusCode).toBe(400);
+    expect(missingPathRes.json).toHaveBeenCalledWith({
+      status: 'error',
+      detail: 'Path query parameter is required',
+    });
+
+    const invalidFileRes = { json: jest.fn(), statusCode: 200 };
+    await fileHandler?.({ query: { path: 'src' } }, invalidFileRes);
+    expect(invalidFileRes.statusCode).toBe(400);
+    expect(invalidFileRes.json).toHaveBeenCalledWith({
+      status: 'error',
+      detail: 'Path is not a file: src',
+    });
   });
 });
 

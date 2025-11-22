@@ -1,5 +1,12 @@
 import type { Router } from './router';
 
+export interface CodebaseTreeEntry {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  entries?: CodebaseTreeEntry[];
+}
+
 export interface CodebaseRouteDeps {
   rootDir: string;
   listDir: (rootDir: string, relativePath: string) => Promise<string[]>;
@@ -13,16 +20,65 @@ export interface CodebaseRouteDeps {
 }
 
 export function registerCodebaseRoutes(router: Router, deps: CodebaseRouteDeps): void {
+  const buildDirectoryTree = async (relativePath: string, seed?: string[]): Promise<CodebaseTreeEntry> => {
+    const entries = seed ?? (await deps.listDir(deps.rootDir, relativePath || '.'));
+    const children: CodebaseTreeEntry[] = [];
+
+    for (const entry of entries) {
+      const isDirectory = entry.endsWith('/');
+      const entryName = isDirectory ? entry.slice(0, -1) : entry;
+      const childRelative = relativePath ? `${relativePath}/${entryName}` : entryName;
+
+      if (isDirectory) {
+        const childTree = await buildDirectoryTree(childRelative);
+        children.push(childTree);
+      } else {
+        children.push({
+          name: entryName,
+          path: formatResponsePath(childRelative),
+          type: 'file',
+        });
+      }
+    }
+
+    return {
+      name: relativePath ? basename(relativePath) : '.',
+      path: formatResponsePath(relativePath || '.'),
+      type: 'directory',
+      entries: children,
+    };
+  };
+
   router.register('/codebase/tree', async (req: any, res: any) => {
-    const relativePath = typeof req.query?.path === 'string' ? req.query.path : '';
-    const entries = await deps.listDir(deps.rootDir, relativePath);
-    await res.json?.({ entries });
+    const relativePath = normalizeRelativePath(req.query?.path);
+
+    try {
+      const entries = await deps.listDir(deps.rootDir, relativePath || '.');
+      const tree = await buildDirectoryTree(relativePath, entries);
+      res.json?.({
+        path: formatResponsePath(relativePath || '.'),
+        entries,
+        tree,
+      });
+    } catch (error) {
+      respondFilesystemError(res, error);
+    }
   });
 
   router.register('/codebase/file', async (req: any, res: any) => {
-    const relativePath = typeof req.query?.path === 'string' ? req.query.path : '';
-    const content = await deps.readFile(deps.rootDir, relativePath);
-    await res.json?.({ content });
+    const relativePath = normalizeRelativePath(req.query?.path);
+    if (!relativePath) {
+      res.statusCode = 400;
+      res.json?.({ status: 'error', detail: 'Path query parameter is required' });
+      return;
+    }
+
+    try {
+      const content = await deps.readFile(deps.rootDir, relativePath);
+      res.json?.({ path: formatResponsePath(relativePath), content });
+    } catch (error) {
+      respondFilesystemError(res, error);
+    }
   });
 
   router.register('/codebase/plugin', async (req: any, res: any) => {
@@ -60,4 +116,61 @@ export function registerCodebaseRoutes(router: Router, deps: CodebaseRouteDeps):
 function respondPluginError(res: any, messageId: string | undefined, detail: string): void {
   res.statusCode = 400;
   res.json?.({ status: 'error', messageId, detail });
+}
+
+function normalizeRelativePath(candidate: unknown): string {
+  if (typeof candidate !== 'string') {
+    return '';
+  }
+
+  const trimmed = candidate.trim();
+  if (!trimmed || trimmed === '.' || trimmed === './') {
+    return '';
+  }
+
+  return trimmed.replace(/^[/\\]+/, '').replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+function formatResponsePath(relativePath: string): string {
+  if (!relativePath || relativePath === '.') {
+    return '.';
+  }
+  return relativePath.replace(/\\/g, '/');
+}
+
+function basename(relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!normalized) {
+    return '.';
+  }
+
+  const lastSlash = normalized.lastIndexOf('/');
+  return lastSlash === -1 ? normalized : normalized.slice(lastSlash + 1);
+}
+
+function respondFilesystemError(res: any, error: unknown): void {
+  const { statusCode, detail } = mapFilesystemError(error);
+  res.statusCode = statusCode;
+  res.json?.({ status: 'error', detail });
+}
+
+function mapFilesystemError(
+  error: unknown,
+): {
+  statusCode: number;
+  detail: string;
+} {
+  const enoent = (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+  const detail =
+    error instanceof Error ? error.message : typeof error === 'string' ? error : 'Filesystem error';
+
+  if (enoent) {
+    return { statusCode: 404, detail: 'Path not found' };
+  }
+
+  if (detail.includes('not a directory') || detail.includes('not a file')) {
+    return { statusCode: 400, detail };
+  }
+
+  return { statusCode: 500, detail };
 }

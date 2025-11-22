@@ -1,7 +1,7 @@
 {
   "name": "describing_simulation_0",
   "version": "1.0.0",
-  "description": "Phase 2 workspace for Describing Simulation 0 artifacts (see instruction_documents/Describing_Simulation_0_schedule_of_work.md).",
+  "description": "Phase 2 workspace for Describing Simulation 0 artifacts (see instruction_documents/Describing_Simulation_0_simeval_schedule_of_work.md).",
   "main": "dist/main.js",
   "scripts": {
     "start": "ts-node src/main.ts",

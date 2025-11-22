@@ -34,9 +34,15 @@ describe('evaluation routes', () => {
       removeComponent: jest.Mock;
     };
 
-    const unsubscribe = jest.fn();
+    const subscriptionCallbacks: Array<(message: Frame | Acknowledgement) => void> = [];
+    const unsubscribeMocks: jest.Mock[] = [];
     const outboundBus = {
-      subscribe: jest.fn(() => unsubscribe),
+      subscribe: jest.fn((callback: (message: Frame | Acknowledgement) => void) => {
+        subscriptionCallbacks.push(callback);
+        const unsubscriber = jest.fn();
+        unsubscribeMocks.push(unsubscriber);
+        return unsubscriber;
+      }),
     } as unknown as Bus<Frame | Acknowledgement> & { subscribe: jest.Mock };
 
     const loadSystem = jest.fn<Promise<System>, [EvaluationSystemDescriptor]>(async () => ({} as System));
@@ -44,7 +50,7 @@ describe('evaluation routes', () => {
       async () => ({ id: 'component', validate: () => true }),
     );
 
-    return { player, outboundBus, loadSystem, loadComponent, unsubscribe };
+    return { player, outboundBus, loadSystem, loadComponent, subscriptionCallbacks, unsubscribeMocks };
   };
 
   it('registers evaluation endpoints and delegates to dependencies', async () => {
@@ -201,13 +207,16 @@ describe('evaluation routes', () => {
     });
   });
 
-  it('emits heartbeat comments on evaluation stream and stops after disconnect', () => {
+  it('emits heartbeat comments on evaluation stream, replays last message, and stops after disconnect', () => {
     jest.useFakeTimers({ advanceTimers: true });
 
     const { router, routes } = createRouter();
     const deps = createDeps();
 
     registerEvaluationRoutes(router, deps);
+
+    const lastPublished = deps.subscriptionCallbacks[0];
+    lastPublished?.({ tick: 7, entities: {} } as Frame);
 
     const streamHandler = routes.get('/evaluation/stream');
     const writes: string[] = [];
@@ -228,12 +237,16 @@ describe('evaluation routes', () => {
 
     streamHandler?.(req, res);
 
+    expect(res.write).toHaveBeenCalledWith(':connected\n\n');
+    expect(res.write).toHaveBeenCalledWith(expect.stringContaining('"tick":7'));
+
     jest.advanceTimersByTime(15000);
     expect(res.write).toHaveBeenCalledWith(':heartbeat\n\n');
 
     const initial = writes.length;
     listeners.get('close')?.();
-    expect(deps.unsubscribe).toHaveBeenCalled();
+    const streamUnsubscribe = deps.unsubscribeMocks[deps.unsubscribeMocks.length - 1];
+    expect(streamUnsubscribe).toHaveBeenCalled();
     expect(res.end).toHaveBeenCalled();
 
     jest.advanceTimersByTime(15000);

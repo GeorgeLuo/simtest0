@@ -2,33 +2,37 @@
 
 This document will serve as the source of truth for task generation. Bootstrapping is a process that is independent of generation of the sim-eval codebase itself. For context management, we will divide and store as files into a directory of root, *instruction_documents* (create if this does not exist):
 
-- Bootstraps section to a file with a name formed from the name of this document appended with *_bootstraps*
+- Bootstraps section to a file with a name formed from the name of this document appended with *_simeval_bootstraps*
 
-- Repository Structure section to a file with a name formed from the name of this document appended with *_repository_structure*
+- Repository Structure section to a file with a name formed from the name of this document appended with *_simeval_repository_structure*
 
-- Code Structure section to a file with a name formed from the name of this document appended with *_code_structure*
+- Code Structure section to a file with a name formed from the name of this document appended with *_simeval_code_structure*
 
 - A *mindset_prompts* directory containing:
 
-- Tasker section of Agent Prompts section to a file with a name formed from the name of this document appended with *_tasker_prompt*
+- Tasker section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_tasker_prompt*
 
-- Implementer section of Agent Prompts section to a file with a name formed from the name of this document appended with *_implementer_prompt*
+- Implementer section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_implementer_prompt*
 
-- Packager section of Agent Prompts section to a file with a name formed from the name of this document appended with *_packager_prompt*
+- Packager section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_packager_prompt*
 
-- Outsider section of Agent Prompts section to a file with a name formed from the name of this document appended with *_outsider_prompt*
+- Outsider section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_outsider_prompt*
 
-- Master Prompt section to a file with a name formed from the name of this document appended with *_master_prompt_important*
+- Aligner section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_aligner_prompt*
 
-- Integration section of Codifying Simulations to a file with a name formed from the name of this document appended with *_outsider_integration*
+- Optimizer section of Agent Prompts section to a file with a name formed from the name of this document appended with *_simeval_optimizer_prompt*
 
-- API Map section to a file with a name formed from the name of this document appended with *_api_map*
+- Master Prompt section to a file with a name formed from the name of this document appended with *_simeval_master_prompt_important*
 
-- Schedule of Work section to a file with a name formed from the name of this document appended with *_schedule_of_work*
+- Integration section of Codifying Simulations to a file with a name formed from the name of this document appended with *_simeval_outsider_integration*
 
-- Codifying Simulations section to a file with a name formed from the name of this document appended with *_codifying_simulations*
+- API Map section to a file with a name formed from the name of this document appended with *_simeval_api_map*
 
-- The text portion from the beginning of this document to the beginning of Codifying Simulations to a file with a name formed from the name of this document appended with *_theory*
+- Schedule of Work section to a file with a name formed from the name of this document appended with *_simeval_schedule_of_work*
+
+- Codifying Simulations section to a file with a name formed from the name of this document appended with *_simeval_codifying_simulations*
+
+- The text portion from the beginning of this document to the beginning of Codifying Simulations to a file with a name formed from the name of this document appended with *_simeval_theory*
 
 This file as-is should be transferred to *instruction_documents* and the structure (hierarchical header leveling) should be written to a table of contents, serving as a pseudo-index for topics. Preference is agents should take read segmented texts over the entire source after bootstrapping is completed (a point to emphasize in the *instruction_documents *index file).
 
@@ -47,24 +51,24 @@ The following maps the structure of the repository following bootstrapping.
 ├── checks.sh
 ├── instruction_documents/
 │   ├── mindset_prompts/
-│   │   ├── <this document's file name>_tasker_prompt.md
-│   │   ├── <this document's file name>_implementer_prompt.md
-│   │   ├── <this document's file name>_packager_prompt.md
-│   │   ├── <this document's file name>_outsider_prompt.md
-│   │   ├── <this document's file name>_aligner_prompt.md
-│   │   ├── <this document's file name>_optimizer_prompt.md
+│   │   ├── <this document's file name>_simeval_tasker_prompt.md
+│   │   ├── <this document's file name>_simeval_implementer_prompt.md
+│   │   ├── <this document's file name>_simeval_packager_prompt.md
+│   │   ├── <this document's file name>_simeval_outsider_prompt.md
+│   │   ├── <this document's file name>_simeval_aligner_prompt.md
+│   │   ├── <this document's file name>_simeval_optimizer_prompt.md
 │   │   └── index.md
-│   ├── <this document's file name>_master_prompt_important.md
-│   ├── <this document's file name>_bootstraps.md
-│   ├── <this document's file name>_repository_structure.md
-│   ├── <this document's file name>_code_structure.md
-│   ├── <this document's file name>_API_map.md
-│   ├── <this document's file name>_codifying_simulations.md
-│   ├── <this document's file name>_theory.md
-│   ├── <this document's file name>_implementation_guidelines.md
-│   ├── <this document's file name>_outsider_integration.md
-│   ├── <this document's file name>_schedule_of_work.md
-│   ├── <this document's file name>_table_of_contents.md
+│   ├── <this document's file name>_simeval_master_prompt_important.md
+│   ├── <this document's file name>_simeval_bootstraps.md
+│   ├── <this document's file name>_simeval_repository_structure.md
+│   ├── <this document's file name>_simeval_code_structure.md
+│   ├── <this document's file name>_simeval_api_map.md
+│   ├── <this document's file name>_simeval_codifying_simulations.md
+│   ├── <this document's file name>_simeval_theory.md
+│   ├── <this document's file name>_simeval_implementation_guidelines.md
+│   ├── <this document's file name>_simeval_outsider_integration.md
+│   ├── <this document's file name>_simeval_schedule_of_work.md
+│   ├── <this document's file name>_simeval_table_of_contents.md
 │   ├── <this file in original form copied>.md
 │   └── index.md
 ├── tools/
@@ -114,4 +118,3 @@ The exceptions directory catalogs decisions which disagree with the spec. Except
 ### Checks
 
 The verifier is a script (*checks.sh*) that resides in the root directory (create this file if it does not exist). This is the access point to testing of the present artifact. All testing should be linked to the execution of the verifier script, taking care of the relative path to the artifact workspace. Running the script should validate the setup of the repository as well as artifact implementation, with an resultant output file written to a verifications directory (create if this does not exist). Each verification output file should be named with a timestamp.
-

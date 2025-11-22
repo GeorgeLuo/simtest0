@@ -1,4 +1,4 @@
-- H1 Describing Simulation
+- H1 Ch. 1. Describing Simulation
   - H2 Summary of Assumptions
 - H1 Describing Hypotheticals
   - H2 Endogenous or Exogenous
@@ -62,32 +62,6 @@
       - H4 Api.md
       - H4 Describing_Simulation.md
       - H4 Plugins
-  - H2 Integration
-    - H3 Artifacts
-- H1 Agentic Instructions
-  - H2 Discoverability
-  - H2 Bootstraps
-    - H3 Repository Structure
-    - H3 Tools
-    - H3 Workspaces
-    - H3 Memory
-      - H4 Ways
-      - H4 Records
-      - H4 Exceptions
-    - H3 Checks
-  - H2 Agent Prompts
-    - H3 Tasker
-      - H4 Task Staging
-    - H3 Implementer
-    - H3 Packager
-    - H3 Outsider
-    - H3 Aligner
-    - H3 Optimizer
-    - H3 Master Prompt
-- H1 Implementation Guidelines
-  - H2 Methodology
-    - H3 Test-driven Development
-- H1 Schedule of Work
 - H1 API Map
     - H3 Root Domain
     - H3 Informational
@@ -109,8 +83,46 @@
     - H3 System
       - H4 Health
       - H4 Status
+  - H2 Integration
+    - H3 Artifacts
+- H1 
+- H1 Agentic Instructions
+  - H2 Discoverability
+  - H2 Bootstraps
+    - H3 Repository Structure
+    - H3 Tools
+    - H3 Workspaces
+    - H3 Memory
+      - H4 Ways
+      - H4 Records
+      - H4 Exceptions
+    - H3 Checks
+  - H2 Agent Prompts
+    - H3 Tasker
+      - H4 Task Staging
+    - H3 Implementer
+    - H3 Packager
+    - H3 Outsider
+    - H3 Aligner
+    - H3 Optimizer
+    - H3 Master Prompt
+- H1 
+- H1 Implementation Guidelines
+  - H2 Methodology
+    - H3 Test-driven Development
+  - H2 Schedule of Work
+- H1 Ch. 2. Implementing Simulations
+  - H2 System Design
+  - H2 Component Design
+  - H2 Testing
+    - H3 On Absolute Validation
+    - H3 Causal Validation
+    - H3 Boundaries of Veracity
+- H1 Agentic Instructions
+  - H2 Bootstraps
 - H1 Problems
     - H3 Analytical Intractability
     - H3 Computational Representability
     - H3 Topology of Questions
+  - H2 Maze Problem
       - H4 Dart Search

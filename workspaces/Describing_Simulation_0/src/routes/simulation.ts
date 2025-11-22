@@ -7,6 +7,9 @@ import type { System } from '../core/systems/System';
 import type { ComponentType } from '../core/components/ComponentType';
 
 type OutboundMessage = Frame | Acknowledgement;
+const SSE_CONNECTED_CHUNK = ':connected\n\n';
+const SSE_HEARTBEAT_CHUNK = ':heartbeat\n\n';
+const SSE_SERIALIZATION_CACHE = new WeakMap<OutboundMessage, string>();
 
 type ControllableIOPlayer = Pick<IOPlayer, 'start' | 'pause' | 'stop'> & {
   injectSystem: (payload: { system: System }) => string;
@@ -41,6 +44,11 @@ export function registerSimulationRoutes(router: Router, deps: SimulationRouteDe
     res.statusCode = status;
     res.json?.({ status: 'error', messageId, detail });
   };
+
+  let latestMessage: OutboundMessage | null = null;
+  deps.outboundBus.subscribe((message) => {
+    latestMessage = message;
+  });
 
   router.register('/simulation/start', (req: any, res: any) => {
     deps.player.start();
@@ -153,13 +161,18 @@ export function registerSimulationRoutes(router: Router, deps: SimulationRouteDe
       Connection: 'keep-alive',
     });
     res.flushHeaders?.();
+    res.write?.(SSE_CONNECTED_CHUNK);
+
+    if (latestMessage) {
+      writeSseMessage(res, latestMessage);
+    }
 
     const heartbeatInterval = setInterval(() => {
-      res.write?.(':heartbeat\n\n');
+      res.write?.(SSE_HEARTBEAT_CHUNK);
     }, 15000);
 
     const unsubscribe = deps.outboundBus.subscribe((message) => {
-      res.write?.(`data: ${JSON.stringify(message)}\n\n`);
+      writeSseMessage(res, message);
     });
 
     req.on?.('close', () => {
@@ -170,4 +183,13 @@ export function registerSimulationRoutes(router: Router, deps: SimulationRouteDe
       res.end?.();
     });
   });
+}
+
+function writeSseMessage(res: any, message: OutboundMessage): void {
+  let serialized = SSE_SERIALIZATION_CACHE.get(message);
+  if (!serialized) {
+    serialized = `data: ${JSON.stringify(message)}\n\n`;
+    SSE_SERIALIZATION_CACHE.set(message, serialized);
+  }
+  res.write?.(serialized);
 }
