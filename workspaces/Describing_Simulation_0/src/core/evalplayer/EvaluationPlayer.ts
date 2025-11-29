@@ -36,6 +36,7 @@ export class EvaluationPlayer extends IOPlayer {
   protected readonly frames: FrameRecord[] = [];
   private readonly componentTypes = new Map<string, ComponentType<unknown>>();
   private readonly frameComponentType: ComponentType<Frame> = FrameComponent;
+  private lastFrameTick: number | null = null;
 
   constructor(
     systemManager: SystemManager,
@@ -57,12 +58,15 @@ export class EvaluationPlayer extends IOPlayer {
   }
 
   injectFrame(payload: FrameRecord): void {
+    this.resetIfNewRun(payload.frame.tick);
+
     const context = this.getContext();
     const entity = context.entityManager.create();
     context.componentManager.addComponent(entity, this.frameComponentType, payload.frame);
 
     this.frames.push(payload);
     this.publishFrame(payload.frame);
+    this.lastFrameTick = payload.frame.tick;
   }
 
   getFrames(): FrameRecord[] {
@@ -79,6 +83,14 @@ export class EvaluationPlayer extends IOPlayer {
 
   getRegisteredComponents(): ComponentType<unknown>[] {
     return Array.from(this.componentTypes.values());
+  }
+
+  private resetIfNewRun(tick: number): void {
+    if (this.lastFrameTick !== null && Number.isFinite(tick) && tick < this.lastFrameTick) {
+      this.frames.length = 0;
+      this.resetEnvironment();
+      this.lastFrameTick = null;
+    }
   }
 
   private registerDefaultHandlers(): void {

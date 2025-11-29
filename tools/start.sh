@@ -18,16 +18,12 @@ if [ ! -d "$WORKSPACE_DIR/node_modules" ]; then
   npm --prefix "$WORKSPACE_DIR" install >/dev/null
 fi
 
-if [ -f "$WORKSPACE_DIR/dist/main.js" ]; then
-  BUILD_HINT="dist/main.js detected"
-else
-  BUILD_HINT="building TypeScript sources"
-  npm --prefix "$WORKSPACE_DIR" run build >/dev/null
-fi
+echo "Building TypeScript sources"
+npm --prefix "$WORKSPACE_DIR" run build >/dev/null
 
 echo "Starting SimEval server (port $PORT)"
-SIMEVAL_PORT="$PORT" SIMEVAL_HOST="$HOST" \
-  npm --prefix "$WORKSPACE_DIR" run start >"$LOG_FILE" 2>&1 &
+SIMEVAL_PORT="$PORT" SIMEVAL_HOST="$HOST" SIMEVAL_AUTO_START_EVALUATION="true" \
+  node "$WORKSPACE_DIR/dist/main.js" >"$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 
 echo "$SERVER_PID" > "$PID_FILE"

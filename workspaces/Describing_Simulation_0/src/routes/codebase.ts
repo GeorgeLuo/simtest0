@@ -1,5 +1,7 @@
 import type { Router } from './router';
 
+const EXCLUDED_PATH_SEGMENTS = new Set(['node_modules', '.git', '.hg', '.svn', '.turbo', '.next', '.cache']);
+
 export interface CodebaseTreeEntry {
   name: string;
   path: string;
@@ -21,13 +23,17 @@ export interface CodebaseRouteDeps {
 
 export function registerCodebaseRoutes(router: Router, deps: CodebaseRouteDeps): void {
   const buildDirectoryTree = async (relativePath: string, seed?: string[]): Promise<CodebaseTreeEntry> => {
-    const entries = seed ?? (await deps.listDir(deps.rootDir, relativePath || '.'));
+    const entries = filterExcludedEntries(relativePath, seed ?? (await deps.listDir(deps.rootDir, relativePath || '.')));
     const children: CodebaseTreeEntry[] = [];
 
     for (const entry of entries) {
       const isDirectory = entry.endsWith('/');
       const entryName = isDirectory ? entry.slice(0, -1) : entry;
       const childRelative = relativePath ? `${relativePath}/${entryName}` : entryName;
+
+      if (shouldExcludePath(childRelative)) {
+        continue;
+      }
 
       if (isDirectory) {
         const childTree = await buildDirectoryTree(childRelative);
@@ -52,8 +58,17 @@ export function registerCodebaseRoutes(router: Router, deps: CodebaseRouteDeps):
   router.register('/codebase/tree', async (req: any, res: any) => {
     const relativePath = normalizeRelativePath(req.query?.path);
 
+    if (shouldExcludePath(relativePath)) {
+      res.statusCode = 400;
+      res.json?.({ status: 'error', detail: 'Path is excluded from tree responses' });
+      return;
+    }
+
     try {
-      const entries = await deps.listDir(deps.rootDir, relativePath || '.');
+      const entries = filterExcludedEntries(
+        relativePath,
+        await deps.listDir(deps.rootDir, relativePath || '.'),
+      );
       const tree = await buildDirectoryTree(relativePath, entries);
       res.json?.({
         path: formatResponsePath(relativePath || '.'),
@@ -173,4 +188,21 @@ function mapFilesystemError(
   }
 
   return { statusCode: 500, detail };
+}
+
+function shouldExcludePath(relativePath: string): boolean {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!normalized) {
+    return false;
+  }
+
+  return normalized.split('/').some((segment) => EXCLUDED_PATH_SEGMENTS.has(segment));
+}
+
+function filterExcludedEntries(basePath: string, entries: string[]): string[] {
+  return entries.filter((entry) => {
+    const entryName = entry.endsWith('/') ? entry.slice(0, -1) : entry;
+    const combined = basePath ? `${basePath}/${entryName}` : entryName;
+    return !shouldExcludePath(combined);
+  });
 }

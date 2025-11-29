@@ -1,6 +1,9 @@
 import { start } from '../main';
 import { createServer } from '../server';
 import type { Server } from '../server';
+import path from 'path';
+import { promises as fs } from 'fs';
+import os from 'os';
 
 jest.mock('../server', () => ({
   createServer: jest.fn(),
@@ -27,6 +30,7 @@ describe('main start()', () => {
       port: 4100,
       host: '0.0.0.0',
       rootDir: '/tmp/root',
+      instructionDir: path.join(__dirname, '..', '..', 'instruction_documents'),
       log,
       autoStartEvaluation: false,
     });
@@ -153,5 +157,46 @@ describe('main start()', () => {
 
     (capturedOptions.evaluation.player as { stop(): void }).stop();
     (capturedOptions.simulation.player as { stop(): void }).stop();
+  });
+
+  it('rejects systems that fail validation against SystemContext', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'simeval-invalid-'));
+    const badModulePath = path.join(tempDir, 'bad.js');
+
+    await fs.writeFile(
+      badModulePath,
+      `
+      class BadSystem {
+        update(world) {
+          return world.entities.has('x');
+        }
+      }
+      module.exports = BadSystem;
+      `,
+      'utf8',
+    );
+
+    const startMock = jest.fn().mockResolvedValue(undefined);
+    const serverMock = { start: startMock } as unknown as Server;
+    const log = jest.fn();
+    let capturedOptions: any;
+
+    mockedCreateServer.mockImplementationOnce((options) => {
+      capturedOptions = options;
+      return serverMock;
+    });
+
+    await start({
+      rootDir: tempDir,
+      instructionDir: path.join(__dirname, '..', '..', 'instruction_documents'),
+      log,
+      autoStartEvaluation: false,
+    });
+
+    await expect(capturedOptions.simulation.loadSystem({ modulePath: 'bad.js' })).rejects.toThrow(
+      /System validation failed/,
+    );
+
+    await fs.rm(tempDir, { recursive: true, force: true });
   });
 });

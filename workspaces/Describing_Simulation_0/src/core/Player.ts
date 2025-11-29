@@ -139,7 +139,7 @@ export class Player {
     }
   }
 
-  private resetEnvironment(): void {
+  protected resetEnvironment(): void {
     const context = this.getContext();
     const entities = context.entityManager.list();
 

@@ -14,11 +14,13 @@
 const path = require('path');
 const { promises: fs } = require('fs');
 const { setTimeout: delay } = require('timers/promises');
+const { TextDecoder } = require('util');
 
 const RAW_AUTH_TOKEN = process.env.SIMEVAL_AUTH_TOKEN ?? process.env.SIMEVAL_API_TOKEN ?? '';
 const AUTH_HEADER_VALUE = RAW_AUTH_TOKEN
   ? RAW_AUTH_TOKEN.startsWith('Bearer ') ? RAW_AUTH_TOKEN : `Bearer ${RAW_AUTH_TOKEN}`
   : null;
+const textDecoder = new TextDecoder();
 
 async function main() {
   const rootDir = path.resolve(__dirname, '..');
@@ -38,6 +40,8 @@ async function main() {
   let simulationSystemId;
   let stagedMonitorCleanup;
   let stagedMonitorModulePath;
+  let stagedSimulationCleanup;
+  let stagedSimulationModulePath;
 
   try {
     await verifyLanding(host, port);
@@ -48,8 +52,12 @@ async function main() {
     stagedMonitorCleanup = stagedMonitor.cleanup;
     stagedMonitorModulePath = stagedMonitor.modulePath;
 
+    const stagedSimulation = await stageSimulationSystem(workspaceDir);
+    stagedSimulationCleanup = stagedSimulation.cleanup;
+    stagedSimulationModulePath = stagedSimulation.modulePath;
+
     evaluationSystemId = await injectTemperatureMonitor(host, port, stagedMonitorModulePath);
-    simulationSystemId = await injectTemperatureSystem(host, port);
+    simulationSystemId = await injectTemperatureSystem(host, port, stagedSimulationModulePath);
     const sseSnapshots = await exerciseControls(host, port, {
       simulationSystemId,
       evaluationSystemId,
@@ -61,6 +69,9 @@ async function main() {
     await server.stop();
     if (typeof stagedMonitorCleanup === 'function') {
       await stagedMonitorCleanup().catch(() => undefined);
+    }
+    if (typeof stagedSimulationCleanup === 'function') {
+      await stagedSimulationCleanup().catch(() => undefined);
     }
   }
 }
@@ -109,20 +120,30 @@ async function verifyIdleStream(host, port, path) {
   controller.abort();
   await reader.cancel().catch(() => undefined);
 
-  if (result?.value && result.value.length > 0) {
-    throw new Error(`Received SSE payload before start on ${path}`);
+  if (result && typeof result === 'object' && result.value && result.value.length > 0) {
+    const decoded = textDecoder.decode(result.value);
+    const meaningfulLines = decoded
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith(':'));
+    if (meaningfulLines.length > 0) {
+      throw new Error(`Received SSE payload before start on ${path}`);
+    }
   }
 }
 
-async function injectTemperatureSystem(host, port) {
+async function injectTemperatureSystem(host, port, modulePath) {
   console.log('[integration] Injecting temperature control system...');
+  if (!modulePath) {
+    throw new Error('Missing simulation system module path for injection.');
+  }
   const response = await fetchJson(`http://${host}:${port}/api/simulation/inject`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messageId: 'integration-inject',
       system: {
-        modulePath: 'test_plugins/simulation/temperatureControlSystem.js',
+        modulePath,
         exportName: 'createTemperatureControlSystem',
       },
     }),
@@ -338,6 +359,31 @@ function assertEvaluationStream(messages) {
   }
 }
 
+async function stageSimulationSystem(workspaceDir) {
+  const systemsDir = path.join(workspaceDir, 'plugins', 'simulation', 'systems');
+  const moduleFilename = 'integrationTemperatureControlSystem.js';
+  const modulePath = path.join(systemsDir, moduleFilename);
+  await fs.mkdir(systemsDir, { recursive: true });
+  await fs.writeFile(modulePath, generateSimulationSystemSource(), 'utf8');
+
+  const relativeModulePath = path.relative(workspaceDir, modulePath).split(path.sep).join('/');
+
+  return {
+    modulePath: relativeModulePath,
+    cleanup: async () => {
+      await fs.unlink(modulePath);
+      try {
+        const entries = await fs.readdir(systemsDir);
+        if (entries.length === 0) {
+          await fs.rmdir(systemsDir);
+        }
+      } catch {
+        /* ignore cleanup errors */
+      }
+    },
+  };
+}
+
 async function stageEvaluationMonitor(workspaceDir) {
   const systemsDir = path.join(workspaceDir, 'plugins', 'evaluation', 'systems');
   const moduleFilename = 'integrationTemperatureRangeMonitor.js';
@@ -506,6 +552,80 @@ function createTemperatureRangeMonitor(options) {
 module.exports = {
   TemperatureRangeMonitor,
   createTemperatureRangeMonitor,
+};
+`;
+}
+
+function generateSimulationSystemSource() {
+  return `'use strict';
+const { join } = require('path');
+const { System } = require(join(__dirname, '../../../dist/core/systems/System'));
+
+const TemperatureComponent = {
+  id: 'temperature',
+  description: 'Scalar temperature reading in Fahrenheit.',
+  validate(payload) {
+    return (
+      payload &&
+      typeof payload === 'object' &&
+      typeof payload.value === 'number' &&
+      Number.isFinite(payload.value)
+    );
+  },
+};
+
+class TemperatureControlSystem extends System {
+  constructor(options = {}) {
+    super();
+    this.entity = null;
+    this.temperature = Number.isFinite(options.start) ? options.start : 72;
+    this.delta = Number.isFinite(options.delta) ? options.delta : 0.5;
+    this.min = Number.isFinite(options.min) ? options.min : 60;
+    this.max = Number.isFinite(options.max) ? options.max : 85;
+    this.direction = 1;
+  }
+
+  initialize(context) {
+    this.entity = context.entityManager.create();
+    context.componentManager.addComponent(this.entity, TemperatureComponent, { value: this.temperature });
+  }
+
+  update(context) {
+    if (this.entity === null) {
+      return;
+    }
+
+    this.temperature += this.delta * this.direction;
+    if (this.temperature >= this.max) {
+      this.temperature = this.max;
+      this.direction = -1;
+    } else if (this.temperature <= this.min) {
+      this.temperature = this.min;
+      this.direction = 1;
+    }
+
+    context.componentManager.addComponent(this.entity, TemperatureComponent, { value: this.temperature });
+  }
+
+  destroy(context) {
+    if (this.entity === null) {
+      return;
+    }
+
+    context.componentManager.removeAll(this.entity);
+    context.entityManager.remove(this.entity);
+    this.entity = null;
+  }
+}
+
+function createTemperatureControlSystem(options) {
+  return new TemperatureControlSystem(options || {});
+}
+
+module.exports = {
+  TemperatureComponent,
+  TemperatureControlSystem,
+  createTemperatureControlSystem,
 };
 `;
 }

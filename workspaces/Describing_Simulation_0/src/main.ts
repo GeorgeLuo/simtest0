@@ -23,6 +23,7 @@ export interface StartOptions {
   port?: number;
   host?: string;
   rootDir?: string;
+  instructionDir?: string;
   log?: (message: string) => void;
   cycleIntervalMs?: number;
   authToken?: string | null;
@@ -40,11 +41,12 @@ export async function start(options: StartOptions = {}): Promise<Server> {
   const port = resolvePort(options.port);
   const host = options.host ?? process.env.SIMEVAL_HOST ?? process.env.HOST;
   const rootDir = options.rootDir ?? path.resolve(__dirname, '..');
-  const instructionDir = await resolveInstructionDir(rootDir);
+  const instructionDir =
+    options.instructionDir ?? (await resolveInstructionDir(rootDir));
   const cycleIntervalMs = options.cycleIntervalMs;
   const authToken = resolveAuthToken(options.authToken);
   const rateLimit = resolveRateLimit(options.rateLimit);
-  const autoStartEvaluation = options.autoStartEvaluation ?? false;
+  const autoStartEvaluation = options.autoStartEvaluation ?? resolveAutoStartEvaluation();
 
   const informationSegments = [
     {
@@ -86,18 +88,19 @@ export async function start(options: StartOptions = {}): Promise<Server> {
     descriptor: SimulationSystemDescriptor | EvaluationSystemDescriptor,
   ): Promise<System> => {
     const resolved = await resolvePath(rootDir, descriptor.modulePath);
+    purgeRequireCache(resolved);
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const moduleExports = require(resolved);
 
     const candidate = selectExport(moduleExports, descriptor.exportName ?? null);
-    const systemLike = await instantiateSystem(candidate);
-    return wrapSystem(systemLike, descriptor.modulePath);
+    return buildValidatedSystem(candidate, descriptor.modulePath);
   };
 
   const loadComponent = async (
     descriptor: EvaluationComponentDescriptor | SimulationComponentDescriptor,
   ): Promise<ComponentType<unknown>> => {
     const resolved = await resolvePath(rootDir, descriptor.modulePath);
+    purgeRequireCache(resolved);
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const moduleExports = require(resolved);
 
@@ -169,6 +172,17 @@ export async function start(options: StartOptions = {}): Promise<Server> {
   return server;
 }
 
+function purgeRequireCache(resolvedPath: string): void {
+  try {
+    const cacheKey = require.resolve(resolvedPath);
+    if (require.cache[cacheKey]) {
+      delete require.cache[cacheKey];
+    }
+  } catch {
+    // ignore cache purge errors; module may not be resolvable yet
+  }
+}
+
 function resolvePort(explicit?: number): number {
   if (typeof explicit === 'number' && Number.isFinite(explicit) && explicit > 0) {
     return explicit;
@@ -208,6 +222,21 @@ function resolveRateLimit(candidate?: RateLimitOptions | null): RateLimitOptions
   }
 
   return { windowMs, max };
+}
+
+function resolveAutoStartEvaluation(): boolean {
+  const env = process.env.SIMEVAL_AUTO_START_EVALUATION;
+  if (typeof env === 'string') {
+    const lowered = env.toLowerCase().trim();
+    if (['1', 'true', 'yes', 'on'].includes(lowered)) {
+      return true;
+    }
+    if (['0', 'false', 'no', 'off'].includes(lowered)) {
+      return false;
+    }
+  }
+
+  return false;
 }
 
 function isValidRateLimit(value: RateLimitOptions): boolean {
@@ -268,7 +297,7 @@ function createEvaluationPlayer(cycleIntervalMs?: number): PlayerBundle<Evaluati
   const systemManager = new SystemManager(entityManager, componentManager);
   const inboundBus = new Bus<unknown>();
   const outboundBus = new Bus<Frame | Acknowledgement>();
-  const frameFilter = new FrameFilter();
+  const frameFilter = new FrameFilter(['evaluation.frame']);
   const player =
     cycleIntervalMs === undefined
       ? new EvaluationPlayer(systemManager, inboundBus, outboundBus, frameFilter)
@@ -390,6 +419,36 @@ async function instantiateSystem(candidate: unknown): Promise<SystemLike> {
   }
 
   throw new Error('Module export did not produce a System-compatible value');
+}
+
+async function buildValidatedSystem(candidate: unknown, modulePath: string): Promise<System> {
+  const createInstance = async () => wrapSystem(await instantiateSystem(candidate), modulePath);
+
+  try {
+    const validationInstance = await createInstance();
+    validateSystemInstance(validationInstance, modulePath);
+    return await createInstance();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`System validation failed for ${modulePath}: ${detail}`);
+  }
+}
+
+function validateSystemInstance(system: System, modulePath: string): void {
+  const context = createValidationContext();
+  try {
+    system.initialize(context);
+    system.update(context);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`System validation failed for ${modulePath}: ${detail}`);
+  }
+}
+
+function createValidationContext(): SystemContext {
+  const entityManager = new EntityManager();
+  const componentManager = new ComponentManager();
+  return { entityManager, componentManager };
 }
 
 function wrapSystem(systemLike: SystemLike, modulePath: string): System {

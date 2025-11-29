@@ -9,6 +9,7 @@ import type { Frame } from '../../messaging/outbound/Frame';
 import type { Acknowledgement } from '../../messaging/outbound/Acknowledgement';
 import type { ComponentType } from '../../components/ComponentType';
 import type { SystemContext } from '../../systems/System';
+import type { Frame as OutboundFrame } from '../../messaging/outbound/Frame';
 
 describe('EvaluationPlayer', () => {
   const createPlayer = () => {
@@ -53,6 +54,36 @@ describe('EvaluationPlayer', () => {
     expect(components[0]?.payload).toBe(payload.frame);
   });
 
+  it('resets stored frames and ECS state when a new run is detected via tick regression', () => {
+    const { player, outboundBus } = createPlayer();
+    const publishedFrames: Frame[] = [];
+    outboundBus.subscribe((message) => {
+      if (message && typeof message === 'object' && 'tick' in message) {
+        publishedFrames.push(message as Frame);
+      }
+    });
+
+    player.injectFrame({ messageId: 'f-1', frame: { tick: 5, entities: { first: {} } } as Frame });
+
+    const firstContext = (player as unknown as { getContext(): SystemContext }).getContext();
+    expect(firstContext.entityManager.list()).toHaveLength(1);
+
+    player.injectFrame({ messageId: 'f-2', frame: { tick: 1, entities: { second: {} } } as Frame });
+
+    expect(player.getFrames()).toEqual([{ messageId: 'f-2', frame: { tick: 1, entities: { second: {} } } }]);
+    const context = (player as unknown as { getContext(): SystemContext }).getContext();
+    const entities = context.entityManager.list();
+    expect(entities).toHaveLength(1);
+    const components = context.componentManager.getComponents(entities[0]);
+    expect(components).toHaveLength(1);
+    expect((components[0]?.payload as Frame).tick).toBe(1);
+
+    expect(publishedFrames).toEqual([
+      { tick: 5, entities: { first: {} } },
+      { tick: 1, entities: { second: {} } },
+    ]);
+  });
+
   it('registers and removes component definitions', () => {
     const { player } = createPlayer();
     const component: ComponentType<{ value: number }> = {
@@ -95,5 +126,32 @@ describe('EvaluationPlayer', () => {
     const context = (player as unknown as { getContext(): SystemContext }).getContext();
     const entities = context.entityManager.list();
     expect(entities).toHaveLength(1);
+  });
+
+  it('filters evaluation.frame components from outbound frames', () => {
+    const entityManager = new EntityManager();
+    const componentManager = new ComponentManager();
+    const systemManager = new SystemManager(entityManager, componentManager);
+    const inboundBus = new Bus<unknown>();
+    const outboundBus = new Bus<Frame | Acknowledgement>();
+    const frameFilter = new FrameFilter(['evaluation.frame']);
+    const player = new EvaluationPlayer(systemManager, inboundBus, outboundBus, frameFilter);
+
+    const published: OutboundFrame[] = [];
+    outboundBus.subscribe((message) => {
+      if (message && typeof message === 'object' && 'tick' in message) {
+        published.push(message as OutboundFrame);
+      }
+    });
+
+    (player as unknown as { publishFrame(frame: OutboundFrame): void }).publishFrame({
+      tick: 1,
+      entities: { '1': { 'evaluation.frame': { tick: 0, entities: {} }, 'simulation.position': { y: 1 } } },
+    } as OutboundFrame);
+
+    expect(published).toHaveLength(1);
+    const components = published[0].entities['1'] as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(components, 'evaluation.frame')).toBe(false);
+    expect(components['simulation.position']).toEqual({ y: 1 });
   });
 });

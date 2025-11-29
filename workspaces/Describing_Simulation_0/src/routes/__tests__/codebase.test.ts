@@ -135,6 +135,71 @@ describe('codebase routes', () => {
       detail: 'Path is not a file: src',
     });
   });
+
+  it('filters excluded directories and rejects traversing them directly', async () => {
+    const map = new Map<string, (req: any, res: any) => unknown>();
+    const router = {
+      register: jest.fn((path: string, handler: (req: any, res: any) => unknown) => {
+        map.set(path, handler);
+      }),
+    } as unknown as Router & { register: jest.Mock };
+
+    const listDir = jest.fn(async (_root: string, relative: string) => {
+      if (!relative || relative === '.') {
+        return ['src/', 'node_modules/', 'package.json'];
+      }
+      if (relative === 'src') {
+        return ['index.ts'];
+      }
+      throw new Error(`Unexpected path: ${relative}`);
+    });
+    const readFile = jest.fn(async () => 'file-content');
+    const writeFile = jest.fn(async () => undefined);
+
+    registerCodebaseRoutes(router, { rootDir: '/repo', listDir, readFile, writeFile });
+
+    const treeHandler = map.get('/codebase/tree');
+    const treeRes = createAsyncRes();
+    await treeHandler?.({ query: {} }, treeRes);
+    expect(treeRes.json).toHaveBeenCalledWith({
+      path: '.',
+      entries: ['src/', 'package.json'],
+      tree: {
+        name: '.',
+        path: '.',
+        type: 'directory',
+        entries: [
+          {
+            name: 'src',
+            path: 'src',
+            type: 'directory',
+            entries: [
+              {
+                name: 'index.ts',
+                path: 'src/index.ts',
+                type: 'file',
+              },
+            ],
+          },
+          {
+            name: 'package.json',
+            path: 'package.json',
+            type: 'file',
+          },
+        ],
+      },
+    });
+    expect(listDir).toHaveBeenCalledTimes(2);
+
+    const blockedRes = { json: jest.fn(), statusCode: 200 };
+    await treeHandler?.({ query: { path: 'node_modules' } }, blockedRes);
+    expect(blockedRes.statusCode).toBe(400);
+    expect(blockedRes.json).toHaveBeenCalledWith({
+      status: 'error',
+      detail: 'Path is excluded from tree responses',
+    });
+    expect(listDir).toHaveBeenCalledTimes(2);
+  });
 });
 
 function createAsyncRes() {
