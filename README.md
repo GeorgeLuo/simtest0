@@ -102,3 +102,11 @@ Notes:
    ```
 
 The codebase API lists files on disk; runtime injection is separate.
+
+## Codebase Exploration
+
+```bash
+simeval codebase tree --server http://127.0.0.1:3000/api
+simeval codebase tree --server http://127.0.0.1:3000/api --path plugins
+simeval codebase file --server http://127.0.0.1:3000/api --path plugins/simulation/systems/example.js
+```

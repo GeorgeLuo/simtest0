@@ -11,6 +11,6 @@ This directory houses scripts that support the simulation workspace.
 - `morphcloud_validator.js` — post-provision check for hosted SimEval instances; uploads validator plugins, injects them, verifies simulation/evaluation SSE output, and cleans up.
 - `morphcloud_distributor.js` — fleet wrapper for Morphcloud: provisions multiple SimEval instances, tracks them locally, and dispatches simeval_cli/validator commands across the fleet.
 - `component_stream_filter.js` — connects to a simulation or evaluation SSE endpoint, filters frames by component id, and streams the matching component payloads for quick inspection.
-- `simeval_cli.js` — CLI for uploading plugins, controlling playback, capturing streams, managing deployments (optionally cleaning plugins), organizing local run metadata, and dispatching Morphcloud fleet commands.
+- `simeval_cli.js` — CLI for uploading plugins, controlling playback, capturing streams, exploring the codebase, managing deployments (optionally cleaning plugins), organizing local run metadata, and dispatching Morphcloud fleet commands.
 
 All usage patterns should remain consistent with guidance in `instruction_documents/Describing_Simulation_0_simeval_codifying_simulations.md` derived from `Describing_Simulation_0.md`.

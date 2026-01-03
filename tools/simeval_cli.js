@@ -53,6 +53,8 @@ async function main() {
       return handleDeploy(rest);
     case 'morphcloud':
       return handleMorphcloud(rest);
+    case 'codebase':
+      return handleCodebase(rest);
     default:
       printUsage(`Unknown command: ${command}`);
       return undefined;
@@ -581,6 +583,44 @@ async function handleDeploy(argvRest) {
   }
 
   throw new Error(`Unknown deploy subcommand: ${subcommand}`);
+}
+
+async function handleCodebase(argvRest) {
+  const [subcommand, ...rest] = argvRest;
+  if (!subcommand || subcommand === '--help' || subcommand === '-h') {
+    printUsage('codebase');
+    return;
+  }
+
+  const { options } = parseArgs(rest);
+  if (options.help) {
+    printUsage('codebase');
+    return;
+  }
+
+  const server = resolveServerUrl(options);
+  const authHeader = resolveAuthHeader(options);
+
+  if (subcommand === 'tree') {
+    const queryPath = options.path ? `?path=${encodeURIComponent(String(options.path))}` : '';
+    const url = buildUrl(server, `/codebase/tree${queryPath}`);
+    const response = await requestJson(url, { method: 'GET' }, authHeader);
+    printJson(response);
+    return;
+  }
+
+  if (subcommand === 'file') {
+    const filePath = options.path ?? options.file;
+    if (!filePath) {
+      throw new Error('Missing --path for codebase file.');
+    }
+    const url = buildUrl(server, `/codebase/file?path=${encodeURIComponent(String(filePath))}`);
+    const response = await requestJson(url, { method: 'GET' }, authHeader);
+    printJson(response);
+    return;
+  }
+
+  throw new Error(`Unknown codebase subcommand: ${subcommand}`);
 }
 
 async function handleMorphcloud(argvRest) {
@@ -1459,6 +1499,7 @@ function printUsage(command) {
   console.log('  run create|show|record         Manage and record run metadata');
   console.log('  deploy start|stop|list         Start/stop/list local SimEval deployments');
   console.log('  morphcloud <command>           Manage Morphcloud fleets via the distributor');
+  console.log('  codebase tree|file             Explore the server codebase tree/files');
   console.log('  wait                          Poll /status until a state is reached\n');
   console.log('Global options:');
   console.log('  --server       Base server URL (default: http://127.0.0.1:3000/api)');
@@ -1483,4 +1524,5 @@ function printUsage(command) {
   console.log('  node tools/simeval_cli.js deploy stop --port 4000');
   console.log('  node tools/simeval_cli.js deploy start --port 4000 --clean-plugins');
   console.log('  node tools/simeval_cli.js morphcloud list');
+  console.log('  node tools/simeval_cli.js codebase tree --server http://127.0.0.1:3000/api');
 }
