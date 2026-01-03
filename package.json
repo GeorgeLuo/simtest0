@@ -1,0 +1,14 @@
+{
+  "name": "simtest0-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SimEval CLI tools.",
+  "bin": {
+    "simeval": "tools/simeval_cli.js",
+    "simeval-morphcloud": "tools/morphcloud_distributor.js",
+    "morphcloud-distributor": "tools/morphcloud_distributor.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

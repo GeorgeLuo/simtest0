@@ -26,15 +26,12 @@ node tools/simeval_cli.js deploy start --port 3000 --clean-plugins
 node tools/simeval_cli.js health --server http://127.0.0.1:3000/api
 ```
 
-## CLI Install (Recommended)
+## CLI Install
 
-The CLI is a Node 18+ script and resolves the default workspace relative to its own location.
-For that reason, a symlink is recommended so the CLI stays tied to the repo path.
+Install the CLIs globally with npm (Node 18+ required):
 
 ```bash
-chmod +x tools/simeval_cli.js
-mkdir -p ~/bin
-ln -s "$(pwd)/tools/simeval_cli.js" ~/bin/simeval
+npm install -g .
 ```
 
 Then use:
@@ -42,10 +39,13 @@ Then use:
 ```bash
 simeval deploy start --port 3000 --clean-plugins
 simeval health --server http://127.0.0.1:3000/api
+simeval-morphcloud list
 ```
 
-If you copy the CLI elsewhere, pass `--workspace <repo>/workspaces/Describing_Simulation_0`
-or set `SIMEVAL_WORKSPACE` so deploy commands can find the workspace.
+Notes:
+- The global install bundles the workspace so `deploy start` can use the default path.
+- To keep the CLIs tied to a working copy during development, use `npm link` or a symlink.
+- If you want to point at a different workspace, pass `--workspace <path>` or set `SIMEVAL_WORKSPACE`.
 
 ## Deploy Management
 
@@ -65,20 +65,21 @@ Notes:
 
 The distributor provisions multiple Morphcloud instances from a snapshot, ships the local
 SimEval workspace (build mode), and records instances in `~/.simeval/morphcloud.json`.
-It also wraps `simeval_cli.js` for multi-instance operations.
+It also wraps `simeval_cli.js` for multi-instance operations. The installed binary is
+`simeval-morphcloud` (alias `morphcloud-distributor`).
 
 ```bash
 # Provision three fresh instances from a base snapshot
-node tools/morphcloud_distributor.js provision --snapshot snapshot_abc --count 3
+simeval-morphcloud provision --snapshot snapshot_abc --count 3
 
 # List tracked instances
-node tools/morphcloud_distributor.js list
+simeval-morphcloud list
 
 # Run a SimEval command across the fleet
-node tools/morphcloud_distributor.js simeval --all -- status
+simeval-morphcloud simeval --all -- status
 
 # Stop all instances and keep them in state
-node tools/morphcloud_distributor.js stop --all
+simeval-morphcloud stop --all
 ```
 
 Notes:
