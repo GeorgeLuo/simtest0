@@ -695,7 +695,12 @@ async function ensureMorphcloud({ skipUpdate, requireUpdate }) {
 
 function isUnknownCommand(output) {
   const text = String(output).toLowerCase();
-  return text.includes('unknown command') || text.includes('unrecognized') || text.includes('invalid choice');
+  return (
+    text.includes('unknown command') ||
+    text.includes('unrecognized') ||
+    text.includes('invalid choice') ||
+    text.includes('no such command')
+  );
 }
 
 function ensureCommand(name) {

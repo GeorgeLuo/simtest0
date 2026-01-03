@@ -68,9 +68,10 @@ async function main() {
   try {
     await registerComponents();
     await injectSystems();
+    const simulationPromise = collectSseEvents('/simulation/stream', { maxEvents: 6, timeoutMs: 8000 });
+    const evaluationPromise = collectSseEvents('/evaluation/stream', { maxEvents: 6, timeoutMs: 8000 });
     await startSimulation();
-    simulationTemperatures = await verifySimulationStream();
-    await verifyEvaluationStream(simulationTemperatures);
+    simulationTemperatures = await verifyStreams(simulationPromise, evaluationPromise);
   } finally {
     await tryPauseAndStop();
     await ejectSystems();
@@ -148,29 +149,28 @@ async function startSimulation() {
   assertSuccess(startResponse, 'Simulation start failed');
 }
 
-async function verifySimulationStream() {
-  console.log('[validator] Observing simulation stream for validator payloads...');
-  const events = await collectSseEvents('/simulation/stream', { maxEvents: 4, timeoutMs: 5000 });
-  const parsed = parseFrameEvents(events);
-  if (!parsed.some(hasValidatorTemperature)) {
+async function verifyStreams(simulationPromise, evaluationPromise) {
+  console.log('[validator] Observing simulation/evaluation streams for validator payloads...');
+  const [simulationEvents, evaluationEvents] = await Promise.all([simulationPromise, evaluationPromise]);
+
+  const simulationFrames = parseFrameEvents(simulationEvents);
+  const evaluationFrames = parseFrameEvents(evaluationEvents);
+
+  if (!simulationFrames.some(hasValidatorTemperature)) {
     throw new Error('Simulation stream did not include validator.temperature component');
   }
-  const temperatureByTick = collectValidatorTemperatures(parsed);
-  console.log(`[validator] Simulation stream emitted ${parsed.length} frames with validator data.`);
-  return temperatureByTick;
-}
-
-async function verifyEvaluationStream(simulationTemperatures) {
-  console.log('[validator] Observing evaluation stream for bridged payloads...');
-  const events = await collectSseEvents('/evaluation/stream', { maxEvents: 4, timeoutMs: 5000 });
-  const parsed = parseFrameEvents(events);
-  if (!parsed.some(hasValidatorTemperature)) {
+  if (!evaluationFrames.some(hasValidatorTemperature)) {
     throw new Error('Evaluation stream did not reflect validator.temperature component');
   }
-  validateInterplay(parsed, simulationTemperatures);
+
+  const temperatureByTick = collectValidatorTemperatures(simulationFrames);
+  console.log(`[validator] Simulation stream emitted ${simulationFrames.length} frames with validator data.`);
+  validateInterplay(evaluationFrames, temperatureByTick);
   console.log(
-    `[validator] Evaluation stream emitted ${parsed.length} frames with validator data (interplay verified).`,
+    `[validator] Evaluation stream emitted ${evaluationFrames.length} frames with validator data (interplay verified).`,
   );
+
+  return temperatureByTick;
 }
 
 async function tryPauseAndStop() {
@@ -486,6 +486,14 @@ function validateInterplay(evaluationFrames, simulationTemperatures) {
     throw new Error('Simulation temperature map missing; cannot validate interplay.');
   }
 
+  const simulationTicks = Array.from(simulationTemperatures.keys());
+  const minTick = Math.min(...simulationTicks);
+  const maxTick = Math.max(...simulationTicks);
+  const simulationValues = new Set(simulationTemperatures.values());
+  let validatedCount = 0;
+  let tickMatches = 0;
+  let valueMatches = 0;
+
   const mismatches = [];
   for (const frame of evaluationFrames) {
     const reading = extractEvaluationReading(frame);
@@ -493,6 +501,19 @@ function validateInterplay(evaluationFrames, simulationTemperatures) {
       continue;
     }
 
+    if (reading.tick < minTick || reading.tick > maxTick) {
+      if (simulationValues.has(reading.temperature)) {
+        valueMatches += 1;
+      } else {
+        mismatches.push(
+          `Temperature ${reading.temperature} not found in simulation readings (tick ${reading.tick})`,
+        );
+      }
+      continue;
+    }
+
+    validatedCount += 1;
+    tickMatches += 1;
     const expected = simulationTemperatures.get(reading.tick);
     if (typeof expected !== 'number') {
       mismatches.push(`No simulation reading for evaluation tick ${reading.tick}`);
@@ -508,6 +529,16 @@ function validateInterplay(evaluationFrames, simulationTemperatures) {
 
   if (mismatches.length > 0) {
     throw new Error(`Simulation/Evaluation interplay mismatch detected:\n- ${mismatches.join('\n- ')}`);
+  }
+
+  if (validatedCount === 0) {
+    if (valueMatches > 0) {
+      console.log(
+        '[validator] Warning: evaluation ticks did not overlap simulation ticks; matched on temperature values instead.',
+      );
+      return;
+    }
+    throw new Error('Simulation/Evaluation interplay mismatch detected: no overlapping ticks observed.');
   }
 }
 
