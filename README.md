@@ -6,6 +6,7 @@ SimEval server workspace plus CLI tooling.
 
 - `workspaces/Describing_Simulation_0/` — SimEval server (TypeScript; `dist/main.js` runtime).
 - `tools/simeval_cli.js` — CLI (deploy, plugin upload, playback, stream capture, runs).
+- `tools/morphcloud_distributor.js` — fleet CLI for provisioning Morphcloud SimEval servers and dispatching remote commands.
 - `tools/start.sh` — Quick-start helper for local development.
 - `tools/` — Supporting scripts (integration, benchmarking, validation).
 
@@ -60,6 +61,31 @@ Notes:
   plugin confusion after restarts.
 - Deploy state is tracked in `~/.simeval/deployments.json`, logs in `~/.simeval/logs/`.
 
+## Morphcloud Distributor
+
+The distributor provisions multiple Morphcloud instances from a snapshot, ships the local
+SimEval workspace (build mode), and records instances in `~/.simeval/morphcloud.json`.
+It also wraps `simeval_cli.js` for multi-instance operations.
+
+```bash
+# Provision three fresh instances from a base snapshot
+node tools/morphcloud_distributor.js provision --snapshot snapshot_abc --count 3
+
+# List tracked instances
+node tools/morphcloud_distributor.js list
+
+# Run a SimEval command across the fleet
+node tools/morphcloud_distributor.js simeval --all -- status
+
+# Stop all instances and keep them in state
+node tools/morphcloud_distributor.js stop --all
+```
+
+Notes:
+- `provision` runs `morphcloud update` by default (use `--skip-update` to skip).
+- Use `--mode clone` to clone an existing ready snapshot instead of shipping the workspace.
+- Pass extra flags to the underlying scripts after `--` (for example `-- --skip-tests`).
+
 ## Plugin Workflow (High-Level)
 
 1) Upload plugin source (writes file to `plugins/`):
@@ -72,4 +98,3 @@ Notes:
    ```
 
 The codebase API lists files on disk; runtime injection is separate.
-
