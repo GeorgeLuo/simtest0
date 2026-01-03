@@ -15,7 +15,7 @@ if (typeof fetch !== 'function') {
 
 const argv = process.argv.slice(2);
 
-if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
+if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
   printUsage();
   process.exit(0);
 }
@@ -51,6 +51,8 @@ async function main() {
       return handleWait(rest);
     case 'deploy':
       return handleDeploy(rest);
+    case 'morphcloud':
+      return handleMorphcloud(rest);
     default:
       printUsage(`Unknown command: ${command}`);
       return undefined;
@@ -579,6 +581,14 @@ async function handleDeploy(argvRest) {
   }
 
   throw new Error(`Unknown deploy subcommand: ${subcommand}`);
+}
+
+async function handleMorphcloud(argvRest) {
+  if (argvRest.length === 0) {
+    argvRest = ['--help'];
+  }
+  const distributorPath = path.resolve(__dirname, 'morphcloud_distributor.js');
+  await runCommand('node', [distributorPath, ...argvRest], { cwd: __dirname });
 }
 
 function parseArgs(argvInput) {
@@ -1448,6 +1458,7 @@ function printUsage(command) {
   console.log('  stream capture                Capture SSE stream to a file');
   console.log('  run create|show|record         Manage and record run metadata');
   console.log('  deploy start|stop|list         Start/stop/list local SimEval deployments');
+  console.log('  morphcloud <command>           Manage Morphcloud fleets via the distributor');
   console.log('  wait                          Poll /status until a state is reached\n');
   console.log('Global options:');
   console.log('  --server       Base server URL (default: http://127.0.0.1:3000/api)');
@@ -1471,4 +1482,5 @@ function printUsage(command) {
   console.log('  node tools/simeval_cli.js deploy start --port 4000 --workspace ./workspaces/Describing_Simulation_0');
   console.log('  node tools/simeval_cli.js deploy stop --port 4000');
   console.log('  node tools/simeval_cli.js deploy start --port 4000 --clean-plugins');
+  console.log('  node tools/simeval_cli.js morphcloud list');
 }

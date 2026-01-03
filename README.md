@@ -46,6 +46,7 @@ Notes:
 - The global install bundles the workspace so `deploy start` can use the default path.
 - To keep the CLIs tied to a working copy during development, use `npm link` or a symlink.
 - If you want to point at a different workspace, pass `--workspace <path>` or set `SIMEVAL_WORKSPACE`.
+ - The Morphcloud distributor is also available under `simeval morphcloud ...`.
 
 ## Deploy Management
 
@@ -81,6 +82,8 @@ simeval-morphcloud simeval --all -- status
 # Stop all instances and keep them in state
 simeval-morphcloud stop --all
 ```
+
+The same commands can be invoked via `simeval morphcloud ...`.
 
 Notes:
 - `provision` runs `morphcloud update` by default (use `--skip-update` to skip).
