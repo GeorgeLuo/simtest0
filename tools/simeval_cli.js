@@ -1289,14 +1289,13 @@ async function captureStream({
             if (!isFrameMessage(message)) {
               return true;
             }
-            const records = extractComponentRecords(message, componentId, entityId);
-            if (records.length > 0) {
-              frameCount += 1;
+            const filtered = filterFrame(message, componentId, entityId);
+            if (!filtered) {
+              return true;
             }
-            for (const record of records) {
-              writer.write(record);
-              recordCount += 1;
-            }
+            frameCount += 1;
+            writer.write(filtered);
+            recordCount += 1;
             if (maxFrames && frameCount >= maxFrames) {
               stop = true;
               return false;
@@ -1480,6 +1479,30 @@ function extractComponentRecords(frame, componentId, entityFilter) {
     });
   }
   return matches;
+}
+
+function filterFrame(frame, componentId, entityFilter) {
+  const entities = frame.entities ?? {};
+  const filtered = Object.create(null);
+
+  for (const [entityId, components] of Object.entries(entities)) {
+    if (entityFilter && entityFilter !== entityId) {
+      continue;
+    }
+    if (!components || typeof components !== 'object') {
+      continue;
+    }
+    if (!(componentId in components)) {
+      continue;
+    }
+    filtered[entityId] = { [componentId]: components[componentId] };
+  }
+
+  if (Object.keys(filtered).length === 0) {
+    return null;
+  }
+
+  return { ...frame, entities: filtered };
 }
 
 function printUsage(command) {
