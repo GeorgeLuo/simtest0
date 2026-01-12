@@ -7,6 +7,7 @@ const os = require('os');
 const { spawn } = require('child_process');
 const { TextDecoder } = require('util');
 const { setTimeout: delay } = require('timers/promises');
+const { loadCliConfig, resolveCliConfigPath: resolveCliConfigLocation } = require('./cli_config');
 
 if (typeof fetch !== 'function') {
   console.error('This tool requires Node.js 18+ (fetch API is unavailable).');
@@ -14,6 +15,8 @@ if (typeof fetch !== 'function') {
 }
 
 const argv = process.argv.slice(2);
+let CLI_CONFIG = null;
+const DEFAULT_CLI_CONFIG_PATH = path.join(os.homedir(), '.simeval', 'config.json');
 
 if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
   printUsage();
@@ -27,6 +30,12 @@ main().catch((error) => {
 
 async function main() {
   const [command, ...rest] = argv;
+  const allowMissingCliConfig = command === 'config';
+  CLI_CONFIG = loadCliConfig({
+    argv,
+    defaultPath: DEFAULT_CLI_CONFIG_PATH,
+    allowMissing: allowMissingCliConfig,
+  });
 
   switch (command) {
     case 'health':
@@ -45,6 +54,10 @@ async function main() {
       return handlePlugin(rest);
     case 'stream':
       return handleStream(rest);
+    case 'ui':
+      return handleUi(rest);
+    case 'config':
+      return handleConfig(rest);
     case 'run':
       return handleRun(rest);
     case 'wait':
@@ -53,6 +66,8 @@ async function main() {
       return handleDeploy(rest);
     case 'morphcloud':
       return handleMorphcloud(rest);
+    case 'fleet':
+      return handleFleet(rest);
     case 'codebase':
       return handleCodebase(rest);
     default:
@@ -325,10 +340,6 @@ async function handleStream(argvRest) {
     return;
   }
 
-  if (subcommand !== 'capture') {
-    throw new Error(`Unknown stream subcommand: ${subcommand}`);
-  }
-
   const runContext = resolveRunContext(options);
   const server = resolveServerUrl(options, runContext);
   const authHeader = resolveAuthHeader(options);
@@ -339,50 +350,475 @@ async function handleStream(argvRest) {
     ? streamPath
     : buildUrl(server, streamPath);
 
-  const format = (options.format || 'jsonl').toLowerCase();
-  if (format !== 'jsonl' && format !== 'json') {
-    throw new Error('Invalid --format value. Expected jsonl or json.');
+  if (subcommand === 'capture') {
+    const format = (options.format || 'jsonl').toLowerCase();
+    if (format !== 'jsonl' && format !== 'json') {
+      throw new Error('Invalid --format value. Expected jsonl or json.');
+    }
+
+    const maxFrames = parseOptionalNumber(options.frames, 'frames');
+    const durationMs = parseOptionalNumber(options.duration, 'duration');
+    if (!maxFrames && !durationMs) {
+      throw new Error('Provide --frames or --duration to bound the capture.');
+    }
+
+    const componentId = options.component || '';
+    const entityId = options.entity || '';
+    const includeAcks = Boolean(options['include-acks']);
+
+    const outputPath = resolveCapturePath(options.out, runContext, streamInput, format);
+    const summary = await captureStream({
+      url,
+      outputPath,
+      format,
+      maxFrames,
+      durationMs,
+      componentId,
+      entityId,
+      includeAcks,
+      authHeader,
+    });
+
+    console.log(`[capture] ${summary.recordCount} records saved to ${summary.outputPath}`);
+    if (runContext) {
+      recordRunCapture(runContext, {
+        type: 'capture',
+        stream: streamInput,
+        format,
+        outputPath: summary.outputPath,
+        recordCount: summary.recordCount,
+        frameCount: summary.frameCount,
+        ackCount: summary.ackCount,
+        durationMs: summary.durationMs,
+        componentId: componentId || null,
+        entityId: entityId || null,
+        includeAcks,
+      });
+    }
+    return;
   }
 
-  const maxFrames = parseOptionalNumber(options.frames, 'frames');
-  const durationMs = parseOptionalNumber(options.duration, 'duration');
-  if (!maxFrames && !durationMs) {
-    throw new Error('Provide --frames or --duration to bound the capture.');
+  if (subcommand === 'forward') {
+    const uiInput = options.ui || options.ws || options['ui-url'] || options['ws-url'];
+    if (!uiInput) {
+      throw new Error('Provide --ui to forward stream data to the metrics UI.');
+    }
+    const uiUrl = normalizeUiWsUrl(uiInput);
+    if (!uiUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+
+    const maxFrames = parseOptionalNumber(options.frames, 'frames');
+    const durationMs = parseOptionalNumber(options.duration, 'duration');
+    const componentId = options.component || '';
+    const entityId = options.entity || '';
+    const captureId = options['capture-id'] || buildCaptureId();
+    const filename =
+      options.name ||
+      options.filename ||
+      `${String(streamInput || 'stream').replace(/[^a-z0-9_-]+/gi, '_')}.jsonl`;
+
+    const summary = await forwardStream({
+      url,
+      uiUrl,
+      maxFrames,
+      durationMs,
+      componentId,
+      entityId,
+      authHeader,
+      captureId,
+      filename,
+    });
+
+    console.log(
+      `[forward] ${summary.frameCount} frames sent to ${summary.uiUrl} as ${summary.captureId}`,
+    );
+    if (runContext) {
+      recordRunCapture(runContext, {
+        type: 'forward',
+        stream: streamInput,
+        uiUrl: summary.uiUrl,
+        captureId: summary.captureId,
+        frameCount: summary.frameCount,
+        durationMs: summary.durationMs,
+        componentId: componentId || null,
+        entityId: entityId || null,
+      });
+    }
+    return;
   }
 
-  const componentId = options.component || '';
-  const entityId = options.entity || '';
-  const includeAcks = Boolean(options['include-acks']);
+  if (subcommand === 'upload') {
+    const fileInput = options.file || options.source;
+    if (!fileInput) {
+      throw new Error('Provide --file to upload a capture to the metrics UI.');
+    }
+    const uiInput = options.ui || options.ws || options['ui-url'] || options['ws-url'];
+    if (!uiInput) {
+      throw new Error('Provide --ui to upload a capture to the metrics UI.');
+    }
+    const uiUrl = normalizeUiWsUrl(uiInput);
+    if (!uiUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
 
-  const outputPath = resolveCapturePath(options.out, runContext, streamInput, format);
-  const summary = await captureStream({
-    url,
-    outputPath,
-    format,
-    maxFrames,
-    durationMs,
-    componentId,
-    entityId,
-    includeAcks,
-    authHeader,
+    const resolvedFile = path.resolve(process.cwd(), String(fileInput));
+    if (!fs.existsSync(resolvedFile)) {
+      throw new Error(`Capture file not found: ${resolvedFile}`);
+    }
+
+    const maxFrames = parseOptionalNumber(options.frames, 'frames');
+    const componentId = options.component || '';
+    const entityId = options.entity || '';
+    const captureId = options['capture-id'] || buildCaptureId();
+    const filename = options.name || options.filename || path.basename(resolvedFile);
+
+    const summary = await uploadCaptureFile({
+      uiUrl,
+      captureId,
+      filename,
+      filePath: resolvedFile,
+      maxFrames,
+      componentId,
+      entityId,
+    });
+
+    console.log(
+      `[upload] ${summary.frameCount} frames sent to ${summary.uiUrl} as ${summary.captureId}`,
+    );
+    if (runContext) {
+      recordRunCapture(runContext, {
+        type: 'upload',
+        filePath: resolvedFile,
+        uiUrl: summary.uiUrl,
+        captureId: summary.captureId,
+        frameCount: summary.frameCount,
+        componentId: componentId || null,
+        entityId: entityId || null,
+      });
+    }
+    return;
+  }
+
+  throw new Error(`Unknown stream subcommand: ${subcommand}`);
+}
+
+async function handleUi(argvRest) {
+  const [subcommand, ...rest] = argvRest;
+  const { options } = parseArgs(rest);
+  if (options.help || !subcommand) {
+    printUsage('ui');
+    return;
+  }
+
+  const uiInput = options.ui || options.ws || options['ui-url'] || options['ws-url'];
+  if (!uiInput) {
+    throw new Error('Provide --ui to connect to the metrics UI.');
+  }
+  const uiUrl = normalizeUiWsUrl(uiInput);
+  if (!uiUrl) {
+    throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+  }
+
+  const socket = await connectWebSocket(uiUrl);
+  let socketClosed = false;
+  socket.addEventListener('close', () => {
+    socketClosed = true;
   });
 
-  console.log(`[capture] ${summary.recordCount} records saved to ${summary.outputPath}`);
-  if (runContext) {
-    recordRunCapture(runContext, {
-      type: 'capture',
-      stream: streamInput,
-      format,
-      outputPath: summary.outputPath,
-      recordCount: summary.recordCount,
-      frameCount: summary.frameCount,
-      ackCount: summary.ackCount,
-      durationMs: summary.durationMs,
-      componentId: componentId || null,
-      entityId: entityId || null,
-      includeAcks,
-    });
+  sendWsMessage(socket, { type: 'register', role: 'agent' });
+  const registered = await waitForWsAck(socket);
+  if (!registered) {
+    socket.close();
+    throw new Error('Failed to register with the UI WebSocket.');
   }
+
+  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 2000;
+  const requestId = buildMessageId(null, `ui-${subcommand}`);
+
+  try {
+    if (subcommand === 'mode') {
+      const mode = String(options.mode || '').toLowerCase();
+      if (mode !== 'file' && mode !== 'live') {
+        throw new Error('Provide --mode file|live for ui mode.');
+      }
+      sendWsMessage(socket, { type: 'set_source_mode', mode, request_id: requestId });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'live-source') {
+      const source = options.source || options.file || options.endpoint;
+      if (!source) {
+        throw new Error('Provide --source for ui live-source.');
+      }
+      const captureId = options['capture-id'];
+      sendWsMessage(socket, {
+        type: 'set_live_source',
+        source: String(source),
+        captureId: captureId ? String(captureId) : undefined,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'live-start') {
+      const source = options.source || options.file || options.endpoint;
+      if (!source) {
+        throw new Error('Provide --source for ui live-start.');
+      }
+      const pollIntervalMs = parseOptionalNumber(options['poll-ms'] ?? options.poll, 'poll-ms');
+      const pollSeconds = parseOptionalNumber(options['poll-seconds'], 'poll-seconds');
+      const captureId = options['capture-id'];
+      const filename = options.filename || options.name;
+      sendWsMessage(socket, {
+        type: 'live_start',
+        source: String(source),
+        pollIntervalMs: pollIntervalMs ?? (pollSeconds ? Math.round(pollSeconds * 1000) : undefined),
+        captureId: captureId ? String(captureId) : undefined,
+        filename: filename ? String(filename) : undefined,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, {
+        requestId,
+        types: ['ack'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'live-stop') {
+      const captureId = options['capture-id'];
+      sendWsMessage(socket, {
+        type: 'live_stop',
+        captureId: captureId ? String(captureId) : undefined,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'select') {
+      const captureId = options['capture-id'];
+      if (!captureId) {
+        throw new Error('Provide --capture-id for ui select.');
+      }
+      const path = parsePathInput(options.path ?? options['path-json']);
+      if (!path || path.length === 0) {
+        throw new Error('Provide --path (JSON array recommended) for ui select.');
+      }
+      sendWsMessage(socket, {
+        type: 'select_metric',
+        captureId: String(captureId),
+        path,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'deselect') {
+      const captureId = options['capture-id'];
+      const fullPath = options['full-path'] || options.fullPath;
+      if (!captureId || !fullPath) {
+        throw new Error('Provide --capture-id and --full-path for ui deselect.');
+      }
+      sendWsMessage(socket, {
+        type: 'deselect_metric',
+        captureId: String(captureId),
+        fullPath: String(fullPath),
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'clear') {
+      sendWsMessage(socket, { type: 'clear_selection', request_id: requestId });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'play' || subcommand === 'pause' || subcommand === 'stop') {
+      sendWsMessage(socket, { type: subcommand, request_id: requestId });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'seek') {
+      const tick = Number(options.tick);
+      if (!Number.isFinite(tick)) {
+        throw new Error('Provide --tick for ui seek.');
+      }
+      sendWsMessage(socket, { type: 'seek', tick, request_id: requestId });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'speed') {
+      const speed = Number(options.speed);
+      if (!Number.isFinite(speed) || speed <= 0) {
+        throw new Error('Provide --speed for ui speed.');
+      }
+      sendWsMessage(socket, { type: 'set_speed', speed, request_id: requestId });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'state') {
+      sendWsMessage(socket, { type: 'get_state', request_id: requestId });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['state_update'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI state.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'components') {
+      const captureId = options['capture-id'];
+      const search = options.search;
+      const limit = parseOptionalNumber(options.limit, 'limit');
+      sendWsMessage(socket, {
+        type: 'query_components',
+        captureId: captureId ? String(captureId) : undefined,
+        search: search ? String(search) : undefined,
+        limit: limit ?? undefined,
+        request_id: requestId,
+      });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['components_list'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI components.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'capabilities') {
+      sendWsMessage(socket, { type: 'hello', request_id: requestId });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['capabilities'],
+        timeoutMs,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI capabilities.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
+    throw new Error(`Unknown ui subcommand: ${subcommand}`);
+  } finally {
+    if (!socketClosed) {
+      socket.close();
+    }
+  }
+}
+
+async function handleConfig(argvRest) {
+  const { options, positional } = parseArgs(argvRest);
+  if (options.help) {
+    printUsage('config');
+    return;
+  }
+
+  const subcommand = positional[0] || 'show';
+  const resolved = resolveCliConfigLocation(argv ?? [], DEFAULT_CLI_CONFIG_PATH);
+  const configPath = resolved.path;
+  if (!configPath) {
+    throw new Error('Missing CLI config path.');
+  }
+
+  if (subcommand === 'show' || subcommand === 'get') {
+    const configState = readCliConfigFile(configPath);
+    printJson({
+      path: configPath,
+      exists: configState.exists,
+      config: redactCliConfig(configState.data),
+    });
+    return;
+  }
+
+  if (subcommand === 'set') {
+    const configState = readCliConfigFile(configPath);
+    const updated = { ...configState.data };
+    let changed = false;
+
+    const server = readConfigOption(options, 'server', '--server');
+    if (server !== null) {
+      updated.server = server;
+      changed = true;
+    }
+
+    const token = readConfigOption(options, 'token', '--token');
+    if (token !== null) {
+      updated.token = token;
+      changed = true;
+    }
+
+    const snapshot = readConfigOption(options, 'snapshot', '--snapshot');
+    if (snapshot !== null) {
+      updated.snapshot = snapshot;
+      changed = true;
+    }
+
+    const fleetConfig = readConfigOption(options, 'fleet-config', '--fleet-config');
+    if (fleetConfig !== null) {
+      updated.fleetConfig = fleetConfig;
+      changed = true;
+    }
+
+    if (!changed) {
+      throw new Error('No config fields provided. Use --token, --server, --snapshot, or --fleet-config.');
+    }
+
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+    console.log(`[config] wrote ${configPath}`);
+    return;
+  }
+
+  throw new Error(`Unknown config subcommand: ${subcommand}`);
 }
 
 async function handleRun(argvRest) {
@@ -623,12 +1059,1107 @@ async function handleCodebase(argvRest) {
   throw new Error(`Unknown codebase subcommand: ${subcommand}`);
 }
 
+async function handleFleet(argvRest) {
+  const { options, positional } = parseArgs(argvRest);
+  if (options.help) {
+    printUsage('fleet');
+    return;
+  }
+
+  const subcommand = positional[0];
+  if (subcommand) {
+    if (subcommand !== 'scaffold') {
+      throw new Error(`Unknown fleet subcommand: ${subcommand}`);
+    }
+    const outInput =
+      options.out ||
+      options.config ||
+      options.file ||
+      options['config-file'] ||
+      'fleet.json';
+    const outputPath = path.resolve(process.cwd(), String(outInput));
+    writeFleetScaffold({
+      outputPath,
+      force: Boolean(options.force),
+    });
+    console.log(`[fleet] scaffold written to ${outputPath}`);
+    return;
+  }
+
+  const configPath = resolveFleetConfigPath(options);
+  if (!configPath) {
+    throw new Error('Missing --config for fleet (or set fleetConfig in ~/.simeval/config.json).');
+  }
+
+  const config = loadFleetConfig(configPath);
+  applyCliFleetDefaults(config);
+  const configDir = path.dirname(configPath);
+
+  const uiOverride = options.ui || options.ws || options['ui-url'] || options['ws-url'];
+  const uiUrl = uiOverride
+    ? normalizeUiWsUrl(uiOverride)
+    : config.ui?.url
+      ? normalizeUiWsUrl(config.ui.url)
+      : '';
+  if (uiOverride && !uiUrl) {
+    throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+  }
+  if (config.ui?.url && !uiUrl) {
+    throw new Error('Invalid ui.url in config. Provide a ws:// or http(s):// URL.');
+  }
+
+  const defaults = normalizeFleetDefaults(config.defaults);
+  const continueOnError = parseBooleanOption(
+    options['continue-on-error'] ?? config.continueOnError,
+    false,
+  );
+
+  const results = {
+    status: 'ok',
+    config: configPath,
+    deployments: [],
+    errors: [],
+  };
+
+  for (let deploymentIndex = 0; deploymentIndex < config.deployments.length; deploymentIndex += 1) {
+    const deployment = mergeFleetDeployment(defaults, config.deployments[deploymentIndex]);
+    const deploymentName = String(
+      deployment.name || `deployment-${deploymentIndex + 1}`,
+    );
+    const deploymentUiUrl = uiOverride
+      ? uiUrl
+      : deployment.ui?.url
+        ? normalizeUiWsUrl(deployment.ui.url)
+        : uiUrl;
+    if (deployment.ui?.url && !deploymentUiUrl) {
+      throw new Error(`Invalid ui.url for deployment ${deploymentName}.`);
+    }
+    const deploymentLog = buildFleetLogger({ deployment: deploymentName });
+    const deploymentResult = {
+      name: deploymentName,
+      status: 'ok',
+      instances: [],
+      errors: [],
+    };
+
+    deploymentLog(`Starting (${deployment.count} instance${deployment.count === 1 ? '' : 's'})`);
+
+    try {
+      const provisioned = await runFleetProvision({
+        deployment,
+        deploymentName,
+        log: deploymentLog,
+      });
+      const instances = Array.isArray(provisioned?.instances) ? provisioned.instances : [];
+      if (instances.length === 0) {
+        throw new Error('Provisioning returned zero instances.');
+      }
+
+      for (let instanceIndex = 0; instanceIndex < instances.length; instanceIndex += 1) {
+        const instance = instances[instanceIndex];
+        const instanceName =
+          instance?.name || `${deploymentName}-${instanceIndex + 1}`;
+        const instanceLog = buildFleetLogger({
+          deployment: deploymentName,
+          instance: instanceName,
+        });
+        const instanceResult = {
+          id: instance?.id ?? null,
+          name: instanceName,
+          apiUrl: instance?.apiUrl ?? null,
+          authToken: instance?.authToken ?? null,
+          status: 'ok',
+          captures: [],
+          errors: [],
+        };
+
+        try {
+          if (!instance?.apiUrl) {
+            throw new Error('Missing apiUrl in provisioned instance.');
+          }
+
+          await waitForFleetServer({
+            server: instance.apiUrl,
+            authHeader: buildAuthHeader(instance.authToken),
+            timeoutMs: deployment.readyTimeoutMs,
+            intervalMs: deployment.readyIntervalMs,
+            log: instanceLog,
+          });
+
+          if (deployment.postProvision?.exec?.length) {
+            await runFleetExec({
+              instanceId: instance.id,
+              commands: deployment.postProvision.exec,
+              log: instanceLog,
+            });
+          }
+
+          if (deployment.plugins.length > 0) {
+            await uploadFleetPlugins({
+              plugins: deployment.plugins,
+              configDir,
+              server: instance.apiUrl,
+              authHeader: buildAuthHeader(instance.authToken),
+              log: instanceLog,
+            });
+          }
+
+          if (deployment.components.length > 0) {
+            await injectFleetComponents({
+              components: deployment.components,
+              server: instance.apiUrl,
+              authHeader: buildAuthHeader(instance.authToken),
+              log: instanceLog,
+            });
+          }
+
+          if (deployment.systems.length > 0) {
+            await injectFleetSystems({
+              systems: deployment.systems,
+              server: instance.apiUrl,
+              authHeader: buildAuthHeader(instance.authToken),
+              log: instanceLog,
+            });
+          }
+
+          if (deployment.playback?.start) {
+            await runFleetPlayback({
+              action: 'start',
+              server: instance.apiUrl,
+              authHeader: buildAuthHeader(instance.authToken),
+              log: instanceLog,
+            });
+          }
+
+          const capturePlans = await prepareFleetCaptures({
+            captures: deployment.captures,
+            configDir,
+            deploymentName,
+            instanceIndex,
+            instance,
+            defaultUiUrl: deploymentUiUrl,
+            defaultPollSeconds: deployment.ui?.pollSeconds ?? config.ui?.pollSeconds,
+            log: instanceLog,
+          });
+
+          if (capturePlans.length > 0) {
+            const runCaptures = deployment.captureMode === 'sequential'
+              ? runFleetCapturesSequential
+              : runFleetCapturesParallel;
+            const summaries = await runCaptures({
+              plans: capturePlans,
+              server: instance.apiUrl,
+              authHeader: buildAuthHeader(instance.authToken),
+              log: instanceLog,
+            });
+            instanceResult.captures = summaries;
+          }
+
+          if (deployment.playback?.pause) {
+            await runFleetPlayback({
+              action: 'pause',
+              server: instance.apiUrl,
+              authHeader: buildAuthHeader(instance.authToken),
+              log: instanceLog,
+            });
+          } else if (deployment.playback?.stop) {
+            await runFleetPlayback({
+              action: 'stop',
+              server: instance.apiUrl,
+              authHeader: buildAuthHeader(instance.authToken),
+              log: instanceLog,
+            });
+          }
+        } catch (error) {
+          instanceResult.status = 'failed';
+          const message = error instanceof Error ? error.message : String(error);
+          instanceResult.errors.push(message);
+          deploymentResult.errors.push(`${instanceName}: ${message}`);
+          instanceLog(`Failed: ${message}`);
+          if (!continueOnError) {
+            throw error;
+          }
+        }
+
+        deploymentResult.instances.push(instanceResult);
+      }
+    } catch (error) {
+      deploymentResult.status = 'failed';
+      const message = error instanceof Error ? error.message : String(error);
+      deploymentResult.errors.push(message);
+      results.errors.push(`${deploymentName}: ${message}`);
+      deploymentLog(`Failed: ${message}`);
+      if (!continueOnError) {
+        throw error;
+      }
+    }
+
+    if (deploymentResult.errors.length > 0 && deploymentResult.status !== 'failed') {
+      deploymentResult.status = 'partial';
+    }
+
+    results.deployments.push(deploymentResult);
+  }
+
+  const hasErrors =
+    results.errors.length > 0 ||
+    results.deployments.some((deployment) => deployment.status !== 'ok');
+  if (hasErrors) {
+    results.status = continueOnError ? 'partial' : 'failed';
+  }
+
+  printJson(results);
+}
+
 async function handleMorphcloud(argvRest) {
   if (argvRest.length === 0) {
     argvRest = ['--help'];
   }
   const distributorPath = path.resolve(__dirname, 'morphcloud_distributor.js');
   await runCommand('node', [distributorPath, ...argvRest], { cwd: __dirname });
+}
+
+function resolveFleetConfigPath(options) {
+  const configInput = options.config || options.file || options['config-file'];
+  if (configInput) {
+    return path.resolve(process.cwd(), String(configInput));
+  }
+  if (CLI_CONFIG?.data?.fleetConfig) {
+    return path.resolve(CLI_CONFIG.dir, String(CLI_CONFIG.data.fleetConfig));
+  }
+  return '';
+}
+
+function applyCliFleetDefaults(config) {
+  if (!CLI_CONFIG?.data?.snapshot) {
+    return;
+  }
+  if (!config.defaults || typeof config.defaults !== 'object') {
+    config.defaults = {};
+  }
+  if (!config.defaults.snapshot) {
+    config.defaults.snapshot = CLI_CONFIG.data.snapshot;
+  }
+}
+
+function loadFleetConfig(configPath) {
+  let raw;
+  try {
+    raw = fs.readFileSync(configPath, 'utf8');
+  } catch (error) {
+    throw new Error(`Failed to read config file: ${configPath}`);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Failed to parse config JSON: ${error.message}`);
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Fleet config must be a JSON object.');
+  }
+  if (!Array.isArray(parsed.deployments) || parsed.deployments.length === 0) {
+    throw new Error('Fleet config must include a non-empty deployments array.');
+  }
+
+  return parsed;
+}
+
+function buildFleetScaffold() {
+  return {
+    ui: {
+      url: 'ws://localhost:5050/ws/control',
+      pollSeconds: 2,
+    },
+    defaults: {
+      snapshot: 'SNAPSHOT_ID',
+      mode: 'build',
+      count: 1,
+      parallel: 1,
+      readyTimeoutMs: 60000,
+      readyIntervalMs: 2000,
+      captureMode: 'parallel',
+      provision: {
+        args: ['--skip-tests'],
+      },
+      playback: {
+        start: true,
+        stop: true,
+      },
+      postProvision: {
+        exec: [],
+      },
+      plugins: [],
+      components: [],
+      systems: [],
+      captures: [
+        {
+          stream: 'evaluation',
+          frames: 200,
+          out: 'verification/fleet_runs/${deployment}/${instance}_evaluation.jsonl',
+          ui: {
+            captureId: '${deployment}-${instance}-eval',
+            filename: '${deployment}_${instance}_evaluation.jsonl',
+          },
+        },
+      ],
+    },
+    deployments: [
+      {
+        name: 'example',
+        count: 1,
+      },
+    ],
+  };
+}
+
+function writeFleetScaffold({ outputPath, force }) {
+  if (fs.existsSync(outputPath) && !force) {
+    throw new Error(`File already exists: ${outputPath}. Use --force to overwrite.`);
+  }
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, `${JSON.stringify(buildFleetScaffold(), null, 2)}\n`, 'utf8');
+}
+
+function normalizeFleetDefaults(value) {
+  return value && typeof value === 'object' ? value : {};
+}
+
+function mergeFleetDeployment(defaults, deployment) {
+  if (!deployment || typeof deployment !== 'object') {
+    throw new Error('Each deployment must be an object.');
+  }
+
+  const merged = {
+    ...defaults,
+    ...deployment,
+    provision: {
+      ...(defaults.provision ?? {}),
+      ...(deployment.provision ?? {}),
+    },
+    playback: {
+      ...(defaults.playback ?? {}),
+      ...(deployment.playback ?? {}),
+    },
+    ui: {
+      ...(defaults.ui ?? {}),
+      ...(deployment.ui ?? {}),
+    },
+    postProvision: {
+      ...(defaults.postProvision ?? {}),
+      ...(deployment.postProvision ?? {}),
+    },
+  };
+
+  merged.snapshot = merged.snapshot ?? defaults.snapshot ?? null;
+  if (!merged.snapshot) {
+    throw new Error('Deployment is missing snapshot.');
+  }
+
+  merged.mode = normalizeFleetMode(merged.mode ?? 'build');
+  merged.count = coercePositiveInt(merged.count ?? 1, 'count');
+  merged.parallel = coercePositiveInt(
+    merged.parallel ?? merged.provision?.parallel ?? defaults.parallel ?? 1,
+    'parallel',
+  );
+  merged.readyTimeoutMs = coercePositiveInt(
+    merged.readyTimeoutMs ?? defaults.readyTimeoutMs ?? 60000,
+    'readyTimeoutMs',
+  );
+  merged.readyIntervalMs = coercePositiveInt(
+    merged.readyIntervalMs ?? defaults.readyIntervalMs ?? 2000,
+    'readyIntervalMs',
+  );
+  merged.captureMode =
+    merged.captureMode === 'sequential' ? 'sequential' : 'parallel';
+
+  merged.plugins = mergeFleetArray(defaults.plugins, deployment.plugins, 'plugins');
+  merged.components = mergeFleetArray(defaults.components, deployment.components, 'components');
+  merged.systems = mergeFleetArray(defaults.systems, deployment.systems, 'systems');
+  merged.captures = mergeFleetArray(defaults.captures, deployment.captures, 'captures');
+
+  merged.playback = {
+    start: parseBooleanOption(merged.playback?.start, true),
+    stop: parseBooleanOption(merged.playback?.stop, true),
+    pause: parseBooleanOption(merged.playback?.pause, false),
+  };
+
+  merged.ui = {
+    ...merged.ui,
+    pollSeconds: normalizePollSeconds(merged.ui?.pollSeconds),
+  };
+
+  merged.provision = {
+    ...merged.provision,
+    args: mergeFleetArray(defaults.provision?.args, deployment.provision?.args, 'provision.args'),
+    skipUpdate: parseBooleanOption(merged.provision?.skipUpdate, true),
+    requireUpdate: parseBooleanOption(merged.provision?.requireUpdate, false),
+  };
+
+  merged.postProvision = {
+    exec: mergeFleetArray(defaults.postProvision?.exec, deployment.postProvision?.exec, 'postProvision.exec'),
+  };
+
+  return merged;
+}
+
+function normalizeFleetMode(value) {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized === 'build' || normalized === 'clone') {
+    return normalized;
+  }
+  throw new Error(`Invalid mode: ${value}. Expected build or clone.`);
+}
+
+function coercePositiveInt(value, label) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) {
+    throw new Error(`Invalid ${label}: ${value}`);
+  }
+  return parsed;
+}
+
+function coercePositiveNumber(value, label) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${label}: ${value}`);
+  }
+  return parsed;
+}
+
+function normalizePollSeconds(value) {
+  if (value === undefined || value === null || value === '') {
+    return 2;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid pollSeconds: ${value}`);
+  }
+  return parsed;
+}
+
+function mergeFleetArray(defaultValue, overrideValue, label) {
+  const base = defaultValue === undefined ? [] : defaultValue;
+  if (overrideValue === undefined) {
+    if (!Array.isArray(base)) {
+      throw new Error(`Expected ${label} to be an array.`);
+    }
+    return base.slice();
+  }
+  if (overrideValue === null) {
+    return [];
+  }
+  if (!Array.isArray(overrideValue)) {
+    throw new Error(`Expected ${label} to be an array.`);
+  }
+  return Array.isArray(base) ? base.concat(overrideValue) : overrideValue.slice();
+}
+
+function buildFleetLogger({ deployment, instance } = {}) {
+  const parts = ['fleet'];
+  if (deployment) {
+    parts.push(deployment);
+  }
+  if (instance) {
+    parts.push(instance);
+  }
+  const prefix = parts.join(':');
+  return (message) => console.log(`[${prefix}] ${message}`);
+}
+
+async function runFleetProvision({ deployment, deploymentName, log }) {
+  const namePrefix =
+    deployment.provision?.namePrefix ??
+    deployment.namePrefix ??
+    deployment.name ??
+    deploymentName;
+  const args = [
+    'provision',
+    '--snapshot',
+    String(deployment.snapshot),
+    '--mode',
+    deployment.mode,
+    '--count',
+    String(deployment.count),
+    '--parallel',
+    String(deployment.parallel),
+    '--name-prefix',
+    String(namePrefix),
+  ];
+
+  if (deployment.provision?.stateFile) {
+    args.push('--state', String(deployment.provision.stateFile));
+  }
+  if (deployment.provision?.skipUpdate) {
+    args.push('--skip-update');
+  }
+  if (deployment.provision?.requireUpdate) {
+    args.push('--require-update');
+  }
+  if (deployment.provision?.args?.length) {
+    args.push(...deployment.provision.args.map(String));
+  }
+
+  log(`Provisioning ${deployment.count} instance(s) from ${deployment.snapshot} (${deployment.mode})`);
+
+  const distributorPath = path.resolve(__dirname, 'morphcloud_distributor.js');
+  const result = await runCommandCapture('node', [distributorPath, ...args], {
+    cwd: __dirname,
+    prefix: `[fleet:${deploymentName}] `,
+  });
+
+  if (result.code !== 0) {
+    throw new Error(`Provisioning failed with code ${result.code}`);
+  }
+
+  const parsed = extractJsonFromOutput(result.stdout);
+  if (!parsed) {
+    throw new Error('Provisioning output did not include JSON payload.');
+  }
+  return parsed;
+}
+
+async function runFleetExec({ instanceId, commands, log }) {
+  if (!instanceId) {
+    throw new Error('Missing instance id for postProvision exec.');
+  }
+  const execCommands = Array.isArray(commands) ? commands : [];
+  for (const command of execCommands) {
+    if (!command || typeof command !== 'string') {
+      continue;
+    }
+    log(`Exec: ${command}`);
+    const wrappedCommand = wrapShellCommand(command);
+    const result = await runCommandCapture(
+      'morphcloud',
+      ['instance', 'exec', instanceId, '--', 'bash', '-lc', wrappedCommand],
+      { prefix: `[exec:${instanceId}] ` },
+    );
+    if (result.code !== 0) {
+      throw new Error(`Exec failed (${command}) with code ${result.code}`);
+    }
+  }
+}
+
+async function waitForFleetServer({ server, authHeader, timeoutMs, intervalMs, log }) {
+  const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    attempt += 1;
+    try {
+      await requestJson(buildUrl(server, '/health'), { method: 'GET' }, authHeader);
+      log('Server ready.');
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 1 || attempt % 3 === 0) {
+        const message = error instanceof Error ? error.message : String(error);
+        log(`Waiting for server... (${message})`);
+      }
+    }
+    await delay(intervalMs);
+  }
+
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Timed out waiting for server: ${message}`);
+}
+
+async function uploadFleetPlugins({ plugins, configDir, server, authHeader, log }) {
+  for (const entry of plugins) {
+    const plugin = normalizeFleetPluginEntry(entry, configDir);
+    log(`Uploading ${plugin.source} -> ${plugin.dest}`);
+    const content = fs.readFileSync(plugin.source, 'utf8');
+    const messageId = buildMessageId(null, 'fleet-plugin-upload');
+    const payload = {
+      messageId,
+      path: plugin.dest,
+      content,
+      overwrite: plugin.overwrite,
+    };
+    await requestJson(
+      buildUrl(server, '/codebase/plugin'),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+      authHeader,
+    );
+  }
+}
+
+function normalizeFleetPluginEntry(entry, configDir) {
+  if (typeof entry === 'string') {
+    return resolveFleetPlugin({
+      source: entry,
+      dest: null,
+      overwrite: false,
+    }, configDir);
+  }
+  if (!entry || typeof entry !== 'object') {
+    throw new Error('Plugin entry must be a string or object.');
+  }
+  return resolveFleetPlugin({
+    source: entry.source ?? entry.path ?? '',
+    dest: entry.dest ?? entry.target ?? null,
+    overwrite: Boolean(entry.overwrite),
+  }, configDir);
+}
+
+function resolveFleetPlugin(entry, configDir) {
+  const sourceInput = String(entry.source || '').trim();
+  if (!sourceInput) {
+    throw new Error('Plugin entry missing source.');
+  }
+  const sourcePath = path.isAbsolute(sourceInput)
+    ? sourceInput
+    : path.resolve(configDir, sourceInput);
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Plugin source not found: ${sourcePath}`);
+  }
+  const stat = fs.statSync(sourcePath);
+  if (!stat.isFile()) {
+    throw new Error(`Plugin source is not a file: ${sourcePath}`);
+  }
+
+  const dest = entry.dest ? String(entry.dest) : inferPluginPath(sourcePath);
+  if (!dest) {
+    throw new Error(`Unable to infer plugin destination for ${sourcePath}. Provide dest.`);
+  }
+  if (!dest.startsWith('plugins/')) {
+    throw new Error(`Plugin destination must start with plugins/: ${dest}`);
+  }
+
+  return {
+    source: sourcePath,
+    dest,
+    overwrite: Boolean(entry.overwrite),
+  };
+}
+
+async function injectFleetComponents({ components, server, authHeader, log }) {
+  for (const entry of components) {
+    const component = normalizeFleetInjectEntry(entry, 'component');
+    log(`Inject component ${component.modulePath} (${component.player})`);
+    const payload = {
+      messageId: buildMessageId(null, 'fleet-component-inject'),
+      component: {
+        modulePath: component.modulePath,
+        exportName: component.exportName || undefined,
+      },
+    };
+    await requestJson(
+      buildUrl(server, `/${component.player}/component`),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+      authHeader,
+    );
+  }
+}
+
+async function injectFleetSystems({ systems, server, authHeader, log }) {
+  for (const entry of systems) {
+    const system = normalizeFleetInjectEntry(entry, 'system');
+    log(`Inject system ${system.modulePath} (${system.player})`);
+    const payload = {
+      messageId: buildMessageId(null, 'fleet-system-inject'),
+      system: {
+        modulePath: system.modulePath,
+        exportName: system.exportName || undefined,
+      },
+    };
+    await requestJson(
+      buildUrl(server, `/${system.player}/system`),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+      authHeader,
+    );
+  }
+}
+
+function normalizeFleetInjectEntry(entry, label) {
+  if (!entry || typeof entry !== 'object') {
+    throw new Error(`${label} entry must be an object.`);
+  }
+  const modulePath = String(entry.module || entry.path || entry.modulePath || '').trim();
+  if (!modulePath) {
+    throw new Error(`${label} entry missing module path.`);
+  }
+  if (!modulePath.startsWith('plugins/')) {
+    throw new Error(`${label} modulePath must start with plugins/: ${modulePath}`);
+  }
+  return {
+    player: normalizePlayer(entry.player),
+    modulePath,
+    exportName: entry.export ?? entry.exportName ?? null,
+  };
+}
+
+async function prepareFleetCaptures({
+  captures,
+  configDir,
+  deploymentName,
+  instanceIndex,
+  instance,
+  defaultUiUrl,
+  defaultPollSeconds,
+  log,
+}) {
+  const plans = [];
+  const instanceName = instance?.name || `${deploymentName}-${instanceIndex + 1}`;
+  const tokens = {
+    deployment: deploymentName,
+    instance: instanceName,
+    index: String(instanceIndex + 1),
+    instanceId: String(instance?.id ?? ''),
+  };
+
+  for (const capture of captures) {
+    const plan = normalizeFleetCapturePlan({
+      capture,
+      configDir,
+      tokens,
+      instanceIndex,
+      defaultUiUrl,
+      defaultPollSeconds,
+    });
+
+    if (plan.adjustedPath) {
+      log(`Adjusted capture output to ${plan.outputPath}`);
+    }
+
+    ensureCaptureFile(plan.outputPath);
+
+    if (plan.ui) {
+      log(`Connecting UI (${plan.ui.captureId}) -> ${plan.outputPath}`);
+      await startUiLiveStream({
+        uiUrl: plan.ui.url,
+        source: plan.outputPath,
+        captureId: plan.ui.captureId,
+        filename: plan.ui.filename,
+        pollIntervalMs: plan.ui.pollIntervalMs,
+      });
+    }
+
+    plans.push(plan);
+  }
+
+  return plans;
+}
+
+function normalizeFleetCapturePlan({
+  capture,
+  configDir,
+  tokens,
+  instanceIndex,
+  defaultUiUrl,
+  defaultPollSeconds,
+}) {
+  if (!capture || typeof capture !== 'object') {
+    throw new Error('Capture entry must be an object.');
+  }
+
+  const stream = String(capture.stream || '').trim();
+  if (!stream) {
+    throw new Error('Capture entry missing stream.');
+  }
+
+  const outTemplate = String(capture.out || '').trim();
+  if (!outTemplate) {
+    throw new Error('Capture entry missing out path.');
+  }
+
+  const renderedOut = renderFleetTemplate(outTemplate, tokens);
+  const originalOutputPath = path.isAbsolute(renderedOut)
+    ? renderedOut
+    : path.resolve(configDir, renderedOut);
+  let outputPath = originalOutputPath;
+  let adjustedPath = false;
+  if (instanceIndex > 0 && !usesFleetInstanceToken(outTemplate)) {
+    outputPath = appendInstanceSuffix(outputPath, instanceIndex + 1);
+    adjustedPath = true;
+  }
+
+  const format = String(capture.format || inferCaptureFormat(outputPath)).toLowerCase();
+  if (format !== 'jsonl' && format !== 'json') {
+    throw new Error(`Invalid capture format: ${format}`);
+  }
+
+  const maxFrames = capture.frames ? coercePositiveInt(capture.frames, 'frames') : null;
+  const durationMs = capture.durationMs ?? capture.duration ?? null;
+  const durationSeconds = capture.durationSeconds ?? capture.durationSec ?? null;
+  const resolvedDurationMs = durationMs
+    ? coercePositiveNumber(durationMs, 'durationMs')
+    : durationSeconds
+      ? coercePositiveNumber(durationSeconds, 'durationSeconds') * 1000
+      : null;
+  if (!maxFrames && !resolvedDurationMs) {
+    throw new Error(`Capture ${stream} requires frames or duration.`);
+  }
+
+  const componentId = capture.component ? String(capture.component) : '';
+  const entityId = capture.entity ? String(capture.entity) : '';
+  const includeAcks = parseBooleanOption(capture.includeAcks, false);
+
+  let ui = null;
+  const wantsUi = capture.ui !== false;
+  if (wantsUi && !defaultUiUrl && capture.ui) {
+    throw new Error('Capture UI configured but no ui url available.');
+  }
+  if (wantsUi && defaultUiUrl) {
+    const uiConfig = typeof capture.ui === 'object' && capture.ui ? capture.ui : {};
+    const captureIdRaw =
+      uiConfig.captureId ||
+      uiConfig.id ||
+      `${tokens.instance}-${stream}`;
+    let captureId = renderFleetTemplate(String(captureIdRaw), tokens);
+    if (instanceIndex > 0 && !usesFleetInstanceToken(String(captureIdRaw))) {
+      captureId = `${captureId}-${instanceIndex + 1}`;
+    }
+    const filenameRaw = uiConfig.filename || path.basename(outputPath);
+    const filename = renderFleetTemplate(String(filenameRaw), tokens);
+    const pollSeconds = uiConfig.pollSeconds ?? defaultPollSeconds ?? 2;
+    ui = {
+      url: defaultUiUrl,
+      captureId,
+      filename,
+      pollIntervalMs: Math.round(normalizePollSeconds(pollSeconds) * 1000),
+    };
+  }
+
+  return {
+    stream,
+    outputPath,
+    originalOutputPath,
+    adjustedPath,
+    format,
+    maxFrames,
+    durationMs: resolvedDurationMs,
+    componentId,
+    entityId,
+    includeAcks,
+    ui,
+  };
+}
+
+function inferCaptureFormat(outputPath) {
+  return outputPath.toLowerCase().endsWith('.json') ? 'json' : 'jsonl';
+}
+
+function renderFleetTemplate(value, tokens) {
+  return String(value).replace(/\$\{(\w+)\}/g, (_, key) => {
+    if (Object.prototype.hasOwnProperty.call(tokens, key)) {
+      return tokens[key];
+    }
+    return '';
+  });
+}
+
+function usesFleetInstanceToken(value) {
+  return /\$\{(index|instance|instanceId)\}/.test(String(value));
+}
+
+function appendInstanceSuffix(filePath, index) {
+  const ext = path.extname(filePath);
+  const base = ext ? filePath.slice(0, -ext.length) : filePath;
+  return `${base}-${index}${ext}`;
+}
+
+function ensureCaptureFile(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const fd = fs.openSync(filePath, 'a');
+  fs.closeSync(fd);
+}
+
+async function startUiLiveStream({ uiUrl, source, captureId, filename, pollIntervalMs }) {
+  const socket = await connectWebSocket(uiUrl);
+  let socketClosed = false;
+  socket.addEventListener('close', () => {
+    socketClosed = true;
+  });
+  sendWsMessage(socket, { type: 'register', role: 'agent' });
+  const registered = await waitForWsAck(socket);
+  if (!registered) {
+    socket.close();
+    throw new Error('Failed to register with the UI WebSocket.');
+  }
+
+  const requestId = buildMessageId(null, `ui-live-${captureId}`);
+  sendWsMessage(socket, {
+    type: 'live_start',
+    source,
+    captureId,
+    filename,
+    pollIntervalMs,
+    request_id: requestId,
+  });
+  const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs: 4000 });
+  if (!ack) {
+    if (!socketClosed) {
+      socket.close();
+    }
+    throw new Error('Timed out waiting for UI ack.');
+  }
+  if (!socketClosed) {
+    socket.close();
+  }
+}
+
+async function runFleetCapturesParallel({ plans, server, authHeader, log }) {
+  return Promise.all(plans.map((plan) => runFleetCapture({ plan, server, authHeader, log })));
+}
+
+async function runFleetCapturesSequential({ plans, server, authHeader, log }) {
+  const summaries = [];
+  for (const plan of plans) {
+    summaries.push(await runFleetCapture({ plan, server, authHeader, log }));
+  }
+  return summaries;
+}
+
+async function runFleetCapture({ plan, server, authHeader, log }) {
+  const streamPath = resolveStreamPath(plan.stream);
+  const url = streamPath.startsWith('http://') || streamPath.startsWith('https://')
+    ? streamPath
+    : buildUrl(server, streamPath);
+
+  log(`Capturing ${plan.stream} -> ${plan.outputPath}`);
+  const summary = await captureStream({
+    url,
+    outputPath: plan.outputPath,
+    format: plan.format,
+    maxFrames: plan.maxFrames,
+    durationMs: plan.durationMs,
+    componentId: plan.componentId,
+    entityId: plan.entityId,
+    includeAcks: plan.includeAcks,
+    authHeader,
+  });
+
+  log(`Captured ${summary.recordCount} records (${summary.frameCount} frames)`);
+  return {
+    stream: plan.stream,
+    outputPath: summary.outputPath,
+    recordCount: summary.recordCount,
+    frameCount: summary.frameCount,
+    ackCount: summary.ackCount,
+    durationMs: summary.durationMs,
+  };
+}
+
+async function runFleetPlayback({ action, server, authHeader, log }) {
+  const messageId = buildMessageId(null, `fleet-${action}`);
+  log(`Playback ${action}`);
+  await requestJson(
+    buildUrl(server, `/simulation/${action}`),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId }),
+    },
+    authHeader,
+  );
+}
+
+function wrapShellCommand(command) {
+  const escaped = String(command)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, '\\$')
+    .replace(/`/g, '\\`');
+  return `"${escaped}"`;
+}
+
+async function runCommandCapture(command, args, { cwd, prefix } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    streamWithPrefix(child.stdout, prefix, (chunk) => {
+      stdout += chunk;
+    }, process.stdout);
+    streamWithPrefix(child.stderr, prefix, (chunk) => {
+      stderr += chunk;
+    }, process.stderr);
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({ code: code ?? 0, stdout, stderr });
+    });
+  });
+}
+
+function streamWithPrefix(stream, prefix, collector, target) {
+  if (!stream) {
+    return;
+  }
+
+  let buffer = '';
+  const appliedPrefix = prefix || '';
+
+  stream.on('data', (chunk) => {
+    const text = chunk.toString();
+    collector(text);
+    buffer += text;
+
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!appliedPrefix) {
+        target.write(`${line}\n`);
+      } else {
+        target.write(`${appliedPrefix}${line}\n`);
+      }
+    }
+  });
+
+  stream.on('end', () => {
+    if (!buffer) {
+      return;
+    }
+    if (!appliedPrefix) {
+      target.write(`${buffer}\n`);
+    } else {
+      target.write(`${appliedPrefix}${buffer}\n`);
+    }
+  });
+}
+
+function extractJsonFromOutput(output) {
+  const trimmed = String(output || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const indices = [];
+  for (let i = 0; i < trimmed.length; i += 1) {
+    if (trimmed[i] === '{') {
+      indices.push(i);
+    }
+  }
+
+  for (let i = indices.length - 1; i >= 0; i -= 1) {
+    const slice = trimmed.slice(indices[i]);
+    try {
+      return JSON.parse(slice);
+    } catch {
+      // continue
+    }
+  }
+
+  return null;
+}
+
+function buildAuthHeader(token) {
+  const trimmed = token ? String(token).trim() : '';
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.startsWith('Bearer ') ? trimmed : `Bearer ${trimmed}`;
 }
 
 function parseArgs(argvInput) {
@@ -1048,6 +2579,7 @@ function resolveServerUrl(options, runContext) {
   const candidate =
     (options.server ??
       runContext?.data?.server ??
+      CLI_CONFIG?.data?.server ??
       process.env.SIMEVAL_SERVER_URL ??
       process.env.SIMEVAL_BASE_URL ??
       'http://127.0.0.1:3000/api') || '';
@@ -1061,6 +2593,7 @@ function resolveServerUrl(options, runContext) {
 function resolveAuthHeader(options) {
   const raw =
     options.token ??
+    CLI_CONFIG?.data?.token ??
     process.env.SIMEVAL_AUTH_TOKEN ??
     process.env.SIMEVAL_API_TOKEN ??
     '';
@@ -1069,6 +2602,61 @@ function resolveAuthHeader(options) {
     return null;
   }
   return trimmed.startsWith('Bearer ') ? trimmed : `Bearer ${trimmed}`;
+}
+
+function readCliConfigFile(configPath) {
+  if (!fs.existsSync(configPath)) {
+    return { data: {}, exists: false };
+  }
+
+  let raw;
+  try {
+    raw = fs.readFileSync(configPath, 'utf8');
+  } catch (error) {
+    throw new Error(`Failed to read CLI config: ${configPath}`);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Failed to parse CLI config JSON: ${error.message}`);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('CLI config must be a JSON object.');
+  }
+
+  return { data: parsed, exists: true };
+}
+
+function redactCliConfig(config) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return config;
+  }
+
+  const redacted = { ...config };
+  ['token', 'authToken', 'apiToken'].forEach((key) => {
+    if (redacted[key]) {
+      redacted[key] = '<redacted>';
+    }
+  });
+  return redacted;
+}
+
+function readConfigOption(options, key, label) {
+  if (!Object.prototype.hasOwnProperty.call(options, key)) {
+    return null;
+  }
+  const value = options[key];
+  if (value === true) {
+    throw new Error(`Missing value for ${label}.`);
+  }
+  const trimmed = String(value).trim();
+  if (!trimmed) {
+    throw new Error(`Missing value for ${label}.`);
+  }
+  return trimmed;
 }
 
 function buildUrl(server, endpointPath) {
@@ -1136,6 +2724,33 @@ function parseOptionalNumber(value, label) {
   return parsed;
 }
 
+function parsePathInput(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+  if (raw.startsWith('[')) {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error('Invalid --path JSON. Expected an array.');
+    }
+    return parsed.map((segment) => String(segment));
+  }
+  if (raw.includes(',')) {
+    return raw
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+  return raw
+    .split('.')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function buildMessageId(runId, suffix) {
   const timestamp = new Date().toISOString().replace(/[-:.]/g, '');
   const prefix = runId ? `${runId}` : 'cli';
@@ -1144,6 +2759,10 @@ function buildMessageId(runId, suffix) {
 
 function buildRunId() {
   return `run-${new Date().toISOString().replace(/[-:.]/g, '')}`;
+}
+
+function buildCaptureId() {
+  return `capture-${new Date().toISOString().replace(/[-:.]/g, '')}`;
 }
 
 function resolveRunsRoot(options) {
@@ -1346,6 +2965,425 @@ async function captureStream({
   };
 }
 
+function normalizeUiWsUrl(value) {
+  if (!value) {
+    return '';
+  }
+  const input = String(value).trim();
+  if (!input) {
+    return '';
+  }
+  if (input.startsWith('ws://') || input.startsWith('wss://')) {
+    return input;
+  }
+  if (input.startsWith('http://') || input.startsWith('https://')) {
+    const parsed = new URL(input);
+    parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (!parsed.pathname || parsed.pathname === '/') {
+      parsed.pathname = '/ws/control';
+    }
+    return parsed.toString();
+  }
+  const trimmed = input.replace(/\/+$/, '');
+  return `ws://${trimmed}/ws/control`;
+}
+
+async function connectWebSocket(url) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url);
+    const onOpen = () => {
+      cleanup();
+      resolve(socket);
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error ?? new Error(`WebSocket connection failed (${url})`));
+    };
+    const cleanup = () => {
+      socket.removeEventListener('open', onOpen);
+      socket.removeEventListener('error', onError);
+    };
+    socket.addEventListener('open', onOpen);
+    socket.addEventListener('error', onError);
+  });
+}
+
+function sendWsMessage(socket, payload) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+  socket.send(JSON.stringify(payload));
+  return true;
+}
+
+async function waitForWsAck(socket, timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(false);
+    }, timeoutMs);
+
+    const onMessage = (event) => {
+      const raw = typeof event.data === 'string' ? event.data : event.data?.toString();
+      if (!raw) {
+        return;
+      }
+      try {
+        const message = JSON.parse(raw);
+        if (message && message.type === 'ack') {
+          cleanup();
+          resolve(true);
+        }
+        if (message && message.type === 'error') {
+          cleanup();
+          resolve(false);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    const onError = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.removeEventListener('message', onMessage);
+      socket.removeEventListener('error', onError);
+    };
+
+    socket.addEventListener('message', onMessage);
+    socket.addEventListener('error', onError);
+  });
+}
+
+async function waitForWsResponse(socket, { requestId, types, timeoutMs = 2000 }) {
+  const typeSet = new Set(types || []);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(null);
+    }, timeoutMs);
+
+    const onMessage = (event) => {
+      const raw = typeof event.data === 'string' ? event.data : event.data?.toString();
+      if (!raw) {
+        return;
+      }
+      let message;
+      try {
+        message = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      if (message && message.type === 'error') {
+        if (!requestId || message.request_id === requestId) {
+          cleanup();
+          reject(new Error(message.error || 'WebSocket error'));
+        }
+        return;
+      }
+      if (requestId && message?.request_id !== requestId) {
+        return;
+      }
+      if (typeSet.size > 0 && !typeSet.has(message?.type)) {
+        return;
+      }
+      cleanup();
+      resolve(message);
+    };
+
+    const onError = (error) => {
+      cleanup();
+      reject(error ?? new Error('WebSocket error'));
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.removeEventListener('message', onMessage);
+      socket.removeEventListener('error', onError);
+    };
+
+    socket.addEventListener('message', onMessage);
+    socket.addEventListener('error', onError);
+  });
+}
+
+async function forwardStream({
+  url,
+  uiUrl,
+  maxFrames,
+  durationMs,
+  componentId,
+  entityId,
+  authHeader,
+  captureId,
+  filename,
+}) {
+  const socket = await connectWebSocket(uiUrl);
+  let socketClosed = false;
+  socket.addEventListener('close', () => {
+    socketClosed = true;
+  });
+
+  sendWsMessage(socket, { type: 'register', role: 'agent' });
+  await waitForWsAck(socket);
+  sendWsMessage(socket, { type: 'capture_init', captureId, filename });
+
+  const headers = {
+    Accept: 'text/event-stream',
+    'User-Agent': 'simeval-cli/1.0',
+  };
+  const controller = new AbortController();
+  if (durationMs) {
+    setTimeout(() => controller.abort(), durationMs);
+  }
+
+  const response = await fetch(url, applyAuth({ headers, signal: controller.signal }, authHeader));
+  if (!response.ok) {
+    controller.abort();
+    throw new Error(`SSE request failed (${response.status})`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    controller.abort();
+    throw new Error('SSE response missing readable body.');
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let frameCount = 0;
+  let ackCount = 0;
+  let recordCount = 0;
+  let stop = false;
+
+  try {
+    while (!stop && !socketClosed) {
+      const result = await reader.read();
+      if (!result || result.done) {
+        break;
+      }
+      if (result.value) {
+        buffer += decoder.decode(result.value, { stream: true });
+        const processed = processSseBuffer(buffer, (message) => {
+          if (isFrameMessage(message)) {
+            let frame = message;
+            if (componentId) {
+              frame = filterFrame(frame, componentId, entityId);
+              if (!frame) {
+                return true;
+              }
+            }
+            frameCount += 1;
+            recordCount += 1;
+            sendWsMessage(socket, { type: 'capture_append', captureId, frame });
+            if (maxFrames && frameCount >= maxFrames) {
+              stop = true;
+              return false;
+            }
+            return true;
+          }
+
+          if (isAckMessage(message)) {
+            ackCount += 1;
+          }
+          return true;
+        });
+        buffer = processed.buffer;
+        if (processed.stop) {
+          stop = true;
+        }
+      }
+    }
+  } catch (error) {
+    if (!(controller.signal.aborted && error.name === 'AbortError')) {
+      throw error;
+    }
+  } finally {
+    controller.abort();
+    await reader.cancel().catch(() => undefined);
+    sendWsMessage(socket, { type: 'capture_end', captureId });
+    socket.close();
+  }
+
+  return {
+    uiUrl,
+    captureId,
+    recordCount,
+    frameCount,
+    ackCount,
+    durationMs: durationMs ?? null,
+  };
+}
+
+function normalizeEntities(value) {
+  const result = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return result;
+  }
+
+  for (const [entityId, components] of Object.entries(value)) {
+    if (!components || typeof components !== 'object' || Array.isArray(components)) {
+      continue;
+    }
+    result[entityId] = { ...components };
+  }
+
+  return result;
+}
+
+function mergeEntities(target, source) {
+  for (const [entityId, components] of Object.entries(source)) {
+    if (!target[entityId]) {
+      target[entityId] = {};
+    }
+    for (const [componentId, componentValue] of Object.entries(components)) {
+      target[entityId][componentId] = componentValue;
+    }
+  }
+}
+
+function parseJsonlFrames(content) {
+  const frames = new Map();
+  const lines = content.split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      continue;
+    }
+
+    if (Number.isFinite(parsed.tick) && parsed.entities && typeof parsed.entities === 'object') {
+      const entities = normalizeEntities(parsed.entities);
+      const frame = frames.get(parsed.tick) || { tick: parsed.tick, entities: {} };
+      mergeEntities(frame.entities, entities);
+      frames.set(parsed.tick, frame);
+      continue;
+    }
+
+    if (
+      Number.isFinite(parsed.tick) &&
+      typeof parsed.entityId === 'string' &&
+      typeof parsed.componentId === 'string'
+    ) {
+      const frame = frames.get(parsed.tick) || { tick: parsed.tick, entities: {} };
+      if (!frame.entities[parsed.entityId]) {
+        frame.entities[parsed.entityId] = {};
+      }
+      frame.entities[parsed.entityId][parsed.componentId] = parsed.value;
+      frames.set(parsed.tick, frame);
+    }
+  }
+
+  return Array.from(frames.values()).sort((a, b) => a.tick - b.tick);
+}
+
+function parseJsonFrames(payload) {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+  const frames = new Map();
+  for (const item of payload) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    if (Number.isFinite(item.tick) && item.entities && typeof item.entities === 'object') {
+      const entities = normalizeEntities(item.entities);
+      const frame = frames.get(item.tick) || { tick: item.tick, entities: {} };
+      mergeEntities(frame.entities, entities);
+      frames.set(item.tick, frame);
+      continue;
+    }
+    if (Number.isFinite(item.tick) && typeof item.entityId === 'string' && typeof item.componentId === 'string') {
+      const frame = frames.get(item.tick) || { tick: item.tick, entities: {} };
+      if (!frame.entities[item.entityId]) {
+        frame.entities[item.entityId] = {};
+      }
+      frame.entities[item.entityId][item.componentId] = item.value;
+      frames.set(item.tick, frame);
+    }
+  }
+  return Array.from(frames.values()).sort((a, b) => a.tick - b.tick);
+}
+
+function loadFramesFromFile(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return [];
+  }
+  if (trimmed.startsWith('[')) {
+    try {
+      return parseJsonFrames(JSON.parse(trimmed));
+    } catch {
+      return [];
+    }
+  }
+  return parseJsonlFrames(content);
+}
+
+async function uploadCaptureFile({
+  uiUrl,
+  captureId,
+  filename,
+  filePath,
+  maxFrames,
+  componentId,
+  entityId,
+}) {
+  const socket = await connectWebSocket(uiUrl);
+  let socketClosed = false;
+  socket.addEventListener('close', () => {
+    socketClosed = true;
+  });
+
+  sendWsMessage(socket, { type: 'register', role: 'agent' });
+  await waitForWsAck(socket);
+  sendWsMessage(socket, { type: 'capture_init', captureId, filename });
+
+  const frames = loadFramesFromFile(filePath);
+  let frameCount = 0;
+
+  for (const frame of frames) {
+    if (socketClosed) {
+      break;
+    }
+    let payload = frame;
+    if (componentId) {
+      payload = filterFrame(payload, componentId, entityId);
+      if (!payload) {
+        continue;
+      }
+    }
+    sendWsMessage(socket, { type: 'capture_append', captureId, frame: payload });
+    frameCount += 1;
+    if (maxFrames && frameCount >= maxFrames) {
+      break;
+    }
+  }
+
+  sendWsMessage(socket, { type: 'capture_end', captureId });
+  socket.close();
+
+  return {
+    uiUrl,
+    captureId,
+    frameCount,
+  };
+}
+
 function createRecordWriter(outputPath, format) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   const stream = fs.createWriteStream(outputPath, { encoding: 'utf8' });
@@ -1518,17 +3556,71 @@ function printUsage(command) {
   console.log('  system inject|eject            Inject or eject a system');
   console.log('  component inject|eject         Inject or eject a component type');
   console.log('  plugin upload                 Upload plugin source to the server');
-  console.log('  stream capture                Capture SSE stream to a file');
+  console.log('  stream capture|forward|upload  Capture, forward, or upload stream data');
+  console.log('  ui <command>                   Control the Metrics UI over WebSocket');
+  console.log('  config show|set             Manage CLI defaults');
   console.log('  run create|show|record         Manage and record run metadata');
   console.log('  deploy start|stop|list         Start/stop/list local SimEval deployments');
   console.log('  morphcloud <command>           Manage Morphcloud fleets via the distributor');
+  console.log('  fleet [scaffold]               Run Morphcloud deployments or write a config scaffold');
   console.log('  codebase tree|file             Explore the server codebase tree/files');
   console.log('  wait                          Poll /status until a state is reached\n');
   console.log('Global options:');
   console.log('  --server       Base server URL (default: http://127.0.0.1:3000/api)');
   console.log('  --token        Authorization token (Bearer prefix optional)');
+  console.log('  --cli-config   Path to CLI config JSON (default: ~/.simeval/config.json)');
   console.log('  --run          Path to run directory or run.json');
+  console.log('  --message-id   Override generated message id');
   console.log('  --help         Show command help\n');
+  console.log('System/component options:');
+  console.log('  --player       simulation (default) or evaluation');
+  console.log('  --module       Module path under plugins/');
+  console.log('  --export       Export name (optional)');
+  console.log('  --system-id    System id for eject');
+  console.log('  --component-id Component id for eject\n');
+  console.log('Plugin options:');
+  console.log('  --source       Local plugin file path');
+  console.log('  --dest         Target plugin path under plugins/');
+  console.log('  --overwrite    Replace existing plugin file\n');
+  console.log('Stream options:');
+  console.log('  --stream       simulation|evaluation|/custom/path');
+  console.log('  --frames       Max frames to capture/forward');
+  console.log('  --duration     Max capture duration in ms');
+  console.log('  --format       jsonl (default) or json');
+  console.log('  --component    Component id filter');
+  console.log('  --entity       Entity id filter');
+  console.log('  --include-acks Include SSE ack messages (capture only)');
+  console.log('  --out          Output file path (capture)');
+  console.log('  --file         Capture file to upload');
+  console.log('  --name         Filename override for UI uploads\n');
+  console.log('UI options:');
+  console.log('  --ui           Metrics UI websocket or http(s) URL');
+  console.log('  --capture-id   Capture id for live streams or metric selection');
+  console.log('  --source       Live capture source file path or URL');
+  console.log('  --mode         Source mode for ui mode (file|live)');
+  console.log('  --path         Metric path (JSON array recommended for dotted keys)');
+  console.log('  --full-path    Full metric path for ui deselect');
+  console.log('  --tick         Tick for ui seek');
+  console.log('  --speed        Playback speed multiplier');
+  console.log('  --poll-ms      Live poll interval in milliseconds');
+  console.log('  --poll-seconds Live poll interval in seconds');
+  console.log('  --timeout      WebSocket wait timeout in ms\n');
+  console.log('UI subcommands:');
+  console.log('  capabilities | state | components | mode | live-source | live-start | live-stop');
+  console.log('  select | deselect | clear | play | pause | stop | seek | speed\n');
+  console.log('Run options:');
+  console.log('  --name         Run name (create)');
+  console.log('  --notes        Run notes (create)');
+  console.log('  --no-start     Skip playback start (record)');
+  console.log('  --pause        Pause instead of stop after record');
+  console.log('  --no-stop      Skip playback stop/pause after record\n');
+  console.log('Wait options:');
+  console.log('  --state        Desired player state');
+  console.log('  --player       simulation (default) or evaluation');
+  console.log('  --timeout      Timeout in ms (default: 30000)');
+  console.log('  --interval     Poll interval in ms (default: 500)\n');
+  console.log('Codebase options:');
+  console.log('  --path         Path for tree/file (or --file for file)\n');
   console.log('Deploy start options:');
   console.log('  --port         Port to bind (default: 3000)');
   console.log('  --host         Host to bind (default: 127.0.0.1)');
@@ -1536,16 +3628,64 @@ function printUsage(command) {
   console.log('  --clean-plugins Remove plugin files before starting');
   console.log('  --build        Always build before start');
   console.log('  --no-build     Skip build (requires dist/main.js)');
-  console.log('  --no-auto-start-eval Disable evaluation auto-start\n');
+  console.log('  --no-auto-start-eval Disable evaluation auto-start');
+  console.log('  --log          Log file path (defaults to ~/.simeval/logs/...)');
+  console.log('  --log-dir      Log directory (default: ~/.simeval/logs)');
+  console.log('  --state        Deploy state file path');
+  console.log('  --force        Replace an existing deployment on the port');
+  console.log('  --auto-start-eval Enable evaluation auto-start\n');
+  console.log('Deploy stop options:');
+  console.log('  --port         Port to stop');
+  console.log('  --pid          PID to stop');
+  console.log('  --all          Stop all recorded deployments');
+  console.log('  --signal       Signal to send (default: SIGTERM)');
+  console.log('  --timeout      Wait timeout in ms (default: 2000)\n');
+  console.log('Fleet options:');
+  console.log('  --config       Fleet config JSON file (defaults to fleetConfig in ~/.simeval/config.json)');
+  console.log('  --ui           Override UI websocket or http(s) URL');
+  console.log('  --continue-on-error Continue on instance/deployment failures');
+  console.log('  --out          Scaffold output path (fleet scaffold)');
+  console.log('  --force        Overwrite existing scaffold file\n');
+  if (!command || command === 'config') {
+    console.log('Config options:');
+    console.log('  --server       Default server URL');
+    console.log('  --token        Default auth token');
+    console.log('  --snapshot     Default snapshot id');
+    console.log('  --fleet-config Default fleet config path');
+    console.log('');
+  }
+  if (!command || command === 'fleet') {
+    console.log('Fleet config (JSON):');
+    console.log('  - Top-level: { ui?, defaults?, deployments: [ ... ] }');
+    console.log('  - ui: { url, pollSeconds }');
+    console.log('  - defaults/deployments: snapshot, mode (build|clone), count, parallel,');
+    console.log('    readyTimeoutMs, readyIntervalMs, captureMode (parallel|sequential)');
+    console.log('  - provision: { args?, stateFile?, skipUpdate?, requireUpdate? }');
+    console.log('  - playback: { start?, stop?, pause? }');
+    console.log('  - postProvision.exec: [ \"shell command\", ... ]');
+    console.log('  - plugins: [ \"plugins/...\", { source, dest, overwrite? } ]');
+    console.log('  - components/systems: { player, module, export }');
+    console.log('  - captures: { stream, out, frames|durationMs|duration|durationSeconds|durationSec, format?,');
+    console.log('      component?, entity?, includeAcks?, ui?: { captureId?, filename?, pollSeconds? } }');
+    console.log('  - Templates: ${deployment} ${instance} ${index} ${instanceId} in out/captureId/filename\n');
+  }
   console.log('Examples:');
   console.log('  node tools/simeval_cli.js health --server http://127.0.0.1:3000/api');
   console.log('  node tools/simeval_cli.js system inject --player simulation --module plugins/sim/system.js');
   console.log('  node tools/simeval_cli.js stream capture --stream simulation --frames 50 --out sim.jsonl');
+  console.log('  node tools/simeval_cli.js stream forward --stream evaluation --frames 50 --ui ws://localhost:5000/ws/control');
+  console.log('  node tools/simeval_cli.js stream upload --file capture.jsonl --ui ws://localhost:5000/ws/control');
+  console.log('  node tools/simeval_cli.js ui capabilities --ui ws://localhost:5000/ws/control');
+  console.log('  node tools/simeval_cli.js ui mode --mode live --ui ws://localhost:5000/ws/control');
+  console.log('  node tools/simeval_cli.js ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5000/ws/control');
+  console.log('  node tools/simeval_cli.js ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5000/ws/control');
   console.log('  node tools/simeval_cli.js run create --name demo --server http://127.0.0.1:3000/api');
   console.log('  node tools/simeval_cli.js run record --run runs/run-123 --frames 25 --stream evaluation');
   console.log('  node tools/simeval_cli.js deploy start --port 4000 --workspace ./workspaces/Describing_Simulation_0');
   console.log('  node tools/simeval_cli.js deploy stop --port 4000');
   console.log('  node tools/simeval_cli.js deploy start --port 4000 --clean-plugins');
   console.log('  node tools/simeval_cli.js morphcloud list');
+  console.log('  node tools/simeval_cli.js fleet scaffold --out fleet.json');
+  console.log('  node tools/simeval_cli.js fleet --config fleet.json --ui ws://localhost:5050/ws/control');
   console.log('  node tools/simeval_cli.js codebase tree --server http://127.0.0.1:3000/api');
 }

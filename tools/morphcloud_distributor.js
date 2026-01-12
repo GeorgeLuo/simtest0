@@ -5,8 +5,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const { loadCliConfig } = require('./cli_config');
 
 const argv = process.argv.slice(2);
+let CLI_CONFIG = null;
 
 if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
   printUsage();
@@ -19,6 +21,10 @@ main().catch((error) => {
 });
 
 async function main() {
+  CLI_CONFIG = loadCliConfig({
+    argv,
+    defaultPath: path.join(os.homedir(), '.simeval', 'config.json'),
+  });
   const [command, ...rest] = argv;
 
   switch (command) {
@@ -52,9 +58,9 @@ async function handleProvision(argvRest) {
     throw new Error('Unexpected positional arguments. Use -- to pass through options to the provision script.');
   }
 
-  const snapshot = String(options.snapshot || '').trim();
+  const snapshot = String(options.snapshot || CLI_CONFIG?.data?.snapshot || '').trim();
   if (!snapshot) {
-    throw new Error('Missing --snapshot for provision.');
+    throw new Error('Missing --snapshot for provision (or set snapshot in ~/.simeval/config.json).');
   }
 
   const mode = normalizeMode(options.mode || 'build');
@@ -823,11 +829,13 @@ function printUsage(message) {
   console.log('  simeval                   Run simeval_cli against instances');
   console.log('  validate                  Run morphcloud_validator against instances');
   console.log('  update                    Update morphcloud CLI');
+  console.log('\nGlobal options:');
+  console.log('  --cli-config PATH         CLI config JSON (default: ~/.simeval/config.json)');
 
   if (!message) {
     console.log('\nExamples:');
-    console.log('  node tools/morphcloud_distributor.js provision --snapshot snapshot_abc --count 3');
-    console.log('  node tools/morphcloud_distributor.js provision --snapshot snapshot_abc --mode clone --count 2');
+    console.log('  node tools/morphcloud_distributor.js provision --snapshot SNAPSHOT_ID --count 3');
+    console.log('  node tools/morphcloud_distributor.js provision --snapshot SNAPSHOT_ID --mode clone --count 2');
     console.log('  node tools/morphcloud_distributor.js list');
     console.log('  node tools/morphcloud_distributor.js stop --all');
     console.log('  node tools/morphcloud_distributor.js simeval --all -- status');
@@ -841,7 +849,7 @@ function printUsage(message) {
 
   if (section === 'provision') {
     console.log('Provision options:');
-    console.log('  --snapshot ID             Snapshot ID to boot (required)');
+    console.log('  --snapshot ID             Snapshot ID to boot (defaults to ~/.simeval/config.json)');
     console.log('  --mode MODE               build (default) or clone');
     console.log('  --count N                 Number of instances (default: 1)');
     console.log('  --parallel N              Provision concurrently (default: 1)');

@@ -7,3 +7,4 @@ verifications/
 npm-debug.log*
 yarn-error.log*
 *.log
+simeval.config.json
