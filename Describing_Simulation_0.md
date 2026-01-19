@@ -1045,12 +1045,12 @@ Similarly entities can be represented like
 
 So entities are tagged with ENTITY and WORLD is a special entity. DIM denotes a dimensionality which eventually translates to component types with dtype provides hinting during codegen. Next, the phenomenon:
 
-  PHEN DROP  
-    description="The ball is falling downward under gravity."  
-    roles="BALL"  
-    reads\_dims="gravity,height"  
-    drives\_dims="height,vertical\_velocity"  
-    source\_nl="NL\[0001\]"
+PHEN DROP  
+  description="The ball is falling downward under gravity."  
+  roles="BALL"  
+  reads\_dims="gravity,height"  
+  drives\_dims="height,vertical\_velocity"  
+  source\_nl="NL\[0001\]"
 
 The reads\_dims informs the entities within scope (filter from System Design) and drives\_dims informs the transformations happening within the implementing systems. Note the language is descriptive of the eventual code but not prescriptive; this format does not compile into ECS but serves an intermediate logical artifact.
 
@@ -1263,7 +1263,7 @@ SNAP\[0003\]
   ...  
 ENDSNAP
 
-### Perfect Mapping
+### Perfect Methodology
 
 We recognize reaching this point might seem rushed. This methodology happened, it was not derived. It might be helpful to think of what a perfect solution looks like and reduce it to what we have proposed. There would be a much more sophisticated versioning system and UI to rewind the artifact, perhaps synchronized to a minimalist graphical information display. Changes are sequestered to descriptive fragments and some front-end would be provided to filter and search through the description. There would be a robust WLL linter or WLL itself would be a pages-long spec or WLL would not exist, preferring a model specialized for writing ECS simulation code.
 
@@ -1273,9 +1273,34 @@ So the richness of an idealized interface for intent should still agree with the
 
 If we accept that some intermediate artifact is necessary and the less the better and characteristics of artifact construction agree with our definitions, then the idealized methodology is different in the robustness of the tooling. There is acceptance that better exists, at the cost of maintenance of a new engine. Again we err towards rewritability and constrain the surface area of technical oversight. The usage of WLL can be as simple as a document with the header above and a general agent used for transcription and translation.
 
-If concern is allayed regarding the existence of a better methodology, the question remains: does WLL actually map to ECS?
+Once concern is allayed regarding the existence of a better methodology, the question remains: does WLL sufficiently map to ECS for real problems?
 
-# 
+Suppose we say the purposeful doing of something consists of the forming of a decision and the execution of the decision. We can extend that the second part is deterministic and everything that is not deterministic is epistemic. Or grounding further, decision making is selection from uncertainty, execution is that which has effects of varying degrees of commitment. Simeval very singularly exhibits epistemic value by itself and recognizing this, we should want to maximize its usefulness towards commitment with as little friction as possible.
+
+### Explanatory Worlds From Observations
+
+Let us assume we have a dataset of observations. If we look to define a world model with the success of the model graded on fidelity to the dataset, we would see a tracker that outputs the same data as the input, mechanistic data playback. When we expect fidelity to raw data, the model doesn’t have anything to do with understanding, it doesn’t explain. 
+
+Suppose you were to conceptualize a monolithic thing with output that matches the dataset exactly. This would over-fitting at the cost of any sense of realism. What doesn’t explain leaves no room for exploration. We want to formulate world descriptions to produce the dataset as a consequence of the world rather than the data being the world. A better approach is to define a world that produces data like what is in the dataset, a reverse-engineering: 
+
+“Given the dataset as observations, create a world description of a realistic world that can produce the signals through causal processes.”
+
+Assuming we have a faithful world description and this is codified into ECS, we now have a proposed explanation of data. We can overlay component values to check against the original data and tune the explanation to simulate a like world. This and similar ideas are interesting and perhaps useful, and we can form a limit on the usefulness of simulation.
+
+Identifying a successful world is asking:
+
+* What are things in this data (or derivations from the data) that would indicate good things are happening?  
+* What are things in this data (or derivations from the data) that would indicate bad things are happening?
+
+Building on this:
+
+* What is going right in the world that produces good metrics?  
+* What is going wrong in the world that produces bad metrics?
+
+Now on the outer bound of the epistemic:
+
+* How can we change the world to increase the occurrence of good things?  
+* How can we change the world to reduce the occurrence of wrong things?
 
 # Agentic Instructions
 
@@ -1589,3 +1614,4 @@ This proposition for the values of the levers is generated by an LLM (Soln. 1.1)
 | Cooling method | forced air |
 
 **Table 1.2**: Lever values to solve Case 1
+
