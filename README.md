@@ -95,8 +95,6 @@ Example:
 }
 ```
 
-Template: `simeval.config.example.json` in the repo root mirrors this shape.
-
 Notes:
 - `fleetConfig` is used when `simeval fleet` runs without `--config`.
 - `snapshot` is used as the default for `simeval morphcloud provision`.
