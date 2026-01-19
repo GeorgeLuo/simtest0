@@ -821,7 +821,7 @@ function printUsage(message) {
     console.error(message);
   }
 
-  console.log(`\nUsage: node tools/morphcloud_distributor.js <command> [options]\n`);
+  console.log(`\nUsage: node tools/cli/morphcloud_distributor.js <command> [options]\n`);
   console.log('Commands:');
   console.log('  provision|create          Provision Morphcloud instances and ship SimEval');
   console.log('  list                      List tracked instances');
@@ -834,12 +834,12 @@ function printUsage(message) {
 
   if (!message) {
     console.log('\nExamples:');
-    console.log('  node tools/morphcloud_distributor.js provision --snapshot SNAPSHOT_ID --count 3');
-    console.log('  node tools/morphcloud_distributor.js provision --snapshot SNAPSHOT_ID --mode clone --count 2');
-    console.log('  node tools/morphcloud_distributor.js list');
-    console.log('  node tools/morphcloud_distributor.js stop --all');
-    console.log('  node tools/morphcloud_distributor.js simeval --all -- status');
-    console.log('  node tools/morphcloud_distributor.js validate --name fleet');
+    console.log('  node tools/cli/morphcloud_distributor.js provision --snapshot SNAPSHOT_ID --count 3');
+    console.log('  node tools/cli/morphcloud_distributor.js provision --snapshot SNAPSHOT_ID --mode clone --count 2');
+    console.log('  node tools/cli/morphcloud_distributor.js list');
+    console.log('  node tools/cli/morphcloud_distributor.js stop --all');
+    console.log('  node tools/cli/morphcloud_distributor.js simeval --all -- status');
+    console.log('  node tools/cli/morphcloud_distributor.js validate --name fleet');
     console.log('');
   }
 

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ARCHIVE_PATH="$(mktemp -t simeval-bundle-XXXXXX.tar.gz)"
 BUNDLE_ITEMS=("workspaces/Describing_Simulation_0")
 HAS_INSTRUCTIONS=0
@@ -14,7 +14,7 @@ fi
 
 usage() {
   cat <<'USAGE'
-Usage: morphcloud_build_instance.sh --snapshot SNAPSHOT_ID [options]
+Usage: tools/cli/morphcloud_build_instance.sh --snapshot SNAPSHOT_ID [options]
 
 Provisions a new Morphcloud VM from a snapshot, installs Node.js, clones the SimEval
 codebase, builds/tests the workspace, configures a systemd service, and exposes it.

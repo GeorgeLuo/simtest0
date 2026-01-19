@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../.. && pwd)"
 WORKSPACE_DIR="$ROOT_DIR/workspaces/Describing_Simulation_0"
 
 echo "Sim-Eval Integration"
@@ -20,4 +20,4 @@ echo "2. Start SimEval server programmatically"
 echo "3. Probe API landing metadata"
 echo "4. Verify simulation SSE stream is idle"
 echo "5. Inject temperature system and exercise controls"
-NODE_NO_WARNINGS=1 node "$ROOT_DIR/tools/run_integration.js"
+NODE_NO_WARNINGS=1 node "$ROOT_DIR/tools/dev/run_integration.js"

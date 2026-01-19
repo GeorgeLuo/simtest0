@@ -5,10 +5,10 @@ SimEval server workspace plus CLI tooling.
 ## Repository Layout
 
 - `workspaces/Describing_Simulation_0/` — SimEval server (TypeScript; `dist/main.js` runtime).
-- `tools/simeval_cli.js` — CLI (deploy, plugins, playback, stream capture/forward/upload, UI control, run metadata, codebase, wait, fleet).
-- `tools/morphcloud_distributor.js` — fleet CLI for provisioning Morphcloud SimEval servers and dispatching remote commands.
-- `tools/start.sh` — Quick-start helper for local development.
-- `tools/` — Supporting scripts (integration, benchmarking, validation).
+- `tools/cli/simeval_cli.js` — CLI (deploy, plugins, playback, stream capture/forward/upload, UI control, run metadata, codebase, wait, config, log, fleet).
+- `tools/cli/morphcloud_distributor.js` — fleet CLI for provisioning Morphcloud SimEval servers and dispatching remote commands.
+- `tools/dev/start.sh` — Quick-start helper for local development.
+- `tools/dev/` — Supporting scripts (integration, benchmarking, validation).
 
 ## Quick Start
 
@@ -19,11 +19,11 @@ cd simtest0
 # Install workspace deps
 npm --prefix workspaces/Describing_Simulation_0 install
 
-# Start a server (auto-builds if needed)
-node tools/simeval_cli.js deploy start --port 3000 --clean-plugins
+# Start a server (rebuilds by default)
+./tools/cli/simeval_cli.js deploy start --port 3000 --clean-plugins
 
 # Verify
-node tools/simeval_cli.js health --server http://127.0.0.1:3000/api
+./tools/cli/simeval_cli.js health --server http://127.0.0.1:3000/api
 ```
 
 ## CLI Install
@@ -51,7 +51,7 @@ Notes:
 
 ## CLI Overview
 
-Use `simeval --help` or `node tools/simeval_cli.js --help` for the full list.
+Use `simeval --help` (or `./tools/cli/simeval_cli.js --help` in this repo) for the full list.
 
 Global options:
 - `--server` (default: `http://127.0.0.1:3000/api`)
@@ -72,6 +72,7 @@ Commands:
 - `deploy start|stop|list`
 - `morphcloud <command>`
 - `fleet`
+- `log list|view`
 - `codebase tree|file`
 
 ## CLI config
@@ -85,7 +86,12 @@ Example:
   "server": "http://127.0.0.1:3000/api",
   "token": "REPLACE_ME",
   "fleetConfig": "fleet.json",
-  "snapshot": "SNAPSHOT_ID"
+  "snapshot": "SNAPSHOT_ID",
+  "workspace": "/path/to/workspaces/Describing_Simulation_0",
+  "uiDir": "Stream-Metrics-UI",
+  "uiHost": "127.0.0.1",
+  "uiPort": 5050,
+  "uiMode": "dev"
 }
 ```
 
@@ -94,11 +100,14 @@ Template: `simeval.config.example.json` in the repo root mirrors this shape.
 Notes:
 - `fleetConfig` is used when `simeval fleet` runs without `--config`.
 - `snapshot` is used as the default for `simeval morphcloud provision`.
+- `workspace` is used as the default for `simeval deploy start` (relative paths resolve from the CLI config file).
+- `uiDir` and friends define defaults for `simeval ui serve`.
 - Use `--cli-config /path/to/config.json` to point at a different file.
 
 You can also manage the file via CLI:
 ```bash
-simeval config set --token "$SIMEVAL_API_TOKEN" --snapshot SNAPSHOT_ID --fleet-config verification/fleet_highmix.json
+simeval config set --token "$SIMEVAL_API_TOKEN" --snapshot SNAPSHOT_ID --fleet-config verification/fleet_highmix.json \
+  --workspace /path/to/workspaces/Describing_Simulation_0
 simeval config show
 ```
 This writes to `~/.simeval/config.json` unless you pass `--cli-config`.
@@ -112,10 +121,11 @@ simeval deploy stop --port 4000
 ```
 
 Notes:
-- `deploy start` auto-builds unless you pass `--no-build`.
+- `deploy start` rebuilds unless you pass `--no-build`.
 - `--clean-plugins` deletes plugin files under `plugins/` (keeps `.gitkeep`) to avoid stale
   plugin confusion after restarts.
 - `deploy start` also accepts `--log`, `--log-dir`, `--state`, `--force`, and `--auto-start-eval`.
+- `deploy start --wait` polls `/health` and fails if the process exits or times out.
 - `deploy stop` accepts `--pid`, `--all`, `--signal`, and `--timeout`.
 - Deploy state is tracked in `~/.simeval/deployments.json`, logs in `~/.simeval/logs/`.
 
@@ -149,6 +159,11 @@ Notes:
 
 ## Stream Capture + Metrics UI
 
+Start the Metrics UI (auto-starts if not already running):
+```bash
+simeval ui serve --ui-dir Stream-Metrics-UI
+```
+
 Capture to file:
 ```bash
 simeval stream capture --stream evaluation --frames 200 --out evaluation.jsonl
@@ -171,10 +186,17 @@ simeval ui select --capture-id live-a --path '["1","highmix.metrics","shift_capa
 simeval ui play --capture-id live-a --ui ws://localhost:5050/ws/control
 ```
 
+Shut down the UI server:
+```bash
+simeval ui shutdown --ui http://localhost:5050
+```
+
 Notes:
 - `stream capture` and `stream forward` require `--frames` or `--duration` (ms).
 - `--component` and `--entity` filter frames to a single component/entity.
 - `--path` accepts a JSON array so dotted keys are unambiguous.
+- `stream forward` runs in the background by default and writes a log file (use `--foreground` to block).
+- `ui serve` defaults to `127.0.0.1:5050` and runs `npm install` if needed (use `--skip-install` to disable). It runs in the background and writes a log file.
 
 ## Run Metadata
 
@@ -241,6 +263,18 @@ Notes:
 - Capture templates support `${deployment}`, `${instance}`, `${index}`, and `${instanceId}`.
 - `captures[].ui` can be `false` to skip UI live streaming; otherwise it inherits `ui.url`.
 - `fleet scaffold` writes `fleet.json` by default; use `--force` to overwrite.
+
+## CLI Logs
+
+```bash
+simeval log list
+simeval log list --type ui
+simeval log view --file ui_20260101T120000.log
+```
+
+Notes:
+- Log files are stored under `~/.simeval/logs/cli` by default.
+- Use `--type` to filter (`ui`, `stream_forward`, etc.).
 
 ## Plugin Workflow (High-Level)
 

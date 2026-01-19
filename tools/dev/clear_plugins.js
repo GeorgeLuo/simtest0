@@ -3,7 +3,7 @@
  * Clears plugin files under a given workspace without removing directory scaffolding.
  *
  * Usage:
- *   node tools/clear_plugins.js /path/to/workspace
+ *   node tools/dev/clear_plugins.js /path/to/workspace
  *   # defaults to ../workspaces/Describing_Simulation_0 when no argument supplied
  */
 
@@ -11,7 +11,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const ROOT_DIR = path.resolve(__dirname, '..');
+const ROOT_DIR = path.resolve(__dirname, '..', '..');
 const workspaceArg =
   process.argv[2] ?? path.join(ROOT_DIR, 'workspaces', 'Describing_Simulation_0');
 const WORKSPACE_DIR = path.resolve(ROOT_DIR, workspaceArg);

@@ -4,7 +4,7 @@ set -euo pipefail
 # Captures a small evaluation stream sample after uploading/registering/injecting
 # the bundled ball drop plugins. Writes the eval stream sample to verifications/eval_stream_sample.jsonl.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../.. && pwd)"
 BASE_URL="http://localhost:3000/api"
 OUT_FILE="$ROOT_DIR/verifications/eval_stream_sample.jsonl"
 EVENT_COUNT=${EVENT_COUNT:-10}

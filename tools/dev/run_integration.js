@@ -23,7 +23,7 @@ const AUTH_HEADER_VALUE = RAW_AUTH_TOKEN
 const textDecoder = new TextDecoder();
 
 async function main() {
-  const rootDir = path.resolve(__dirname, '..');
+  const rootDir = path.resolve(__dirname, '..', '..');
   const workspaceDir = path.join(rootDir, 'workspaces', 'Describing_Simulation_0');
   const distMainPath = path.join(workspaceDir, 'dist', 'main.js');
 

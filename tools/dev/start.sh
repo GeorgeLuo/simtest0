@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../.. && pwd)"
 WORKSPACE_DIR="$ROOT_DIR/workspaces/Describing_Simulation_0"
 LOG_DIR="$ROOT_DIR/verifications"
 DEFAULT_PORT=3000

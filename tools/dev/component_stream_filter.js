@@ -8,7 +8,7 @@
  * stdout as either structured text or JSON (see --format).
  *
  * Example:
- *   node tools/component_stream_filter.js \
+ *   node tools/dev/component_stream_filter.js \
  *     --server http://127.0.0.1:3123/api \
  *     --stream /simulation/stream \
  *     --component temperature \
@@ -265,7 +265,7 @@ function printUsage(errorMessage) {
     console.error(`[filter] ${errorMessage}`);
   }
   console.log('Usage:');
-  console.log('  node tools/component_stream_filter.js --server <url> --stream <path> --component <id> [options]\n');
+  console.log('  node tools/dev/component_stream_filter.js --server <url> --stream <path> --component <id> [options]\n');
   console.log('Required arguments:');
   console.log('  --server     Base server URL (e.g., http://127.0.0.1:3123/api)');
   console.log('  --stream     Stream path (e.g., /simulation/stream or /evaluation/stream)');

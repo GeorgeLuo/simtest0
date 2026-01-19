@@ -4,9 +4,9 @@
   "private": true,
   "description": "SimEval CLI tools.",
   "bin": {
-    "simeval": "tools/simeval_cli.js",
-    "simeval-morphcloud": "tools/morphcloud_distributor.js",
-    "morphcloud-distributor": "tools/morphcloud_distributor.js"
+    "simeval": "tools/cli/simeval_cli.js",
+    "simeval-morphcloud": "tools/cli/morphcloud_distributor.js",
+    "morphcloud-distributor": "tools/cli/morphcloud_distributor.js"
   },
   "engines": {
     "node": ">=18"

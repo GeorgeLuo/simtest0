@@ -9,7 +9,7 @@
  * expose-http`, and prints the resulting public URL.
  *
  * Usage:
- *   node tools/morphcloud_clone_snapshot.js --snapshot SNAPSHOT_ID [options]
+ *   node tools/cli/morphcloud_clone_snapshot.js --snapshot SNAPSHOT_ID [options]
  *
  * Options:
  *   --name NAME              Friendly instance metadata name (default: simeval-clone-<timestamp>)
@@ -204,7 +204,7 @@ function parseArgs(argv) {
 
 function printUsage() {
   console.log(`
-Usage: node tools/morphcloud_clone_snapshot.js --snapshot SNAPSHOT_ID [options]
+Usage: node tools/cli/morphcloud_clone_snapshot.js --snapshot SNAPSHOT_ID [options]
 
 Options:
   --name NAME              Friendly instance metadata name (default: simeval-clone-<timestamp>)

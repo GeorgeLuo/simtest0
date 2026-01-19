@@ -6,9 +6,8 @@ This stage is intended to massage the codebase towards spec alignment and the ge
 
 The big picture is we are assuming the role of a first-time user evaluating the project with a simulation in mind: temperature regulation. The user is curious and technically capable in modeling complex systems and hypothesizing their intermittent states. The user expects to be able to validate outputs of the product, that the simulation emits data approximately matching expectations.
 
-The start script within the tools directory is considered prior knowledge. The outsider knows by running the script, the product is ready for testing.
+The start script within `tools/dev/` is considered prior knowledge. The outsider knows by running the script, the product is ready for testing.
 
 ### Artifacts
 
-The steps to run integration should also be captured in the *run_integration.sh* script with comments for each step enumerated below.
-
+The steps to run integration should also be captured in the *tools/dev/run_integration.sh* script with comments for each step enumerated below.

@@ -17,6 +17,28 @@ if (typeof fetch !== 'function') {
 const argv = process.argv.slice(2);
 let CLI_CONFIG = null;
 const DEFAULT_CLI_CONFIG_PATH = path.join(os.homedir(), '.simeval', 'config.json');
+const DEFAULT_UI_HOST = '127.0.0.1';
+const DEFAULT_UI_PORT = 5050;
+const DEFAULT_UI_DIRNAME = 'Stream-Metrics-UI';
+const DEFAULT_FLEET_LABELS = {
+  instance: [
+    'simeval.run=${runId}',
+    'simeval.deployment=${deployment}',
+    'simeval.instance=${instance}',
+  ],
+  snapshot: [
+    'name=simeval-${deployment}-${instance}-${runId}',
+    'simeval.run=${runId}',
+    'simeval.deployment=${deployment}',
+    'simeval.instance=${instance}',
+  ],
+};
+const DEFAULT_FLEET_CLEANUP = {
+  snapshot: true,
+  stop: true,
+  stopOnFailure: true,
+  forget: false,
+};
 
 if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
   printUsage();
@@ -36,6 +58,9 @@ async function main() {
     defaultPath: DEFAULT_CLI_CONFIG_PATH,
     allowMissing: allowMissingCliConfig,
   });
+  if (!process.env.MORPH_API_KEY && CLI_CONFIG?.data?.morphApiKey) {
+    process.env.MORPH_API_KEY = CLI_CONFIG.data.morphApiKey;
+  }
 
   switch (command) {
     case 'health':
@@ -68,6 +93,8 @@ async function main() {
       return handleMorphcloud(rest);
     case 'fleet':
       return handleFleet(rest);
+    case 'log':
+      return handleLog(rest);
     case 'codebase':
       return handleCodebase(rest);
     default:
@@ -97,11 +124,449 @@ async function handleStatus(argvRest) {
     return;
   }
 
+  if ((options.prune || options['prune-morph'] || options['stop-morph']) && !options.all) {
+    throw new Error('Use --all with --prune or --prune-morph.');
+  }
+
+  if (options.all) {
+    await handleStatusAll(options);
+    return;
+  }
+
   const server = resolveServerUrl(options);
   const authHeader = resolveAuthHeader(options);
   const url = buildUrl(server, '/status');
   const response = await requestJson(url, { method: 'GET' }, authHeader);
   printJson(response);
+}
+
+async function handleStatusAll(options) {
+  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 2000;
+  const checkedAt = new Date().toISOString();
+  const pruneLocal = Boolean(options.prune);
+  const pruneMorph = Boolean(options['prune-morph'] || options['stop-morph']);
+  const stopMorph = Boolean(options['stop-morph']);
+  const signal = typeof options.signal === 'string' ? options.signal : 'SIGTERM';
+
+  const deployStateFile = resolveDeployStateFile(options);
+  const deployState = loadDeployState(deployStateFile);
+  const localDeployments = await Promise.all(
+    Object.entries(deployState.deployments).map(([key, record]) =>
+      checkLocalDeployment(record, timeoutMs, key),
+    ),
+  );
+
+  const uiStateFile = resolveUiStateFile(options);
+  const uiState = loadUiState(uiStateFile);
+  const uiDeployments = await Promise.all(
+    Object.entries(uiState.deployments).map(([key, record]) =>
+      checkUiDeployment(record, timeoutMs, key),
+    ),
+  );
+
+  const morphStateFile = resolveMorphcloudStateFile(options);
+  const morphState = loadMorphcloudState(morphStateFile);
+  const morphInstances = await Promise.all(
+    Object.entries(morphState.instances).map(([key, record]) =>
+      checkMorphcloudInstance(record, timeoutMs, key),
+    ),
+  );
+
+  const pruneResults = {
+    local: pruneLocal
+      ? await pruneLocalDeployments({
+          stateFile: deployStateFile,
+          state: deployState,
+          deployments: localDeployments,
+          timeoutMs,
+          signal,
+        })
+      : null,
+    morphcloud: pruneMorph
+      ? await pruneMorphcloudInstances({
+          stateFile: morphStateFile,
+          state: morphState,
+          instances: morphInstances,
+          stopRemote: stopMorph,
+        })
+      : null,
+  };
+
+  const summaryStatus = summarizeAggregateStatus({ localDeployments, morphInstances, uiDeployments });
+
+  const payload = {
+    status: summaryStatus,
+    checkedAt,
+    local: {
+      stateFile: deployStateFile,
+      updatedAt: deployState.updatedAt ?? null,
+      deployments: localDeployments,
+    },
+    morphcloud: {
+      stateFile: morphStateFile,
+      updatedAt: morphState.updatedAt ?? null,
+      instances: morphInstances,
+    },
+    prune: pruneLocal || pruneMorph ? pruneResults : null,
+  };
+
+  if (uiDeployments.length > 0) {
+    payload.ui = {
+      stateFile: uiStateFile,
+      updatedAt: uiState.updatedAt ?? null,
+      deployments: uiDeployments,
+    };
+  }
+
+  printJson(payload);
+}
+
+function summarizeUiStatus(ui) {
+  if (!ui || !ui.url) {
+    return 'unconfigured';
+  }
+  if (!ui.running) {
+    return 'down';
+  }
+  if (!ui.isUi) {
+    return 'not-ui';
+  }
+  return 'running';
+}
+
+async function checkLocalDeployment(record, timeoutMs, key) {
+  const host = record?.host ?? null;
+  const port = record?.port ?? null;
+  const pid = Number(record?.pid);
+  const processAlive = isProcessAlive(pid);
+  const server = host && port ? resolveDeployHealthHost(host, port) : null;
+  const checks = server
+    ? await checkServerEndpoints(server, null, timeoutMs)
+    : {
+        health: { ok: false, status: null, error: 'Missing host/port for deployment.' },
+        status: { ok: false, status: null, error: 'Missing host/port for deployment.' },
+      };
+  let overall = 'unknown';
+  if (!processAlive) {
+    overall = checks.health.ok ? 'mismatch' : 'stopped';
+  } else if (!checks.health.ok) {
+    overall = 'unhealthy';
+  } else {
+    overall = 'healthy';
+  }
+  return {
+    ...record,
+    key: key ?? null,
+    processAlive,
+    server,
+    health: checks.health,
+    status: checks.status,
+    overall,
+  };
+}
+
+async function checkUiDeployment(record, timeoutMs, key) {
+  const host = record?.host ?? null;
+  const port = record?.port ?? null;
+  const url = record?.url ?? (host && port ? `http://${host}:${port}` : null);
+  const pid = Number(record?.pid);
+  const processAlive = Number.isFinite(pid) ? isProcessAlive(pid) : null;
+  const probe = url
+    ? await probeUiHttpUrl(url, timeoutMs)
+    : { running: false, isUi: false, url: null, error: 'Missing UI url.' };
+
+  let overall = 'unknown';
+  if (!url) {
+    overall = 'unknown';
+  } else if (probe.running && probe.isUi) {
+    if (processAlive === false) {
+      overall = 'mismatch';
+    } else {
+      overall = 'running';
+    }
+  } else if (probe.running && !probe.isUi) {
+    overall = 'not-ui';
+  } else if (!probe.running) {
+    overall = processAlive ? 'unhealthy' : 'stopped';
+  }
+
+  return {
+    ...record,
+    key: key ?? null,
+    url,
+    processAlive,
+    probe: {
+      running: probe.running,
+      isUi: probe.isUi,
+      error: probe.error ?? null,
+    },
+    overall,
+  };
+}
+
+async function checkMorphcloudInstance(record, timeoutMs, key) {
+  const apiUrl = resolveMorphcloudApiUrl(record);
+  const authHeader = buildAuthHeader(record?.authToken);
+  const checks = apiUrl
+    ? await checkServerEndpoints(apiUrl, authHeader, timeoutMs)
+    : {
+        health: { ok: false, status: null, error: 'Missing apiUrl for instance.' },
+        status: { ok: false, status: null, error: 'Missing apiUrl for instance.' },
+      };
+  const stoppedAt = record?.stoppedAt ?? null;
+  const overall = stoppedAt
+    ? 'stopped'
+    : apiUrl && checks.health.ok
+      ? 'healthy'
+      : apiUrl
+        ? 'unhealthy'
+        : 'unknown';
+  return {
+    id: record?.id ?? null,
+    key: key ?? null,
+    name: record?.name ?? null,
+    snapshot: record?.snapshot ?? null,
+    apiUrl,
+    auth: Boolean(record?.authToken),
+    publicUrl: record?.publicUrl ?? null,
+    internalIp: record?.internalIp ?? null,
+    port: record?.port ?? null,
+    createdAt: record?.createdAt ?? null,
+    stoppedAt,
+    health: checks.health,
+    status: checks.status,
+    overall,
+  };
+}
+
+async function pruneLocalDeployments({ stateFile, state, deployments, timeoutMs, signal }) {
+  const prunable = new Set(['unhealthy', 'stopped', 'mismatch', 'unknown']);
+  const removed = [];
+  const kept = [];
+  const failed = [];
+
+  for (const deployment of deployments) {
+    const key = deployment.key ?? (deployment.port !== undefined ? String(deployment.port) : null);
+    if (!key) {
+      failed.push({
+        id: null,
+        overall: deployment.overall,
+        error: 'Missing deployment key.',
+      });
+      continue;
+    }
+
+    if (!prunable.has(deployment.overall)) {
+      kept.push({ key, overall: deployment.overall });
+      continue;
+    }
+
+    let stopResult = null;
+    let error = null;
+    let aliveAfter = deployment.processAlive;
+
+    if (deployment.processAlive) {
+      try {
+        stopResult = await stopDeployment(deployment, signal, timeoutMs);
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+      }
+      aliveAfter = isProcessAlive(Number(deployment.pid));
+    }
+
+    if (!aliveAfter) {
+      delete state.deployments[key];
+      removed.push({
+        key,
+        overall: deployment.overall,
+        stop: stopResult,
+      });
+    } else {
+      failed.push({
+        key,
+        overall: deployment.overall,
+        error: error || 'Process still running after stop attempt.',
+        stop: stopResult,
+      });
+      kept.push({ key, overall: deployment.overall });
+    }
+  }
+
+  if (removed.length > 0) {
+    saveDeployState(stateFile, state);
+  }
+
+  return {
+    stateFile,
+    removed,
+    kept,
+    failed,
+  };
+}
+
+async function pruneMorphcloudInstances({ stateFile, state, instances, stopRemote }) {
+  const prunable = new Set(['unhealthy', 'stopped', 'unknown']);
+  const removed = [];
+  const kept = [];
+  const failed = [];
+
+  for (const instance of instances) {
+    const key = instance.key ?? instance.id ?? null;
+    if (!key) {
+      failed.push({
+        id: null,
+        overall: instance.overall,
+        error: 'Missing instance id.',
+      });
+      continue;
+    }
+
+    if (!prunable.has(instance.overall)) {
+      kept.push({ id: key, overall: instance.overall });
+      continue;
+    }
+
+    let stopResult = null;
+    if (stopRemote && instance.overall !== 'stopped') {
+      stopResult = await stopMorphcloudInstance(key);
+      if (!stopResult.ok) {
+        failed.push({
+          id: key,
+          overall: instance.overall,
+          error: stopResult.error || 'Failed to stop instance.',
+          stop: stopResult,
+        });
+        kept.push({ id: key, overall: instance.overall });
+        continue;
+      }
+    }
+
+    delete state.instances[key];
+    removed.push({
+      id: key,
+      overall: instance.overall,
+      stop: stopResult,
+    });
+  }
+
+  if (removed.length > 0) {
+    saveMorphcloudState(stateFile, state);
+  }
+
+  return {
+    stateFile,
+    removed,
+    kept,
+    failed,
+  };
+}
+
+async function stopMorphcloudInstance(id) {
+  if (!id) {
+    return { ok: false, error: 'Missing instance id.' };
+  }
+  if (!process.env.MORPH_API_KEY) {
+    return { ok: false, error: 'MORPH_API_KEY is not set.' };
+  }
+  try {
+    const result = await runCommandCapture('morphcloud', ['instance', 'stop', id], {
+      prefix: `[morphcloud:${id}] `,
+    });
+    return {
+      ok: result.code === 0,
+      code: result.code,
+      error: result.code === 0 ? null : result.stderr || result.stdout || 'Stop failed.',
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function resolveMorphcloudApiUrl(record) {
+  if (!record || typeof record !== 'object') {
+    return null;
+  }
+  if (record.apiUrl) {
+    return record.apiUrl;
+  }
+  if (record.publicUrl) {
+    return `${String(record.publicUrl).replace(/\/+$/, '')}/api`;
+  }
+  if (record.internalIp && record.port) {
+    return `http://${record.internalIp}:${record.port}/api`;
+  }
+  return null;
+}
+
+async function checkServerEndpoints(server, authHeader, timeoutMs) {
+  const healthResult = await safeRequestJson(buildUrl(server, '/health'), authHeader, timeoutMs);
+  const health = summarizeHealthResult(healthResult);
+  if (!healthResult.ok) {
+    return {
+      health,
+      status: { ok: false, status: null, error: 'Skipped status check (health failed).' },
+    };
+  }
+  const statusResult = await safeRequestJson(buildUrl(server, '/status'), authHeader, timeoutMs);
+  return {
+    health,
+    status: summarizeStatusResult(statusResult),
+  };
+}
+
+function summarizeHealthResult(result) {
+  return {
+    ok: result.ok,
+    status: result.status ?? null,
+    error: result.ok ? null : result.error ?? 'Request failed.',
+  };
+}
+
+function summarizeStatusResult(result) {
+  if (!result.ok) {
+    return {
+      ok: false,
+      status: result.status ?? null,
+      error: result.error ?? 'Request failed.',
+    };
+  }
+  const payload = result.data ?? {};
+  return {
+    ok: true,
+    status: result.status ?? null,
+    simulation: payload?.simulation?.state ?? null,
+    evaluation: payload?.evaluation?.state ?? null,
+  };
+}
+
+function summarizeAggregateStatus({ localDeployments, morphInstances, uiDeployments }) {
+  const entries = [];
+  localDeployments.forEach((deployment) => entries.push(deployment.overall));
+  morphInstances.forEach((instance) => entries.push(instance.overall));
+  if (Array.isArray(uiDeployments) && uiDeployments.length > 0) {
+    uiDeployments.forEach((deployment) => entries.push(deployment.overall));
+  }
+
+  if (entries.length === 0) {
+    return 'empty';
+  }
+
+  const okStates = new Set(['healthy', 'running']);
+  const badStates = new Set(['unhealthy', 'stopped', 'unknown', 'mismatch', 'down', 'not-ui']);
+
+  const hasOk = entries.some((value) => okStates.has(value));
+  const hasBad = entries.some((value) => badStates.has(value));
+
+  if (hasBad && hasOk) {
+    return 'partial';
+  }
+  if (hasBad && !hasOk) {
+    return 'failed';
+  }
+  return 'ok';
 }
 
 async function handlePlayback(action, argvRest) {
@@ -399,13 +864,39 @@ async function handleStream(argvRest) {
   }
 
   if (subcommand === 'forward') {
-    const uiInput = options.ui || options.ws || options['ui-url'] || options['ws-url'];
+    const uiInput = resolveUiInput(options, 'stream forward');
     if (!uiInput) {
       throw new Error('Provide --ui to forward stream data to the metrics UI.');
     }
-    const uiUrl = normalizeUiWsUrl(uiInput);
+    const uiUrl = await resolveUiWsUrl(uiInput);
     if (!uiUrl) {
       throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+
+    const foreground = parseBooleanOption(options.foreground, false) ||
+      parseBooleanOption(options['no-background'], false);
+    if (!foreground) {
+      const logFile = resolveCliLogFile(options, 'stream_forward');
+      const args = buildStreamForwardArgs({
+        options,
+        streamInput,
+        uiUrl,
+      });
+      const pid = spawnDetachedProcess({
+        command: process.execPath,
+        args,
+        cwd: process.cwd(),
+        env: process.env,
+        logFile,
+      });
+      printJson({
+        status: 'started',
+        pid,
+        logFile,
+        uiUrl,
+        stream: streamInput,
+      });
+      return;
     }
 
     const maxFrames = parseOptionalNumber(options.frames, 'frames');
@@ -453,11 +944,11 @@ async function handleStream(argvRest) {
     if (!fileInput) {
       throw new Error('Provide --file to upload a capture to the metrics UI.');
     }
-    const uiInput = options.ui || options.ws || options['ui-url'] || options['ws-url'];
+    const uiInput = resolveUiInput(options, 'stream upload');
     if (!uiInput) {
       throw new Error('Provide --ui to upload a capture to the metrics UI.');
     }
-    const uiUrl = normalizeUiWsUrl(uiInput);
+    const uiUrl = await resolveUiWsUrl(uiInput);
     if (!uiUrl) {
       throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
     }
@@ -511,11 +1002,21 @@ async function handleUi(argvRest) {
     return;
   }
 
-  const uiInput = options.ui || options.ws || options['ui-url'] || options['ws-url'];
+  if (subcommand === 'serve') {
+    await handleUiServe(options);
+    return;
+  }
+
+  if (subcommand === 'shutdown') {
+    await handleUiShutdown(options);
+    return;
+  }
+
+  const uiInput = resolveUiInput(options, 'ui');
   if (!uiInput) {
     throw new Error('Provide --ui to connect to the metrics UI.');
   }
-  const uiUrl = normalizeUiWsUrl(uiInput);
+  const uiUrl = await resolveUiWsUrl(uiInput);
   if (!uiUrl) {
     throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
   }
@@ -633,6 +1134,23 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'remove-capture') {
+      const captureId = options['capture-id'];
+      if (!captureId) {
+        throw new Error('Provide --capture-id for ui remove-capture.');
+      }
+      sendWsMessage(socket, {
+        type: 'remove_capture',
+        captureId: String(captureId),
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
     if (subcommand === 'deselect') {
       const captureId = options['capture-id'];
       const fullPath = options['full-path'] || options.fullPath;
@@ -654,6 +1172,15 @@ async function handleUi(argvRest) {
 
     if (subcommand === 'clear') {
       sendWsMessage(socket, { type: 'clear_selection', request_id: requestId });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'clear-captures') {
+      sendWsMessage(socket, { type: 'clear_captures', request_id: requestId });
       const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
       if (!ack) {
         throw new Error('Timed out waiting for UI ack.');
@@ -755,6 +1282,99 @@ async function handleUi(argvRest) {
   }
 }
 
+async function handleUiServe(options) {
+  const uiOptions = resolveUiServeOptions(options);
+  const probe = await probeUiServer({
+    host: uiOptions.host,
+    port: uiOptions.port,
+    timeoutMs: uiOptions.timeoutMs,
+  });
+
+  if (probe.running) {
+    if (!probe.isUi) {
+      throw new Error(
+        `Port ${uiOptions.port} is in use but does not look like the Metrics UI.`,
+      );
+    }
+    const uiStateFile = resolveUiStateFile(options);
+    const uiState = loadUiState(uiStateFile);
+    const key = buildUiKey(uiOptions.host, uiOptions.port);
+    const existing = uiState.deployments[key];
+    const existingPid = Number(existing?.pid);
+    const pid = Number.isFinite(existingPid) && isProcessAlive(existingPid) ? existingPid : null;
+    uiState.deployments[key] = {
+      key,
+      host: uiOptions.host,
+      port: uiOptions.port,
+      url: probe.url,
+      pid,
+      uiDir: existing?.uiDir ?? uiOptions.uiDir ?? null,
+      mode: existing?.mode ?? uiOptions.mode ?? null,
+      logFile: existing?.logFile ?? null,
+      startedAt: existing?.startedAt ?? null,
+      discoveredAt: new Date().toISOString(),
+    };
+    saveUiState(uiStateFile, uiState);
+    console.log(`[ui] Metrics UI already running at ${probe.url}`);
+    return;
+  }
+
+  await ensureUiDependencies(uiOptions.uiDir, uiOptions.skipInstall);
+
+  const logFile = resolveCliLogFile(options, 'ui');
+  const url = `http://${uiOptions.host}:${uiOptions.port}`;
+  console.log(`[ui] starting Metrics UI (${uiOptions.mode}) at ${url}`);
+
+  const env = {
+    ...process.env,
+    HOST: uiOptions.host,
+    PORT: String(uiOptions.port),
+  };
+  const script = uiOptions.mode === 'start' ? 'start' : 'dev';
+  const pid = spawnDetachedProcess({
+    command: 'npm',
+    args: ['--prefix', uiOptions.uiDir, 'run', script],
+    cwd: uiOptions.uiDir,
+    env,
+    logFile,
+  });
+  const uiStateFile = resolveUiStateFile(options);
+  const uiState = loadUiState(uiStateFile);
+  const key = buildUiKey(uiOptions.host, uiOptions.port);
+  uiState.deployments[key] = {
+    key,
+    host: uiOptions.host,
+    port: uiOptions.port,
+    url,
+    pid,
+    uiDir: uiOptions.uiDir,
+    mode: uiOptions.mode,
+    logFile,
+    startedAt: new Date().toISOString(),
+  };
+  saveUiState(uiStateFile, uiState);
+  printJson({
+    status: 'started',
+    url,
+    pid,
+    logFile,
+    stateFile: uiStateFile,
+  });
+}
+
+async function handleUiShutdown(options) {
+  const uiUrl = resolveUiShutdownUrl(options);
+  const response = await requestJson(`${uiUrl}/api/shutdown`, { method: 'POST' });
+  const uiStateFile = resolveUiStateFile(options);
+  const uiState = loadUiState(uiStateFile);
+  const key = buildUiKeyFromUrl(uiUrl);
+  if (key && uiState.deployments[key]) {
+    delete uiState.deployments[key];
+    saveUiState(uiStateFile, uiState);
+  }
+  printJson({ url: uiUrl, response });
+}
+
 async function handleConfig(argvRest) {
   const { options, positional } = parseArgs(argvRest);
   if (options.help) {
@@ -796,6 +1416,12 @@ async function handleConfig(argvRest) {
       changed = true;
     }
 
+    const morphApiKey = readConfigOption(options, 'morph-api-key', '--morph-api-key');
+    if (morphApiKey !== null) {
+      updated.morphApiKey = morphApiKey;
+      changed = true;
+    }
+
     const snapshot = readConfigOption(options, 'snapshot', '--snapshot');
     if (snapshot !== null) {
       updated.snapshot = snapshot;
@@ -808,8 +1434,48 @@ async function handleConfig(argvRest) {
       changed = true;
     }
 
+    const workspace = readConfigOption(options, 'workspace', '--workspace');
+    if (workspace !== null) {
+      updated.workspace = workspace;
+      changed = true;
+    }
+
+    const uiUrl = readConfigOption(options, 'ui', '--ui');
+    if (uiUrl !== null) {
+      updated.uiUrl = uiUrl;
+      changed = true;
+    }
+
+    const uiDir = readConfigOption(options, 'ui-dir', '--ui-dir');
+    if (uiDir !== null) {
+      updated.uiDir = uiDir;
+      changed = true;
+    }
+
+    const uiHost = readConfigOption(options, 'ui-host', '--ui-host');
+    if (uiHost !== null) {
+      updated.uiHost = uiHost;
+      changed = true;
+    }
+
+    const uiPort = readConfigOption(options, 'ui-port', '--ui-port');
+    if (uiPort !== null) {
+      parseOptionalNumber(uiPort, 'ui-port');
+      updated.uiPort = uiPort;
+      changed = true;
+    }
+
+    const uiMode = readConfigOption(options, 'ui-mode', '--ui-mode');
+    if (uiMode !== null) {
+      updated.uiMode = normalizeUiServeMode(uiMode);
+      changed = true;
+    }
+
     if (!changed) {
-      throw new Error('No config fields provided. Use --token, --server, --snapshot, or --fleet-config.');
+      throw new Error(
+        'No config fields provided. Use --token, --morph-api-key, --server, --snapshot, ' +
+          '--fleet-config, --workspace, --ui, --ui-dir, --ui-host, --ui-port, or --ui-mode.',
+      );
     }
 
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -1021,6 +1687,41 @@ async function handleDeploy(argvRest) {
   throw new Error(`Unknown deploy subcommand: ${subcommand}`);
 }
 
+async function handleLog(argvRest) {
+  const { options, positional } = parseArgs(argvRest);
+  if (options.help) {
+    printUsage('log');
+    return;
+  }
+
+  const subcommand = positional[0] || 'list';
+  if (subcommand === 'list') {
+    const logDir = resolveCliLogDir(options);
+    const typeFilter = options.type ? String(options.type).toLowerCase() : null;
+    const entries = listCliLogs(logDir, typeFilter);
+    if (entries.length === 0) {
+      printJson({ logDir, entries: [] });
+      return;
+    }
+    printJson({ logDir, entries });
+    return;
+  }
+
+  if (subcommand === 'view') {
+    const logDir = resolveCliLogDir(options);
+    const target = options.file || options.id || positional[1];
+    if (!target) {
+      throw new Error('Provide --file, --id, or a filename to view.');
+    }
+    const resolved = resolveCliLogTarget(logDir, String(target), options.type);
+    const content = fs.readFileSync(resolved, 'utf8');
+    process.stdout.write(content);
+    return;
+  }
+
+  throw new Error(`Unknown log subcommand: ${subcommand}`);
+}
+
 async function handleCodebase(argvRest) {
   const [subcommand, ...rest] = argvRest;
   if (!subcommand || subcommand === '--help' || subcommand === '-h') {
@@ -1094,13 +1795,19 @@ async function handleFleet(argvRest) {
   const config = loadFleetConfig(configPath);
   applyCliFleetDefaults(config);
   const configDir = path.dirname(configPath);
+  const runId = buildFleetRunId();
 
   const uiOverride = options.ui || options.ws || options['ui-url'] || options['ws-url'];
   const uiUrl = uiOverride
-    ? normalizeUiWsUrl(uiOverride)
+    ? await resolveUiWsUrl(uiOverride)
     : config.ui?.url
-      ? normalizeUiWsUrl(config.ui.url)
-      : '';
+      ? await resolveUiWsUrl(config.ui.url)
+      : CLI_CONFIG?.data?.uiUrl
+        ? await resolveUiWsUrl(CLI_CONFIG.data.uiUrl)
+        : '';
+  if (!uiOverride && !config.ui?.url && CLI_CONFIG?.data?.uiUrl) {
+    console.log(`[ui] using default ui url (fleet): ${CLI_CONFIG.data.uiUrl}`);
+  }
   if (uiOverride && !uiUrl) {
     throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
   }
@@ -1117,6 +1824,7 @@ async function handleFleet(argvRest) {
   const results = {
     status: 'ok',
     config: configPath,
+    runId,
     deployments: [],
     errors: [],
   };
@@ -1129,7 +1837,7 @@ async function handleFleet(argvRest) {
     const deploymentUiUrl = uiOverride
       ? uiUrl
       : deployment.ui?.url
-        ? normalizeUiWsUrl(deployment.ui.url)
+        ? await resolveUiWsUrl(deployment.ui.url)
         : uiUrl;
     if (deployment.ui?.url && !deploymentUiUrl) {
       throw new Error(`Invalid ui.url for deployment ${deploymentName}.`);
@@ -1151,6 +1859,11 @@ async function handleFleet(argvRest) {
         log: deploymentLog,
       });
       const instances = Array.isArray(provisioned?.instances) ? provisioned.instances : [];
+      const morphStateFile =
+        provisioned?.stateFile ||
+        deployment.provision?.stateFile ||
+        resolveMorphcloudStateFile(options);
+      deploymentResult.stateFile = morphStateFile;
       if (instances.length === 0) {
         throw new Error('Provisioning returned zero instances.');
       }
@@ -1170,12 +1883,39 @@ async function handleFleet(argvRest) {
           authToken: instance?.authToken ?? null,
           status: 'ok',
           captures: [],
+          snapshot: null,
+          cleanup: null,
+          labels: null,
           errors: [],
         };
+        const tokens = buildFleetTemplateTokens({
+          deploymentName,
+          instanceName,
+          instanceIndex,
+          instanceId: instance?.id ?? null,
+          runId,
+        });
 
         try {
           if (!instance?.apiUrl) {
             throw new Error('Missing apiUrl in provisioned instance.');
+          }
+
+          const instanceLabels = renderFleetMetadataEntries(
+            deployment.labels.instance,
+            tokens,
+            'labels.instance',
+          );
+          if (instanceLabels.length > 0) {
+            await applyFleetInstanceMetadata({
+              instanceId: instance.id,
+              labels: instanceLabels,
+              log: instanceLog,
+            });
+            instanceResult.labels = {
+              instance: instanceLabels,
+              snapshot: null,
+            };
           }
 
           await waitForFleetServer({
@@ -1237,6 +1977,7 @@ async function handleFleet(argvRest) {
             deploymentName,
             instanceIndex,
             instance,
+            runId,
             defaultUiUrl: deploymentUiUrl,
             defaultPollSeconds: deployment.ui?.pollSeconds ?? config.ui?.pollSeconds,
             log: instanceLog,
@@ -1255,6 +1996,33 @@ async function handleFleet(argvRest) {
             instanceResult.captures = summaries;
           }
 
+          if (deployment.cleanup.snapshot) {
+            const snapshotLabels = renderFleetMetadataEntries(
+              deployment.labels.snapshot,
+              tokens,
+              'labels.snapshot',
+            );
+            const snapshotResult = await runFleetSnapshot({
+              instanceId: instance.id,
+              labels: snapshotLabels,
+              log: instanceLog,
+            });
+            instanceResult.snapshot = snapshotResult;
+            if (snapshotLabels.length > 0) {
+              if (!instanceResult.labels) {
+                instanceResult.labels = { instance: [], snapshot: snapshotLabels };
+              } else {
+                instanceResult.labels.snapshot = snapshotLabels;
+              }
+            }
+            recordFleetSnapshotState({
+              stateFile: morphStateFile,
+              instanceId: instance.id,
+              snapshot: snapshotResult,
+              runId,
+            });
+          }
+
           if (deployment.playback?.pause) {
             await runFleetPlayback({
               action: 'pause',
@@ -1270,12 +2038,43 @@ async function handleFleet(argvRest) {
               log: instanceLog,
             });
           }
+
+          if (deployment.cleanup.stop) {
+            const stopResult = await runFleetStopInstance({
+              instanceId: instance.id,
+              log: instanceLog,
+            });
+            instanceResult.cleanup = { stop: stopResult };
+            recordFleetStopState({
+              stateFile: morphStateFile,
+              instanceId: instance.id,
+              forget: deployment.cleanup.forget,
+            });
+          }
         } catch (error) {
           instanceResult.status = 'failed';
           const message = error instanceof Error ? error.message : String(error);
           instanceResult.errors.push(message);
           deploymentResult.errors.push(`${instanceName}: ${message}`);
           instanceLog(`Failed: ${message}`);
+          if (deployment.cleanup.stopOnFailure && instance?.id) {
+            try {
+              const stopResult = await runFleetStopInstance({
+                instanceId: instance.id,
+                log: instanceLog,
+              });
+              instanceResult.cleanup = { stopOnFailure: stopResult };
+              recordFleetStopState({
+                stateFile: morphStateFile,
+                instanceId: instance.id,
+                forget: deployment.cleanup.forget,
+              });
+            } catch (stopError) {
+              const stopMessage = stopError instanceof Error ? stopError.message : String(stopError);
+              instanceResult.errors.push(`Cleanup stop failed: ${stopMessage}`);
+              instanceLog(`Cleanup stop failed: ${stopMessage}`);
+            }
+          }
           if (!continueOnError) {
             throw error;
           }
@@ -1381,6 +2180,16 @@ function buildFleetScaffold() {
       readyTimeoutMs: 60000,
       readyIntervalMs: 2000,
       captureMode: 'parallel',
+      labels: {
+        instance: DEFAULT_FLEET_LABELS.instance.slice(),
+        snapshot: DEFAULT_FLEET_LABELS.snapshot.slice(),
+      },
+      cleanup: {
+        snapshot: true,
+        stop: true,
+        stopOnFailure: true,
+        forget: false,
+      },
       provision: {
         args: ['--skip-tests'],
       },
@@ -1424,7 +2233,17 @@ function writeFleetScaffold({ outputPath, force }) {
 }
 
 function normalizeFleetDefaults(value) {
-  return value && typeof value === 'object' ? value : {};
+  const defaults = value && typeof value === 'object' ? { ...value } : {};
+  if (!Object.prototype.hasOwnProperty.call(defaults, 'labels')) {
+    defaults.labels = {
+      instance: DEFAULT_FLEET_LABELS.instance.slice(),
+      snapshot: DEFAULT_FLEET_LABELS.snapshot.slice(),
+    };
+  }
+  if (!Object.prototype.hasOwnProperty.call(defaults, 'cleanup')) {
+    defaults.cleanup = { ...DEFAULT_FLEET_CLEANUP };
+  }
+  return defaults;
 }
 
 function mergeFleetDeployment(defaults, deployment) {
@@ -1502,6 +2321,25 @@ function mergeFleetDeployment(defaults, deployment) {
     exec: mergeFleetArray(defaults.postProvision?.exec, deployment.postProvision?.exec, 'postProvision.exec'),
   };
 
+  const defaultLabels = normalizeFleetLabels(defaults.labels);
+  const deploymentLabels = normalizeFleetLabels(deployment.labels);
+  merged.labels = {
+    instance: mergeFleetMetadata(defaultLabels.instance, deploymentLabels.instance, 'labels.instance'),
+    snapshot: mergeFleetMetadata(defaultLabels.snapshot, deploymentLabels.snapshot, 'labels.snapshot'),
+  };
+
+  const defaultCleanup = normalizeFleetCleanup(defaults.cleanup);
+  const deploymentCleanup = normalizeFleetCleanup(deployment.cleanup);
+  merged.cleanup = {
+    snapshot: parseBooleanOption(deploymentCleanup.snapshot, defaultCleanup.snapshot ?? false),
+    stop: parseBooleanOption(deploymentCleanup.stop, defaultCleanup.stop ?? false),
+    stopOnFailure: parseBooleanOption(
+      deploymentCleanup.stopOnFailure,
+      defaultCleanup.stopOnFailure ?? false,
+    ),
+    forget: parseBooleanOption(deploymentCleanup.forget, defaultCleanup.forget ?? false),
+  };
+
   return merged;
 }
 
@@ -1557,6 +2395,42 @@ function mergeFleetArray(defaultValue, overrideValue, label) {
   return Array.isArray(base) ? base.concat(overrideValue) : overrideValue.slice();
 }
 
+function normalizeFleetLabels(value) {
+  return value && typeof value === 'object' ? value : {};
+}
+
+function normalizeFleetCleanup(value) {
+  return value && typeof value === 'object' ? value : {};
+}
+
+function normalizeFleetMetadataValue(value, label) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.map(String);
+  }
+  if (typeof value === 'string') {
+    return [value];
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value).map(([key, entryValue]) => `${key}=${entryValue}`);
+  }
+  throw new Error(`Expected ${label} to be an array, string, or object.`);
+}
+
+function mergeFleetMetadata(defaultValue, overrideValue, label) {
+  const base = normalizeFleetMetadataValue(defaultValue, label);
+  if (overrideValue === undefined) {
+    return base.slice();
+  }
+  if (overrideValue === null) {
+    return [];
+  }
+  const override = normalizeFleetMetadataValue(overrideValue, label);
+  return base.concat(override);
+}
+
 function buildFleetLogger({ deployment, instance } = {}) {
   const parts = ['fleet'];
   if (deployment) {
@@ -1567,6 +2441,26 @@ function buildFleetLogger({ deployment, instance } = {}) {
   }
   const prefix = parts.join(':');
   return (message) => console.log(`[${prefix}] ${message}`);
+}
+
+function buildFleetRunId() {
+  return new Date().toISOString().replace(/[-:.TZ]/g, '');
+}
+
+function buildFleetTemplateTokens({
+  deploymentName,
+  instanceName,
+  instanceIndex,
+  instanceId,
+  runId,
+}) {
+  return {
+    deployment: String(deploymentName ?? ''),
+    instance: String(instanceName ?? ''),
+    index: String((instanceIndex ?? 0) + 1),
+    instanceId: instanceId ? String(instanceId) : '',
+    runId: runId ? String(runId) : '',
+  };
 }
 
 async function runFleetProvision({ deployment, deploymentName, log }) {
@@ -1799,18 +2693,20 @@ async function prepareFleetCaptures({
   deploymentName,
   instanceIndex,
   instance,
+  runId,
   defaultUiUrl,
   defaultPollSeconds,
   log,
 }) {
   const plans = [];
   const instanceName = instance?.name || `${deploymentName}-${instanceIndex + 1}`;
-  const tokens = {
-    deployment: deploymentName,
-    instance: instanceName,
-    index: String(instanceIndex + 1),
-    instanceId: String(instance?.id ?? ''),
-  };
+  const tokens = buildFleetTemplateTokens({
+    deploymentName,
+    instanceName,
+    instanceIndex,
+    instanceId: instance?.id ?? null,
+    runId,
+  });
 
   for (const capture of captures) {
     const plan = normalizeFleetCapturePlan({
@@ -1953,6 +2849,21 @@ function renderFleetTemplate(value, tokens) {
   });
 }
 
+function renderFleetMetadataEntries(entries, tokens, label) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return [];
+  }
+  return entries
+    .map((entry) => renderFleetTemplate(entry, tokens).trim())
+    .filter(Boolean)
+    .map((entry) => {
+      if (!entry.includes('=')) {
+        throw new Error(`Invalid ${label} entry (expected key=value): ${entry}`);
+      }
+      return entry;
+    });
+}
+
 function usesFleetInstanceToken(value) {
   return /\$\{(index|instance|instanceId)\}/.test(String(value));
 }
@@ -2057,6 +2968,106 @@ async function runFleetPlayback({ action, server, authHeader, log }) {
     },
     authHeader,
   );
+}
+
+async function applyFleetInstanceMetadata({ instanceId, labels, log }) {
+  if (!instanceId || labels.length === 0) {
+    return;
+  }
+  const args = ['instance', 'set-metadata', instanceId];
+  for (const label of labels) {
+    args.push('--metadata', label);
+  }
+  log(`Label instance (${labels.length} entries)`);
+  const result = await runCommandCapture('morphcloud', args, {
+    prefix: `[label:${instanceId}] `,
+  });
+  if (result.code !== 0) {
+    throw new Error(`Failed to label instance ${instanceId}`);
+  }
+}
+
+async function runFleetSnapshot({ instanceId, labels, log }) {
+  if (!instanceId) {
+    throw new Error('Missing instance id for snapshot.');
+  }
+  const args = ['instance', 'snapshot', instanceId, '--json'];
+  for (const label of labels) {
+    args.push('--metadata', label);
+  }
+  log('Snapshotting instance');
+  const result = await runCommandCapture('morphcloud', args, {
+    prefix: `[snapshot:${instanceId}] `,
+  });
+  if (result.code !== 0) {
+    throw new Error(`Snapshot failed for ${instanceId}`);
+  }
+  const parsed = extractJsonFromOutput(result.stdout);
+  const snapshotId = parsed?.id ?? parsed?.snapshotId ?? parsed?.snapshot_id ?? null;
+  if (!snapshotId) {
+    throw new Error(`Snapshot response missing id for ${instanceId}`);
+  }
+  return {
+    id: snapshotId,
+    createdAt: parsed?.created_at ?? parsed?.createdAt ?? new Date().toISOString(),
+    metadata: labels,
+  };
+}
+
+async function runFleetStopInstance({ instanceId, log }) {
+  if (!instanceId) {
+    throw new Error('Missing instance id for stop.');
+  }
+  log('Stopping instance');
+  const result = await runCommandCapture('morphcloud', ['instance', 'stop', instanceId], {
+    prefix: `[stop:${instanceId}] `,
+  });
+  if (result.code !== 0) {
+    throw new Error(`Failed to stop instance ${instanceId}`);
+  }
+  return {
+    status: 'stopped',
+    stoppedAt: new Date().toISOString(),
+  };
+}
+
+function recordFleetSnapshotState({ stateFile, instanceId, snapshot, runId }) {
+  if (!stateFile || !instanceId || !snapshot) {
+    return;
+  }
+  const state = loadMorphcloudState(stateFile);
+  const record = state.instances[instanceId];
+  if (!record) {
+    return;
+  }
+  state.instances[instanceId] = {
+    ...record,
+    snapshotId: snapshot.id ?? null,
+    snapshotCreatedAt: snapshot.createdAt ?? new Date().toISOString(),
+    snapshotMetadata: snapshot.metadata ?? null,
+    lastRunId: runId ?? record.lastRunId ?? null,
+  };
+  saveMorphcloudState(stateFile, state);
+}
+
+function recordFleetStopState({ stateFile, instanceId, forget }) {
+  if (!stateFile || !instanceId) {
+    return;
+  }
+  const state = loadMorphcloudState(stateFile);
+  const record = state.instances[instanceId];
+  if (!record) {
+    return;
+  }
+  if (forget) {
+    delete state.instances[instanceId];
+  } else {
+    state.instances[instanceId] = {
+      ...record,
+      stoppedAt: new Date().toISOString(),
+    };
+  }
+  saveMorphcloudState(stateFile, state);
 }
 
 function wrapShellCommand(command) {
@@ -2198,6 +3209,22 @@ function resolveDeployStateFile(options) {
   return path.resolve(process.cwd(), String(candidate));
 }
 
+function resolveUiStateFile(options) {
+  const candidate =
+    options['ui-state'] ??
+    process.env.SIMEVAL_UI_STATE ??
+    path.join(os.homedir(), '.simeval', 'ui.json');
+  return path.resolve(process.cwd(), String(candidate));
+}
+
+function resolveMorphcloudStateFile(options) {
+  const candidate =
+    options['morph-state'] ??
+    process.env.SIMEVAL_MORPHCLOUD_STATE ??
+    path.join(os.homedir(), '.simeval', 'morphcloud.json');
+  return path.resolve(process.cwd(), String(candidate));
+}
+
 function loadDeployState(stateFile) {
   try {
     const raw = fs.readFileSync(stateFile, 'utf8');
@@ -2227,6 +3254,68 @@ function normalizeDeployState(state) {
     deployments,
     updatedAt: state && typeof state === 'object' && typeof state.updatedAt === 'string' ? state.updatedAt : null,
   };
+}
+
+function loadUiState(stateFile) {
+  try {
+    const raw = fs.readFileSync(stateFile, 'utf8');
+    return normalizeUiState(JSON.parse(raw));
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return normalizeUiState({});
+    }
+    throw error;
+  }
+}
+
+function normalizeUiState(state) {
+  const deployments =
+    state && typeof state === 'object' && state.deployments && typeof state.deployments === 'object'
+      ? state.deployments
+      : {};
+  return {
+    deployments,
+    updatedAt: state && typeof state === 'object' && typeof state.updatedAt === 'string' ? state.updatedAt : null,
+  };
+}
+
+function saveUiState(stateFile, state) {
+  const normalized = normalizeUiState(state);
+  normalized.updatedAt = new Date().toISOString();
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  fs.writeFileSync(stateFile, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
+  return normalized;
+}
+
+function loadMorphcloudState(stateFile) {
+  try {
+    const raw = fs.readFileSync(stateFile, 'utf8');
+    return normalizeMorphcloudState(JSON.parse(raw));
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return normalizeMorphcloudState({});
+    }
+    throw error;
+  }
+}
+
+function normalizeMorphcloudState(state) {
+  const instances =
+    state && typeof state === 'object' && state.instances && typeof state.instances === 'object'
+      ? state.instances
+      : {};
+  return {
+    instances,
+    updatedAt: state && typeof state === 'object' && typeof state.updatedAt === 'string' ? state.updatedAt : null,
+  };
+}
+
+function saveMorphcloudState(stateFile, state) {
+  const normalized = normalizeMorphcloudState(state);
+  normalized.updatedAt = new Date().toISOString();
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  fs.writeFileSync(stateFile, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
+  return normalized;
 }
 
 const BASE_PLUGIN_DIRS = new Set([
@@ -2287,10 +3376,31 @@ function cleanDirectoryRecursive(targetDir, workspaceDir, summary) {
 }
 
 function resolveWorkspaceDir(options) {
-  const candidate = options.workspace ?? process.env.SIMEVAL_WORKSPACE;
-  const resolved = candidate
-    ? path.resolve(process.cwd(), String(candidate))
-    : path.resolve(__dirname, '..', 'workspaces', 'Describing_Simulation_0');
+  if (options.workspace) {
+    const resolved = path.resolve(process.cwd(), String(options.workspace));
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Workspace not found: ${resolved}`);
+    }
+    return resolved;
+  }
+
+  if (CLI_CONFIG?.data?.workspace) {
+    const resolved = path.resolve(CLI_CONFIG.dir ?? process.cwd(), String(CLI_CONFIG.data.workspace));
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Workspace not found: ${resolved}`);
+    }
+    return resolved;
+  }
+
+  if (process.env.SIMEVAL_WORKSPACE) {
+    const resolved = path.resolve(process.cwd(), String(process.env.SIMEVAL_WORKSPACE));
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Workspace not found: ${resolved}`);
+    }
+    return resolved;
+  }
+
+  const resolved = path.resolve(__dirname, '..', '..', 'workspaces', 'Describing_Simulation_0');
   if (!fs.existsSync(resolved)) {
     throw new Error(`Workspace not found: ${resolved}`);
   }
@@ -2304,6 +3414,40 @@ function resolveDeployHost(options) {
 function resolveLogDir(options) {
   const candidate = options['log-dir'] ?? process.env.SIMEVAL_LOG_DIR ?? path.join(os.homedir(), '.simeval', 'logs');
   return path.resolve(process.cwd(), String(candidate));
+}
+
+function resolveCliLogDir(options) {
+  const candidate =
+    options['log-dir'] ??
+    process.env.SIMEVAL_CLI_LOG_DIR ??
+    path.join(os.homedir(), '.simeval', 'logs', 'cli');
+  return path.resolve(process.cwd(), String(candidate));
+}
+
+function resolveCliLogFile(options, type) {
+  if (options.log) {
+    return path.resolve(process.cwd(), String(options.log));
+  }
+  const logDir = resolveCliLogDir(options);
+  const timestamp = new Date().toISOString().replace(/[-:.]/g, '');
+  return path.join(logDir, `${type}_${timestamp}.log`);
+}
+
+function spawnDetachedProcess({ command, args, cwd, env, logFile }) {
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  const logFd = fs.openSync(logFile, 'a');
+  const child = spawn(command, args, {
+    cwd,
+    env,
+    detached: true,
+    stdio: ['ignore', logFd, logFd],
+  });
+  child.unref();
+  fs.closeSync(logFd);
+  if (!child.pid) {
+    throw new Error('Failed to spawn background process.');
+  }
+  return child.pid;
 }
 
 function resolveLogFile(options, logDir, port) {
@@ -2321,7 +3465,7 @@ function resolveBuildMode(options) {
   if (options.build) {
     return 'always';
   }
-  return 'auto';
+  return 'always';
 }
 
 function resolveAutoStartEvaluation(options) {
@@ -2329,6 +3473,78 @@ function resolveAutoStartEvaluation(options) {
     return false;
   }
   return parseBooleanOption(options['auto-start-eval'], true);
+}
+
+function buildStreamForwardArgs({ options, streamInput, uiUrl }) {
+  const args = [__filename, 'stream', 'forward', '--foreground'];
+  const streamValue = options.stream || streamInput;
+  if (streamValue) {
+    args.push('--stream', String(streamValue));
+  }
+  if (options.frames) {
+    args.push('--frames', String(options.frames));
+  }
+  if (options.duration) {
+    args.push('--duration', String(options.duration));
+  }
+  if (options.component) {
+    args.push('--component', String(options.component));
+  }
+  if (options.entity) {
+    args.push('--entity', String(options.entity));
+  }
+  if (options['capture-id']) {
+    args.push('--capture-id', String(options['capture-id']));
+  }
+  if (options.filename || options.name) {
+    args.push('--filename', String(options.filename || options.name));
+  }
+  if (options.server) {
+    args.push('--server', String(options.server));
+  }
+  if (options.token) {
+    args.push('--token', String(options.token));
+  }
+  args.push('--ui', String(uiUrl));
+  return args;
+}
+
+function listCliLogs(logDir, typeFilter) {
+  if (!fs.existsSync(logDir)) {
+    return [];
+  }
+  const entries = fs.readdirSync(logDir)
+    .filter((entry) => entry.endsWith('.log'))
+    .filter((entry) => (typeFilter ? entry.startsWith(`${typeFilter}_`) : true))
+    .map((entry) => {
+      const fullPath = path.join(logDir, entry);
+      const stat = fs.statSync(fullPath);
+      return {
+        name: entry,
+        size: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+      };
+    })
+    .sort((a, b) => (a.modifiedAt < b.modifiedAt ? 1 : -1));
+  return entries;
+}
+
+function resolveCliLogTarget(logDir, target, typeFilter) {
+  const resolved = path.isAbsolute(target) ? target : path.join(logDir, target);
+  if (fs.existsSync(resolved)) {
+    return resolved;
+  }
+  const prefix = typeFilter ? `${typeFilter}_${target}` : target;
+  const matches = fs.existsSync(logDir)
+    ? fs.readdirSync(logDir).filter((entry) => entry.startsWith(prefix))
+    : [];
+  if (matches.length === 0) {
+    throw new Error(`Log not found: ${target}`);
+  }
+  if (matches.length > 1) {
+    throw new Error(`Multiple logs match: ${matches.join(', ')}`);
+  }
+  return path.join(logDir, matches[0]);
 }
 
 function parseBooleanOption(value, fallback) {
@@ -2363,6 +3579,9 @@ async function deployStart(options) {
   const stateFile = resolveDeployStateFile(options);
   const state = loadDeployState(stateFile);
   const cleanPlugins = Boolean(options['clean-plugins']);
+  const waitForReady = parseBooleanOption(options.wait, false);
+  const waitTimeoutMs = parseOptionalNumber(options['wait-timeout'], 'wait-timeout') ?? 30000;
+  const waitIntervalMs = parseOptionalNumber(options['wait-interval'], 'wait-interval') ?? 500;
 
   if (state.deployments[String(port)] && isProcessAlive(state.deployments[String(port)].pid)) {
     if (!options.force) {
@@ -2395,6 +3614,16 @@ async function deployStart(options) {
 
   state.deployments[String(port)] = record;
   saveDeployState(stateFile, state);
+
+  if (waitForReady) {
+    await waitForDeployReady({
+      pid,
+      host,
+      port,
+      timeoutMs: waitTimeoutMs,
+      intervalMs: waitIntervalMs,
+    });
+  }
 
   printJson({
     status: 'started',
@@ -2480,6 +3709,34 @@ function spawnServer(entrypoint, workspace, env, logFile) {
     throw new Error('Failed to start SimEval process.');
   }
   return child.pid;
+}
+
+async function waitForDeployReady({ pid, host, port, timeoutMs, intervalMs }) {
+  const url = buildUrl(resolveDeployHealthHost(host, port), '/health');
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) {
+      throw new Error('Deploy process exited before health check passed.');
+    }
+    try {
+      await requestJson(url, { method: 'GET' });
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(intervalMs);
+  }
+
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Timed out waiting for deployment health check: ${message}`);
+}
+
+function resolveDeployHealthHost(host, port) {
+  const normalizedHost = String(host || '').trim();
+  const resolvedHost = normalizedHost === '0.0.0.0' ? '127.0.0.1' : normalizedHost;
+  return `http://${resolvedHost}:${port}/api`;
 }
 
 async function ensureBuild(mode, workspace, distMain) {
@@ -2604,6 +3861,271 @@ function resolveAuthHeader(options) {
   return trimmed.startsWith('Bearer ') ? trimmed : `Bearer ${trimmed}`;
 }
 
+function resolveUiServeOptions(options) {
+  const host =
+    String(
+      options['ui-host'] ??
+        options.host ??
+        CLI_CONFIG?.data?.uiHost ??
+        DEFAULT_UI_HOST,
+    ).trim() || DEFAULT_UI_HOST;
+  const port =
+    parseOptionalNumber(
+      options['ui-port'] ?? options.port ?? CLI_CONFIG?.data?.uiPort,
+      'ui-port',
+    ) ?? DEFAULT_UI_PORT;
+  const mode = normalizeUiServeMode(
+    options['ui-mode'] ?? CLI_CONFIG?.data?.uiMode ?? 'dev',
+  );
+  const uiDir = resolveUiDirectory(options['ui-dir'], CLI_CONFIG?.data?.uiDir);
+  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 1000;
+  const skipInstall = Boolean(options['skip-install'] ?? options['no-install']);
+
+  return {
+    host,
+    port,
+    mode,
+    uiDir,
+    timeoutMs,
+    skipInstall,
+  };
+}
+
+function resolveUiShutdownUrl(options) {
+  const uiInput = resolveUiInput(options, 'ui shutdown');
+  if (uiInput) {
+    const httpUrl = normalizeUiHttpUrl(uiInput);
+    if (!httpUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+    return httpUrl;
+  }
+  const host =
+    String(
+      options['ui-host'] ??
+        options.host ??
+        CLI_CONFIG?.data?.uiHost ??
+        DEFAULT_UI_HOST,
+    ).trim() || DEFAULT_UI_HOST;
+  const port =
+    parseOptionalNumber(
+      options['ui-port'] ?? options.port ?? CLI_CONFIG?.data?.uiPort,
+      'ui-port',
+    ) ?? DEFAULT_UI_PORT;
+  return `http://${host}:${port}`;
+}
+
+function resolveUiInput(options, contextLabel = 'ui') {
+  const explicit =
+    options.ui ||
+    options.ws ||
+    options['ui-url'] ||
+    options['ws-url'];
+  if (explicit) {
+    return explicit;
+  }
+  if (CLI_CONFIG?.data?.uiUrl) {
+    console.log(`[ui] using default ui url (${contextLabel}): ${CLI_CONFIG.data.uiUrl}`);
+    return CLI_CONFIG.data.uiUrl;
+  }
+  if (CLI_CONFIG?.data?.uiHost || CLI_CONFIG?.data?.uiPort) {
+    const host = String(CLI_CONFIG?.data?.uiHost ?? DEFAULT_UI_HOST).trim() || DEFAULT_UI_HOST;
+    const port =
+      parseOptionalNumber(CLI_CONFIG?.data?.uiPort, 'ui-port') ?? DEFAULT_UI_PORT;
+    console.log(`[ui] using default ui host/port (${contextLabel}): ${host}:${port}`);
+    return `http://${host}:${port}`;
+  }
+  return '';
+}
+
+function resolveUiStatusTarget(options) {
+  const explicit =
+    options.ui ||
+    options.ws ||
+    options['ui-url'] ||
+    options['ws-url'];
+  if (explicit) {
+    return {
+      input: explicit,
+      url: normalizeUiHttpUrl(explicit),
+      source: 'explicit',
+    };
+  }
+
+  const hostInput = options['ui-host'] ?? options.host;
+  const portInput = options['ui-port'] ?? options.port;
+  if (hostInput || portInput) {
+    const host = String(hostInput ?? DEFAULT_UI_HOST).trim() || DEFAULT_UI_HOST;
+    const port = parseOptionalNumber(portInput, 'ui-port') ?? DEFAULT_UI_PORT;
+    return {
+      input: `${host}:${port}`,
+      url: `http://${host}:${port}`,
+      source: 'host-port',
+    };
+  }
+
+  if (CLI_CONFIG?.data?.uiUrl) {
+    console.log(`[ui] using default ui url (status): ${CLI_CONFIG.data.uiUrl}`);
+    return {
+      input: CLI_CONFIG.data.uiUrl,
+      url: normalizeUiHttpUrl(CLI_CONFIG.data.uiUrl),
+      source: 'config',
+    };
+  }
+
+  if (CLI_CONFIG?.data?.uiHost || CLI_CONFIG?.data?.uiPort) {
+    const host = String(CLI_CONFIG?.data?.uiHost ?? DEFAULT_UI_HOST).trim() || DEFAULT_UI_HOST;
+    const port =
+      parseOptionalNumber(CLI_CONFIG?.data?.uiPort, 'ui-port') ?? DEFAULT_UI_PORT;
+    console.log(`[ui] using default ui host/port (status): ${host}:${port}`);
+    return {
+      input: `${host}:${port}`,
+      url: `http://${host}:${port}`,
+      source: 'config-host-port',
+    };
+  }
+
+  console.log(`[ui] using default ui host/port (status): ${DEFAULT_UI_HOST}:${DEFAULT_UI_PORT}`);
+  return {
+    input: `${DEFAULT_UI_HOST}:${DEFAULT_UI_PORT}`,
+    url: `http://${DEFAULT_UI_HOST}:${DEFAULT_UI_PORT}`,
+    source: 'default',
+  };
+}
+
+function buildUiKey(host, port) {
+  const normalizedHost = String(host ?? '').trim() || DEFAULT_UI_HOST;
+  const normalizedPort = String(port ?? '').trim();
+  if (!normalizedPort) {
+    return null;
+  }
+  return `${normalizedHost}:${normalizedPort}`;
+}
+
+function buildUiKeyFromUrl(url) {
+  if (!url) {
+    return null;
+  }
+  try {
+    const parsed = new URL(url);
+    if (!parsed.port) {
+      return null;
+    }
+    return `${parsed.hostname}:${parsed.port}`;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function resolveUiDirectory(explicitDir, configDir) {
+  if (explicitDir) {
+    const resolved = path.resolve(process.cwd(), String(explicitDir));
+    return assertUiDirectory(resolved, '--ui-dir');
+  }
+  if (configDir) {
+    const resolved = path.resolve(process.cwd(), String(configDir));
+    return assertUiDirectory(resolved, 'uiDir');
+  }
+  const defaultDir = path.resolve(process.cwd(), DEFAULT_UI_DIRNAME);
+  return assertUiDirectory(defaultDir, DEFAULT_UI_DIRNAME);
+}
+
+function assertUiDirectory(candidate, sourceLabel) {
+  if (!fs.existsSync(candidate)) {
+    throw new Error(
+      `Metrics UI directory not found (${sourceLabel}: ${candidate}). ` +
+        'Pass --ui-dir or set uiDir in ~/.simeval/config.json.',
+    );
+  }
+  const stats = fs.statSync(candidate);
+  if (!stats.isDirectory()) {
+    throw new Error(`Metrics UI path is not a directory (${candidate}).`);
+  }
+  const packageJson = path.join(candidate, 'package.json');
+  if (!fs.existsSync(packageJson)) {
+    throw new Error(`Metrics UI package.json missing at ${packageJson}.`);
+  }
+  return candidate;
+}
+
+async function ensureUiDependencies(uiDir, skipInstall) {
+  const nodeModules = path.join(uiDir, 'node_modules');
+  if (fs.existsSync(nodeModules)) {
+    return;
+  }
+  if (skipInstall) {
+    throw new Error(`Missing node_modules in ${uiDir}. Run npm install or omit --skip-install.`);
+  }
+  console.log(`[ui] installing dependencies in ${uiDir}`);
+  await runCommand('npm', ['--prefix', uiDir, 'install'], { cwd: uiDir });
+}
+
+async function probeUiServer({ host, port, timeoutMs }) {
+  const url = `http://${host}:${port}/`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { method: 'GET', signal: controller.signal });
+    const wsHeader = response.headers.get('x-metrics-ui-agent-ws');
+    return {
+      running: true,
+      isUi: Boolean(wsHeader),
+      url,
+    };
+  } catch (error) {
+    return {
+      running: false,
+      isUi: false,
+      url,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function probeUiHttpUrl(url, timeoutMs) {
+  if (!url) {
+    return {
+      running: false,
+      isUi: false,
+      url: null,
+      error: 'UI url missing.',
+    };
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { method: 'GET', signal: controller.signal });
+    const wsHeader = response.headers.get('x-metrics-ui-agent-ws');
+    return {
+      running: true,
+      isUi: Boolean(wsHeader),
+      url,
+      wsHeader: wsHeader || null,
+    };
+  } catch (error) {
+    return {
+      running: false,
+      isUi: false,
+      url,
+      error: error?.message ?? String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeUiServeMode(value) {
+  const normalized = String(value || 'dev').toLowerCase();
+  if (normalized === 'dev' || normalized === 'development') {
+    return 'dev';
+  }
+  if (normalized === 'start' || normalized === 'prod' || normalized === 'production') {
+    return 'start';
+  }
+  throw new Error('Invalid --ui-mode value. Use dev or start.');
+}
+
 function readCliConfigFile(configPath) {
   if (!fs.existsSync(configPath)) {
     return { data: {}, exists: false };
@@ -2636,7 +4158,7 @@ function redactCliConfig(config) {
   }
 
   const redacted = { ...config };
-  ['token', 'authToken', 'apiToken'].forEach((key) => {
+  ['token', 'authToken', 'apiToken', 'morphApiKey'].forEach((key) => {
     if (redacted[key]) {
       redacted[key] = '<redacted>';
     }
@@ -2668,6 +4190,45 @@ function buildUrl(server, endpointPath) {
   }
   const normalized = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
   return `${server}${normalized}`;
+}
+
+async function safeRequestJson(url, authHeader, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(
+      url,
+      applyAuth({ method: 'GET', signal: controller.signal }, authHeader),
+    );
+    const text = await response.text().catch(() => '');
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        error: text || `Request failed (${response.status})`,
+      };
+    }
+    if (!text) {
+      return { ok: true, status: response.status, data: null };
+    }
+    try {
+      return { ok: true, status: response.status, data: JSON.parse(text) };
+    } catch (error) {
+      return {
+        ok: false,
+        status: response.status,
+        error: `Invalid JSON response: ${error?.message ?? error}`,
+      };
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      status: null,
+      error: error?.name === 'AbortError' ? 'Request timed out' : error?.message ?? String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function requestJson(url, init, authHeader) {
@@ -2986,6 +4547,79 @@ function normalizeUiWsUrl(value) {
   }
   const trimmed = input.replace(/\/+$/, '');
   return `ws://${trimmed}/ws/control`;
+}
+
+function normalizeUiHttpUrl(value) {
+  if (!value) {
+    return '';
+  }
+  const input = String(value).trim();
+  if (!input) {
+    return '';
+  }
+  if (input.startsWith('ws://') || input.startsWith('wss://')) {
+    const parsed = new URL(input);
+    parsed.protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+    return parsed.origin;
+  }
+  if (input.startsWith('http://') || input.startsWith('https://')) {
+    const parsed = new URL(input);
+    return parsed.origin;
+  }
+  const trimmed = input.replace(/\/+$/, '');
+  return `http://${trimmed}`;
+}
+
+function resolveUiWsFromHeader(headerValue, httpUrl) {
+  if (!headerValue) {
+    return '';
+  }
+  const trimmed = String(headerValue).trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (trimmed.startsWith('ws://') || trimmed.startsWith('wss://')) {
+    return trimmed;
+  }
+  const base = new URL(httpUrl);
+  base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+  base.search = '';
+  base.hash = '';
+  if (trimmed.startsWith('/')) {
+    base.pathname = trimmed;
+    return base.toString();
+  }
+  base.pathname = `/${trimmed.replace(/^\/+/, '')}`;
+  return base.toString();
+}
+
+async function resolveUiWsUrl(value) {
+  const normalized = normalizeUiWsUrl(value);
+  if (!normalized) {
+    return '';
+  }
+  const input = String(value ?? '').trim();
+  if (!input) {
+    return '';
+  }
+  if (input.startsWith('ws://') || input.startsWith('wss://')) {
+    return normalized;
+  }
+  const httpUrl = normalizeUiHttpUrl(value);
+  if (!httpUrl) {
+    return normalized;
+  }
+  try {
+    const response = await fetch(httpUrl, { method: 'HEAD' });
+    const headerValue = response.headers.get('x-metrics-ui-agent-ws');
+    const resolved = resolveUiWsFromHeader(headerValue, httpUrl);
+    if (resolved) {
+      return resolved;
+    }
+  } catch {
+    // fall back to normalized ws url
+  }
+  return normalized;
 }
 
 async function connectWebSocket(url) {
@@ -3548,10 +5182,10 @@ function printUsage(command) {
     console.error(`[simeval-cli] ${command}`);
   }
   console.log('Usage:');
-  console.log('  node tools/simeval_cli.js <command> [options]\n');
+  console.log('  simeval <command> [options]\n');
   console.log('Commands:');
   console.log('  health                        Check server health');
-  console.log('  status                        Show simulation/evaluation status');
+  console.log('  status                        Show simulation/evaluation status (use --all for recorded deployments)');
   console.log('  start | pause | stop          Control simulation playback');
   console.log('  system inject|eject            Inject or eject a system');
   console.log('  component inject|eject         Inject or eject a component type');
@@ -3563,6 +5197,7 @@ function printUsage(command) {
   console.log('  deploy start|stop|list         Start/stop/list local SimEval deployments');
   console.log('  morphcloud <command>           Manage Morphcloud fleets via the distributor');
   console.log('  fleet [scaffold]               Run Morphcloud deployments or write a config scaffold');
+  console.log('  log list|view                  Inspect CLI log files');
   console.log('  codebase tree|file             Explore the server codebase tree/files');
   console.log('  wait                          Poll /status until a state is reached\n');
   console.log('Global options:');
@@ -3572,6 +5207,16 @@ function printUsage(command) {
   console.log('  --run          Path to run directory or run.json');
   console.log('  --message-id   Override generated message id');
   console.log('  --help         Show command help\n');
+  console.log('Status options:');
+  console.log('  --all          Check recorded deployments');
+  console.log('  --prune        Remove unhealthy local deployments (kills processes)');
+  console.log('  --prune-morph  Remove unhealthy morphcloud instances from state');
+  console.log('  --stop-morph   Stop unhealthy morphcloud instances before pruning');
+  console.log('  --state        Deploy state file (default: ~/.simeval/deployments.json)');
+  console.log('  --ui-state     UI state file (default: ~/.simeval/ui.json)');
+  console.log('  --morph-state  Morphcloud state file (default: ~/.simeval/morphcloud.json)');
+  console.log('  --timeout      Probe/stop timeout in ms (default: 2000)');
+  console.log('  --signal       Signal for pruning local deployments (default: SIGTERM)\n');
   console.log('System/component options:');
   console.log('  --player       simulation (default) or evaluation');
   console.log('  --module       Module path under plugins/');
@@ -3592,12 +5237,18 @@ function printUsage(command) {
   console.log('  --include-acks Include SSE ack messages (capture only)');
   console.log('  --out          Output file path (capture)');
   console.log('  --file         Capture file to upload');
-  console.log('  --name         Filename override for UI uploads\n');
+  console.log('  --name         Filename override for UI uploads');
+  console.log('  --foreground   Run stream forward in the foreground\n');
   console.log('UI options:');
   console.log('  --ui           Metrics UI websocket or http(s) URL');
   console.log('  --capture-id   Capture id for live streams or metric selection');
   console.log('  --source       Live capture source file path or URL');
   console.log('  --mode         Source mode for ui mode (file|live)');
+  console.log('  --ui-dir       Metrics UI directory for ui serve');
+  console.log('  --ui-host      Metrics UI host for ui serve');
+  console.log('  --ui-port      Metrics UI port for ui serve');
+  console.log('  --ui-mode      Metrics UI mode for ui serve (dev|start)');
+  console.log('  --skip-install Skip npm install for ui serve');
   console.log('  --path         Metric path (JSON array recommended for dotted keys)');
   console.log('  --full-path    Full metric path for ui deselect');
   console.log('  --tick         Tick for ui seek');
@@ -3605,9 +5256,15 @@ function printUsage(command) {
   console.log('  --poll-ms      Live poll interval in milliseconds');
   console.log('  --poll-seconds Live poll interval in seconds');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
+  console.log('UI serve options:');
+  console.log('  --ui-dir       Metrics UI project directory (default: ./Stream-Metrics-UI)');
+  console.log('  --ui-host      Metrics UI host (default: 127.0.0.1)');
+  console.log('  --ui-port      Metrics UI port (default: 5050)');
+  console.log('  --ui-mode      dev (default) or start');
+  console.log('  --skip-install Skip npm install if node_modules missing\n');
   console.log('UI subcommands:');
-  console.log('  capabilities | state | components | mode | live-source | live-start | live-stop');
-  console.log('  select | deselect | clear | play | pause | stop | seek | speed\n');
+  console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop');
+  console.log('  select | deselect | remove-capture | clear | clear-captures | play | pause | stop | seek | speed\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
   console.log('  --notes        Run notes (create)');
@@ -3626,14 +5283,17 @@ function printUsage(command) {
   console.log('  --host         Host to bind (default: 127.0.0.1)');
   console.log('  --workspace    Workspace directory (default: workspaces/Describing_Simulation_0)');
   console.log('  --clean-plugins Remove plugin files before starting');
-  console.log('  --build        Always build before start');
+  console.log('  --build        Force rebuild before start (default)');
   console.log('  --no-build     Skip build (requires dist/main.js)');
   console.log('  --no-auto-start-eval Disable evaluation auto-start');
   console.log('  --log          Log file path (defaults to ~/.simeval/logs/...)');
   console.log('  --log-dir      Log directory (default: ~/.simeval/logs)');
   console.log('  --state        Deploy state file path');
   console.log('  --force        Replace an existing deployment on the port');
-  console.log('  --auto-start-eval Enable evaluation auto-start\n');
+  console.log('  --auto-start-eval Enable evaluation auto-start');
+  console.log('  --wait         Wait for /health to respond');
+  console.log('  --wait-timeout Wait timeout in ms (default: 30000)');
+  console.log('  --wait-interval Poll interval in ms (default: 500)\n');
   console.log('Deploy stop options:');
   console.log('  --port         Port to stop');
   console.log('  --pid          PID to stop');
@@ -3646,12 +5306,24 @@ function printUsage(command) {
   console.log('  --continue-on-error Continue on instance/deployment failures');
   console.log('  --out          Scaffold output path (fleet scaffold)');
   console.log('  --force        Overwrite existing scaffold file\n');
+  console.log('Log options:');
+  console.log('  --type         Log type filter (list/view)');
+  console.log('  --file         Log filename to view');
+  console.log('  --id           Log id/prefix to view');
+  console.log('  --log-dir      Log directory (default: ~/.simeval/logs/cli)\n');
   if (!command || command === 'config') {
     console.log('Config options:');
     console.log('  --server       Default server URL');
     console.log('  --token        Default auth token');
+    console.log('  --morph-api-key Default Morphcloud API key');
     console.log('  --snapshot     Default snapshot id');
     console.log('  --fleet-config Default fleet config path');
+    console.log('  --workspace    Default workspace directory');
+    console.log('  --ui           Default Metrics UI URL');
+    console.log('  --ui-dir       Default Metrics UI directory');
+    console.log('  --ui-host      Default Metrics UI host');
+    console.log('  --ui-port      Default Metrics UI port');
+    console.log('  --ui-mode      Default Metrics UI mode (dev|start)');
     console.log('');
   }
   if (!command || command === 'fleet') {
@@ -3663,29 +5335,47 @@ function printUsage(command) {
     console.log('  - provision: { args?, stateFile?, skipUpdate?, requireUpdate? }');
     console.log('  - playback: { start?, stop?, pause? }');
     console.log('  - postProvision.exec: [ \"shell command\", ... ]');
+    console.log('  - labels: { instance?, snapshot? } (metadata entries, key=value)');
+    console.log('  - cleanup: { snapshot?, stop?, stopOnFailure?, forget? }');
     console.log('  - plugins: [ \"plugins/...\", { source, dest, overwrite? } ]');
     console.log('  - components/systems: { player, module, export }');
     console.log('  - captures: { stream, out, frames|durationMs|duration|durationSeconds|durationSec, format?,');
     console.log('      component?, entity?, includeAcks?, ui?: { captureId?, filename?, pollSeconds? } }');
-    console.log('  - Templates: ${deployment} ${instance} ${index} ${instanceId} in out/captureId/filename\n');
+    console.log('  - Templates: ${deployment} ${instance} ${index} ${instanceId} ${runId} in out/captureId/filename\n');
   }
   console.log('Examples:');
-  console.log('  node tools/simeval_cli.js health --server http://127.0.0.1:3000/api');
-  console.log('  node tools/simeval_cli.js system inject --player simulation --module plugins/sim/system.js');
-  console.log('  node tools/simeval_cli.js stream capture --stream simulation --frames 50 --out sim.jsonl');
-  console.log('  node tools/simeval_cli.js stream forward --stream evaluation --frames 50 --ui ws://localhost:5000/ws/control');
-  console.log('  node tools/simeval_cli.js stream upload --file capture.jsonl --ui ws://localhost:5000/ws/control');
-  console.log('  node tools/simeval_cli.js ui capabilities --ui ws://localhost:5000/ws/control');
-  console.log('  node tools/simeval_cli.js ui mode --mode live --ui ws://localhost:5000/ws/control');
-  console.log('  node tools/simeval_cli.js ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5000/ws/control');
-  console.log('  node tools/simeval_cli.js ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5000/ws/control');
-  console.log('  node tools/simeval_cli.js run create --name demo --server http://127.0.0.1:3000/api');
-  console.log('  node tools/simeval_cli.js run record --run runs/run-123 --frames 25 --stream evaluation');
-  console.log('  node tools/simeval_cli.js deploy start --port 4000 --workspace ./workspaces/Describing_Simulation_0');
-  console.log('  node tools/simeval_cli.js deploy stop --port 4000');
-  console.log('  node tools/simeval_cli.js deploy start --port 4000 --clean-plugins');
-  console.log('  node tools/simeval_cli.js morphcloud list');
-  console.log('  node tools/simeval_cli.js fleet scaffold --out fleet.json');
-  console.log('  node tools/simeval_cli.js fleet --config fleet.json --ui ws://localhost:5050/ws/control');
-  console.log('  node tools/simeval_cli.js codebase tree --server http://127.0.0.1:3000/api');
+  console.log('  # Health + playback');
+  console.log('  simeval health --server http://127.0.0.1:3000/api');
+  console.log('  simeval status --all');
+  console.log('  simeval status --all --prune');
+  console.log('  simeval start --server http://127.0.0.1:3000/api');
+  console.log('  ');
+  console.log('  # Plugins + ECS injection');
+  console.log('  simeval plugin upload --source ./mySystem.js --dest plugins/simulation/systems/mySystem.js');
+  console.log('  simeval system inject --player simulation --module plugins/simulation/systems/mySystem.js --export createSystem');
+  console.log('  ');
+  console.log('  # Stream capture + UI');
+  console.log('  simeval stream capture --stream simulation --frames 50 --out sim.jsonl');
+  console.log('  simeval stream forward --stream evaluation --frames 50 --ui ws://localhost:5000/ws/control');
+  console.log('  simeval stream upload --file capture.jsonl --ui ws://localhost:5000/ws/control');
+  console.log('  simeval ui serve --ui-dir Stream-Metrics-UI');
+  console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5000/ws/control');
+  console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5000/ws/control');
+  console.log('  ');
+  console.log('  # Runs + logs');
+  console.log('  simeval run create --name demo --server http://127.0.0.1:3000/api');
+  console.log('  simeval run record --run runs/run-123 --frames 25 --stream evaluation');
+  console.log('  simeval log list --type ui');
+  console.log('  simeval log view --file ui_20260101T120000.log');
+  console.log('  ');
+  console.log('  # Deploy management');
+  console.log('  simeval deploy start --port 4000 --workspace ./workspaces/Describing_Simulation_0');
+  console.log('  simeval deploy start --port 4000 --clean-plugins --wait');
+  console.log('  simeval deploy stop --port 4000');
+  console.log('  ');
+  console.log('  # Meta / orchestration');
+  console.log('  simeval morphcloud list');
+  console.log('  simeval fleet scaffold --out fleet.json');
+  console.log('  simeval fleet --config fleet.json --ui ws://localhost:5050/ws/control');
+  console.log('  simeval codebase tree --server http://127.0.0.1:3000/api');
 }

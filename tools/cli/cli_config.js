@@ -103,8 +103,19 @@ function normalizeCliConfig(raw) {
   return {
     server: normalizeString(raw.server ?? raw.baseUrl),
     token: normalizeString(raw.token ?? raw.authToken ?? raw.apiToken),
+    morphApiKey: normalizeString(raw.morphApiKey ?? raw.morph_api_key ?? raw.morphcloud?.apiKey),
     snapshot: normalizeString(raw.snapshot ?? raw.defaultSnapshot),
     fleetConfig: normalizeString(raw.fleetConfig ?? raw.fleet?.config ?? raw.fleet?.configPath),
+    workspace: normalizeString(raw.workspace ?? raw.workspaceDir ?? raw.workspacePath),
+    uiUrl: normalizeString(
+      raw.uiUrl ??
+        raw.ui_url ??
+        (typeof raw.ui === 'string' ? raw.ui : raw.ui?.url)
+    ),
+    uiDir: normalizeString(raw.uiDir ?? raw.ui?.dir ?? raw.ui?.path),
+    uiHost: normalizeString(raw.uiHost ?? raw.ui?.host),
+    uiPort: normalizeString(raw.uiPort ?? raw.ui?.port),
+    uiMode: normalizeString(raw.uiMode ?? raw.ui?.mode),
   };
 }
 

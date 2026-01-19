@@ -27,7 +27,7 @@ async function main() {
   const cliOptions = parseCliOptions(process.argv.slice(2));
   console.log(`[benchmark] GC sampling mode: ${cliOptions.gcMode}`);
 
-  const rootDir = path.resolve(__dirname, '..');
+  const rootDir = path.resolve(__dirname, '..', '..');
   const workspaceDir = path.join(rootDir, 'workspaces', 'Describing_Simulation_0');
   const distMainPath = path.join(workspaceDir, 'dist', 'main.js');
 

@@ -4,13 +4,13 @@
  * Morphcloud SimEval validator
  *
  * This script runs a full control-surface exercise against a freshly booted
- * SimEval instance (typically provisioned via morphcloud_build_instance.sh).
+ * SimEval instance (typically provisioned via tools/cli/morphcloud_build_instance.sh).
  * It uploads purpose-built simulation and evaluation plugins, injects them,
  * starts the simulation, and asserts both simulation and evaluation streams
  * emit the validator component data.
  *
  * Usage:
- *   node tools/morphcloud_validator.js --url https://host/api --token TOKEN
+ *   node tools/cli/morphcloud_validator.js --url https://host/api --token TOKEN
  *
  * Environment variables:
  *   MORPH_VALIDATOR_URL   Base URL for the SimEval API (e.g., https://host/api)

@@ -73,8 +73,11 @@ The following maps the structure of the repository following bootstrapping.
 │   └── index.md
 ├── tools/
 │   ├── index.md
-│   ├── start.sh
-│   └── run_integration.sh
+│   ├── cli/
+│   │   └── simeval_cli.js
+│   └── dev/
+│       ├── start.sh
+│       └── run_integration.sh
 ├── workspaces/
 │   └── <this document's file name>/
 ├── verifications/
