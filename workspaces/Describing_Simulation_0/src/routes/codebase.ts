@@ -1,6 +1,13 @@
+import path from 'path';
 import type { Router } from './router';
 
 const EXCLUDED_PATH_SEGMENTS = new Set(['node_modules', '.git', '.hg', '.svn', '.turbo', '.next', '.cache']);
+const ALLOWED_PLUGIN_DIRECTORIES = new Set([
+  'plugins/simulation/systems',
+  'plugins/simulation/components',
+  'plugins/evaluation/systems',
+  'plugins/evaluation/components',
+]);
 
 export interface CodebaseTreeEntry {
   name: string;
@@ -102,7 +109,7 @@ export function registerCodebaseRoutes(router: Router, deps: CodebaseRouteDeps):
     const content = typeof req.body?.content === 'string' ? req.body.content : undefined;
     const overwrite = Boolean(req.body?.overwrite);
 
-    const sanitizedPath = requestedPath.replace(/^[/\\]+/, '');
+    const sanitizedPath = normalizePluginPath(requestedPath);
     if (!sanitizedPath) {
       respondPluginError(res, messageId, 'Missing plugin path');
       return;
@@ -110,6 +117,12 @@ export function registerCodebaseRoutes(router: Router, deps: CodebaseRouteDeps):
 
     if (!sanitizedPath.startsWith('plugins/')) {
       respondPluginError(res, messageId, 'Plugins must be written under the plugins/ directory');
+      return;
+    }
+
+    const pluginDir = path.posix.dirname(sanitizedPath);
+    if (!ALLOWED_PLUGIN_DIRECTORIES.has(pluginDir)) {
+      respondPluginError(res, messageId, 'Plugins may only be written to system or component directories');
       return;
     }
 
@@ -144,6 +157,25 @@ function normalizeRelativePath(candidate: unknown): string {
   }
 
   return trimmed.replace(/^[/\\]+/, '').replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+function normalizePluginPath(candidate: unknown): string {
+  if (typeof candidate !== 'string') {
+    return '';
+  }
+
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const sanitized = trimmed.replace(/^[/\\]+/, '').replace(/\\/g, '/');
+  const normalized = path.posix.normalize(sanitized);
+  if (!normalized || normalized === '.') {
+    return '';
+  }
+
+  return normalized.replace(/\/+$/, '');
 }
 
 function formatResponsePath(relativePath: string): string {

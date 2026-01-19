@@ -72,14 +72,22 @@ describe('codebase routes', () => {
 
     const pluginRes = createAsyncRes();
     await pluginHandler?.(
-      { body: { messageId: 'plugin-1', path: 'plugins/System.js', content: 'export {};' } },
+      {
+        body: {
+          messageId: 'plugin-1',
+          path: 'plugins/simulation/systems/System.js',
+          content: 'export {};',
+        },
+      },
       pluginRes,
     );
-    expect(writeFile).toHaveBeenCalledWith('/repo', 'plugins/System.js', 'export {};', { overwrite: false });
+    expect(writeFile).toHaveBeenCalledWith('/repo', 'plugins/simulation/systems/System.js', 'export {};', {
+      overwrite: false,
+    });
     expect(pluginRes.json).toHaveBeenCalledWith({
       status: 'success',
       messageId: 'plugin-1',
-      path: 'plugins/System.js',
+      path: 'plugins/simulation/systems/System.js',
     });
 
     const invalidRes = { json: jest.fn(), statusCode: 200 };
@@ -89,6 +97,19 @@ describe('codebase routes', () => {
       status: 'error',
       messageId: undefined,
       detail: 'Plugins must be written under the plugins/ directory',
+    });
+    expect(writeFile).toHaveBeenCalledTimes(1);
+
+    const restrictedRes = { json: jest.fn(), statusCode: 200 };
+    await pluginHandler?.(
+      { body: { path: 'plugins/simulation/operations/InjectFrame.js', content: 'bad' } },
+      restrictedRes,
+    );
+    expect(restrictedRes.statusCode).toBe(400);
+    expect(restrictedRes.json).toHaveBeenCalledWith({
+      status: 'error',
+      messageId: undefined,
+      detail: 'Plugins may only be written to system or component directories',
     });
     expect(writeFile).toHaveBeenCalledTimes(1);
   });

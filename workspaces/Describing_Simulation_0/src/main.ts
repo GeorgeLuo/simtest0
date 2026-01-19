@@ -336,7 +336,19 @@ async function writeFileToRoot(
 ): Promise<void> {
   const target = await resolvePath(rootDir, relativePath);
   const directory = path.dirname(target);
-  await fs.mkdir(directory, { recursive: true });
+  const relativeDirectory = path.relative(rootDir, directory).replace(/\\/g, '/') || '.';
+
+  try {
+    const stats = await fs.stat(directory);
+    if (!stats.isDirectory()) {
+      throw new Error(`Path is not a directory: ${relativeDirectory}`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      throw new Error(`Directory does not exist: ${relativeDirectory}`);
+    }
+    throw error;
+  }
 
   if (!options?.overwrite) {
     try {
