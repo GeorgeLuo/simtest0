@@ -6,6 +6,7 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
 const { TextDecoder } = require('util');
+const { Readable } = require('stream');
 const { setTimeout: delay } = require('timers/promises');
 const { loadCliConfig, resolveCliConfigPath: resolveCliConfigLocation } = require('./cli_config');
 
@@ -948,10 +949,6 @@ async function handleStream(argvRest) {
     if (!uiInput) {
       throw new Error('Provide --ui to upload a capture to the metrics UI.');
     }
-    const uiUrl = await resolveUiWsUrl(uiInput);
-    if (!uiUrl) {
-      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
-    }
 
     const resolvedFile = path.resolve(process.cwd(), String(fileInput));
     if (!fs.existsSync(resolvedFile)) {
@@ -961,21 +958,27 @@ async function handleStream(argvRest) {
     const maxFrames = parseOptionalNumber(options.frames, 'frames');
     const componentId = options.component || '';
     const entityId = options.entity || '';
-    const captureId = options['capture-id'] || buildCaptureId();
     const filename = options.name || options.filename || path.basename(resolvedFile);
+    if (maxFrames || componentId || entityId) {
+      throw new Error('stream upload does not support --frames/--component/--entity.');
+    }
+    if (options['capture-id']) {
+      throw new Error('stream upload does not support --capture-id.');
+    }
 
-    const summary = await uploadCaptureFile({
-      uiUrl,
-      captureId,
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a http(s):// URL for uploads.');
+    }
+
+    const summary = await uploadCaptureFileHttp({
+      uiUrl: uiHttpUrl,
       filename,
       filePath: resolvedFile,
-      maxFrames,
-      componentId,
-      entityId,
     });
 
     console.log(
-      `[upload] ${summary.frameCount} frames sent to ${summary.uiUrl} as ${summary.captureId}`,
+      `[upload] ${summary.filename} registered at ${summary.uiUrl} as ${summary.captureId}`,
     );
     if (runContext) {
       recordRunCapture(runContext, {
@@ -983,9 +986,8 @@ async function handleStream(argvRest) {
         filePath: resolvedFile,
         uiUrl: summary.uiUrl,
         captureId: summary.captureId,
-        frameCount: summary.frameCount,
-        componentId: componentId || null,
-        entityId: entityId || null,
+        filename: summary.filename,
+        size: summary.size ?? null,
       });
     }
     return;
@@ -1255,6 +1257,110 @@ async function handleUi(argvRest) {
       });
       if (!response) {
         throw new Error('Timed out waiting for UI components.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'display-snapshot') {
+      const captureId = options['capture-id'];
+      const windowSize = parseOptionalNumber(options['window-size'], 'window-size');
+      sendWsMessage(socket, {
+        type: 'get_display_snapshot',
+        captureId: captureId ? String(captureId) : undefined,
+        windowSize: windowSize ?? undefined,
+        request_id: requestId,
+      });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['display_snapshot'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI display snapshot.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'series-window') {
+      const captureId = options['capture-id'];
+      if (!captureId) {
+        throw new Error('Provide --capture-id for ui series-window.');
+      }
+      const path = parsePathInput(options.path ?? options['path-json']);
+      if (!path || path.length === 0) {
+        throw new Error('Provide --path (JSON array recommended) for ui series-window.');
+      }
+      const windowSize = parseOptionalNumber(options['window-size'], 'window-size');
+      sendWsMessage(socket, {
+        type: 'get_series_window',
+        captureId: String(captureId),
+        path,
+        windowSize: windowSize ?? undefined,
+        request_id: requestId,
+      });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['series_window'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI series window.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'render-table') {
+      const captureId = options['capture-id'];
+      const windowSize = parseOptionalNumber(options['window-size'], 'window-size');
+      sendWsMessage(socket, {
+        type: 'get_render_table',
+        captureId: captureId ? String(captureId) : undefined,
+        windowSize: windowSize ?? undefined,
+        request_id: requestId,
+      });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['render_table'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI render table.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'memory-stats') {
+      sendWsMessage(socket, { type: 'get_memory_stats', request_id: requestId });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['memory_stats'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI memory stats.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'metric-coverage') {
+      const captureId = options['capture-id'];
+      sendWsMessage(socket, {
+        type: 'get_metric_coverage',
+        captureId: captureId ? String(captureId) : undefined,
+        request_id: requestId,
+      });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['metric_coverage'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI metric coverage.');
       }
       printJson(response.payload ?? response);
       return;
@@ -1962,6 +2068,15 @@ async function handleFleet(argvRest) {
             });
           }
 
+          if (deployment.components.length > 0 || deployment.systems.length > 0) {
+            await logFleetStatusAfterInjection({
+              server: instance.apiUrl,
+              authHeader: buildAuthHeader(instance.authToken),
+              deployment,
+              log: instanceLog,
+            });
+          }
+
           if (deployment.playback?.start) {
             await runFleetPlayback({
               action: 'start',
@@ -2057,6 +2172,7 @@ async function handleFleet(argvRest) {
           instanceResult.errors.push(message);
           deploymentResult.errors.push(`${instanceName}: ${message}`);
           instanceLog(`Failed: ${message}`);
+          await captureFleetFailureDiagnostics({ instanceId: instance?.id, log: instanceLog });
           if (deployment.cleanup.stopOnFailure && instance?.id) {
             try {
               const stopResult = await runFleetStopInstance({
@@ -2482,6 +2598,12 @@ async function runFleetProvision({ deployment, deploymentName, log }) {
     '--name-prefix',
     String(namePrefix),
   ];
+  if (deployment.provision?.memory) {
+    args.push('--memory', String(deployment.provision.memory));
+  }
+  if (deployment.provision?.vcpus) {
+    args.push('--vcpus', String(deployment.provision.vcpus));
+  }
 
   if (deployment.provision?.stateFile) {
     args.push('--state', String(deployment.provision.stateFile));
@@ -2534,6 +2656,27 @@ async function runFleetExec({ instanceId, commands, log }) {
     if (result.code !== 0) {
       throw new Error(`Exec failed (${command}) with code ${result.code}`);
     }
+  }
+}
+
+async function captureFleetFailureDiagnostics({ instanceId, log }) {
+  if (!instanceId) {
+    return;
+  }
+  const command = 'journalctl -u simeval.service --no-pager -n 200';
+  log(`Diagnostics: ${command}`);
+  try {
+    const result = await runCommandCapture(
+      'morphcloud',
+      ['instance', 'exec', instanceId, '--', 'bash', '-lc', wrapShellCommand(command)],
+      { prefix: `[journalctl:${instanceId}] ` },
+    );
+    if (result.code !== 0) {
+      log(`Diagnostics failed with code ${result.code}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log(`Diagnostics failed: ${message}`);
   }
 }
 
@@ -2631,6 +2774,27 @@ function resolveFleetPlugin(entry, configDir) {
   };
 }
 
+function logFleetInjectResponse({ log, kind, descriptor, response }) {
+  const status = response?.data?.status ?? 'unknown';
+  const messageId = response?.data?.messageId ?? 'unknown';
+  const systemId = response?.data?.systemId ?? null;
+  const detail = response?.data?.detail ?? null;
+  const parts = [
+    `Inject ${kind} response`,
+    `status=${status}`,
+    `messageId=${messageId}`,
+  ];
+  if (systemId) {
+    parts.push(`systemId=${systemId}`);
+  }
+  if (detail) {
+    parts.push(`detail=${detail}`);
+  }
+  parts.push(`player=${descriptor.player}`);
+  parts.push(`module=${descriptor.modulePath}`);
+  log(parts.join(' '));
+}
+
 async function injectFleetComponents({ components, server, authHeader, log }) {
   for (const entry of components) {
     const component = normalizeFleetInjectEntry(entry, 'component');
@@ -2642,11 +2806,26 @@ async function injectFleetComponents({ components, server, authHeader, log }) {
         exportName: component.exportName || undefined,
       },
     };
-    await requestJson(
-      buildUrl(server, `/${component.player}/component`),
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
-      authHeader,
-    );
+    try {
+      const response = await requestJsonWithStatus(
+        buildUrl(server, `/${component.player}/component`),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+        authHeader,
+      );
+      logFleetInjectResponse({
+        log,
+        kind: 'component',
+        descriptor: component,
+        response,
+      });
+      if (response.data?.status === 'error') {
+        throw new Error(response.data?.detail || 'Component injection failed.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log(`Component injection error: ${message}`);
+      throw error;
+    }
   }
 }
 
@@ -2661,11 +2840,59 @@ async function injectFleetSystems({ systems, server, authHeader, log }) {
         exportName: system.exportName || undefined,
       },
     };
-    await requestJson(
-      buildUrl(server, `/${system.player}/system`),
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+    try {
+      const response = await requestJsonWithStatus(
+        buildUrl(server, `/${system.player}/system`),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+        authHeader,
+      );
+      logFleetInjectResponse({
+        log,
+        kind: 'system',
+        descriptor: system,
+        response,
+      });
+      if (response.data?.status === 'error') {
+        throw new Error(response.data?.detail || 'System injection failed.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log(`System injection error: ${message}`);
+      throw error;
+    }
+  }
+}
+
+async function logFleetStatusAfterInjection({ server, authHeader, deployment, log }) {
+  try {
+    const response = await requestJsonWithStatus(
+      buildUrl(server, '/status'),
+      { method: 'GET' },
       authHeader,
     );
+    if (!response?.data || typeof response.data !== 'object') {
+      log('Status after inject: unexpected response.');
+      return;
+    }
+    const simulation = response.data.simulation ?? {};
+    const evaluation = response.data.evaluation ?? {};
+    log(
+      `Status after inject: simulation state=${simulation.state ?? 'unknown'} tick=${simulation.tick ?? 'n/a'} systems=${simulation.systemCount ?? 'n/a'}; ` +
+      `evaluation state=${evaluation.state ?? 'unknown'} tick=${evaluation.tick ?? 'n/a'} systems=${evaluation.systemCount ?? 'n/a'}`,
+    );
+
+    const systems = Array.isArray(deployment.systems) ? deployment.systems : [];
+    const expectedSim = systems.filter((entry) => normalizePlayer(entry.player) === 'simulation').length;
+    const expectedEval = systems.filter((entry) => normalizePlayer(entry.player) === 'evaluation').length;
+    if (expectedSim > 0 && (!Number.isFinite(simulation.systemCount) || simulation.systemCount < expectedSim)) {
+      log(`Warning: simulation systemCount=${simulation.systemCount ?? 'n/a'} after injecting ${expectedSim} system(s).`);
+    }
+    if (expectedEval > 0 && (!Number.isFinite(evaluation.systemCount) || evaluation.systemCount < expectedEval)) {
+      log(`Warning: evaluation systemCount=${evaluation.systemCount ?? 'n/a'} after injecting ${expectedEval} system(s).`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log(`Status after inject failed: ${message}`);
   }
 }
 
@@ -4240,6 +4467,24 @@ async function requestJson(url, init, authHeader) {
   return response.json();
 }
 
+async function requestJsonWithStatus(url, init, authHeader) {
+  const response = await fetch(url, applyAuth(init ?? {}, authHeader));
+  const text = await response.text().catch(() => '');
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      data = text;
+    }
+  }
+  if (!response.ok) {
+    const detail = typeof data === 'string' ? data : JSON.stringify(data);
+    throw new Error(`Request failed (${response.status}): ${detail}`);
+  }
+  return { status: response.status, data };
+}
+
 function applyAuth(init, authHeader) {
   if (!authHeader) {
     return init;
@@ -4650,6 +4895,39 @@ function sendWsMessage(socket, payload) {
   return true;
 }
 
+function attachWsErrorLogger(socket, { captureId, label }) {
+  let lastError = null;
+  const tag = label ? `[${label}] ` : '';
+  const onMessage = (event) => {
+    const raw = typeof event.data === 'string' ? event.data : event.data?.toString();
+    if (!raw) {
+      return;
+    }
+    let message;
+    try {
+      message = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!message || (message.type !== 'error' && message.type !== 'ui_error')) {
+      return;
+    }
+    const contextCaptureId = message.payload?.context?.captureId;
+    if (captureId && contextCaptureId && contextCaptureId !== captureId) {
+      return;
+    }
+    const errorText = message.error || 'WebSocket error';
+    const displayType = message.type === 'ui_error' ? 'ui error' : 'ws error';
+    lastError = new Error(errorText);
+    console.error(`[simeval-cli] ${tag}${displayType}: ${errorText}`);
+  };
+  socket.addEventListener('message', onMessage);
+  return () => {
+    socket.removeEventListener('message', onMessage);
+    return lastError;
+  };
+}
+
 async function waitForWsAck(socket, timeoutMs = 2000) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
@@ -4764,7 +5042,10 @@ async function forwardStream({
 
   sendWsMessage(socket, { type: 'register', role: 'agent' });
   await waitForWsAck(socket);
-  sendWsMessage(socket, { type: 'capture_init', captureId, filename });
+  const stopErrorLog = attachWsErrorLogger(socket, { captureId, label: 'stream forward' });
+  const initRequestId = buildMessageId(null, `capture-init-${captureId}`);
+  sendWsMessage(socket, { type: 'capture_init', captureId, filename, request_id: initRequestId });
+  await waitForWsResponse(socket, { requestId: initRequestId, types: ['ack'], timeoutMs: 4000 });
 
   const headers = {
     Accept: 'text/event-stream',
@@ -4853,168 +5134,69 @@ async function forwardStream({
   };
 }
 
-function normalizeEntities(value) {
-  const result = {};
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return result;
-  }
+function buildMultipartUploadStream({ filePath, filename, boundary }) {
+  const safeName = String(filename || path.basename(filePath)).replace(/"/g, "'");
+  const header =
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="file"; filename="${safeName}"\r\n` +
+    `Content-Type: application/octet-stream\r\n\r\n`;
+  const footer = `\r\n--${boundary}--\r\n`;
 
-  for (const [entityId, components] of Object.entries(value)) {
-    if (!components || typeof components !== 'object' || Array.isArray(components)) {
-      continue;
-    }
-    result[entityId] = { ...components };
-  }
-
-  return result;
-}
-
-function mergeEntities(target, source) {
-  for (const [entityId, components] of Object.entries(source)) {
-    if (!target[entityId]) {
-      target[entityId] = {};
-    }
-    for (const [componentId, componentValue] of Object.entries(components)) {
-      target[entityId][componentId] = componentValue;
-    }
-  }
-}
-
-function parseJsonlFrames(content) {
-  const frames = new Map();
-  const lines = content.split(/\r?\n/);
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    let parsed;
+  async function* streamParts() {
+    const fileStream = fs.createReadStream(filePath);
     try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      continue;
-    }
-    if (!parsed || typeof parsed !== 'object') {
-      continue;
-    }
-
-    if (Number.isFinite(parsed.tick) && parsed.entities && typeof parsed.entities === 'object') {
-      const entities = normalizeEntities(parsed.entities);
-      const frame = frames.get(parsed.tick) || { tick: parsed.tick, entities: {} };
-      mergeEntities(frame.entities, entities);
-      frames.set(parsed.tick, frame);
-      continue;
-    }
-
-    if (
-      Number.isFinite(parsed.tick) &&
-      typeof parsed.entityId === 'string' &&
-      typeof parsed.componentId === 'string'
-    ) {
-      const frame = frames.get(parsed.tick) || { tick: parsed.tick, entities: {} };
-      if (!frame.entities[parsed.entityId]) {
-        frame.entities[parsed.entityId] = {};
+      yield header;
+      for await (const chunk of fileStream) {
+        yield chunk;
       }
-      frame.entities[parsed.entityId][parsed.componentId] = parsed.value;
-      frames.set(parsed.tick, frame);
+      yield footer;
+    } finally {
+      fileStream.destroy();
     }
   }
 
-  return Array.from(frames.values()).sort((a, b) => a.tick - b.tick);
+  return Readable.from(streamParts());
 }
 
-function parseJsonFrames(payload) {
-  if (!Array.isArray(payload)) {
-    return [];
-  }
-  const frames = new Map();
-  for (const item of payload) {
-    if (!item || typeof item !== 'object') {
-      continue;
-    }
-    if (Number.isFinite(item.tick) && item.entities && typeof item.entities === 'object') {
-      const entities = normalizeEntities(item.entities);
-      const frame = frames.get(item.tick) || { tick: item.tick, entities: {} };
-      mergeEntities(frame.entities, entities);
-      frames.set(item.tick, frame);
-      continue;
-    }
-    if (Number.isFinite(item.tick) && typeof item.entityId === 'string' && typeof item.componentId === 'string') {
-      const frame = frames.get(item.tick) || { tick: item.tick, entities: {} };
-      if (!frame.entities[item.entityId]) {
-        frame.entities[item.entityId] = {};
-      }
-      frame.entities[item.entityId][item.componentId] = item.value;
-      frames.set(item.tick, frame);
-    }
-  }
-  return Array.from(frames.values()).sort((a, b) => a.tick - b.tick);
-}
-
-function loadFramesFromFile(filePath) {
-  const content = fs.readFileSync(filePath, 'utf8');
-  const trimmed = content.trim();
-  if (!trimmed) {
-    return [];
-  }
-  if (trimmed.startsWith('[')) {
-    try {
-      return parseJsonFrames(JSON.parse(trimmed));
-    } catch {
-      return [];
-    }
-  }
-  return parseJsonlFrames(content);
-}
-
-async function uploadCaptureFile({
-  uiUrl,
-  captureId,
-  filename,
-  filePath,
-  maxFrames,
-  componentId,
-  entityId,
-}) {
-  const socket = await connectWebSocket(uiUrl);
-  let socketClosed = false;
-  socket.addEventListener('close', () => {
-    socketClosed = true;
+async function uploadCaptureFileHttp({ uiUrl, filename, filePath }) {
+  const endpoint = new URL('/api/upload', uiUrl).toString();
+  const boundary = `simeval-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+  const body = buildMultipartUploadStream({ filePath, filename, boundary });
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    },
+    body,
+    duplex: 'half',
   });
 
-  sendWsMessage(socket, { type: 'register', role: 'agent' });
-  await waitForWsAck(socket);
-  sendWsMessage(socket, { type: 'capture_init', captureId, filename });
-
-  const frames = loadFramesFromFile(filePath);
-  let frameCount = 0;
-
-  for (const frame of frames) {
-    if (socketClosed) {
-      break;
-    }
-    let payload = frame;
-    if (componentId) {
-      payload = filterFrame(payload, componentId, entityId);
-      if (!payload) {
-        continue;
-      }
-    }
-    sendWsMessage(socket, { type: 'capture_append', captureId, frame: payload });
-    frameCount += 1;
-    if (maxFrames && frameCount >= maxFrames) {
-      break;
-    }
+  const responseText = await response.text();
+  let payload = null;
+  try {
+    payload = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    payload = null;
   }
 
-  sendWsMessage(socket, { type: 'capture_end', captureId });
-  socket.close();
+  if (!response.ok) {
+    const errorMessage =
+      (payload && payload.error) ||
+      responseText ||
+      response.statusText ||
+      'Upload failed.';
+    throw new Error(`Upload failed (${response.status}): ${errorMessage}`);
+  }
+
+  if (!payload || !payload.captureId) {
+    throw new Error('Upload response missing captureId.');
+  }
 
   return {
     uiUrl,
-    captureId,
-    frameCount,
+    captureId: payload.captureId,
+    filename: payload.filename || filename || path.basename(filePath),
+    size: payload.size ?? null,
   };
 }
 
@@ -5253,6 +5435,7 @@ function printUsage(command) {
   console.log('  --full-path    Full metric path for ui deselect');
   console.log('  --tick         Tick for ui seek');
   console.log('  --speed        Playback speed multiplier');
+  console.log('  --window-size  Window size for ui display/series/table');
   console.log('  --poll-ms      Live poll interval in milliseconds');
   console.log('  --poll-seconds Live poll interval in seconds');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
@@ -5264,7 +5447,8 @@ function printUsage(command) {
   console.log('  --skip-install Skip npm install if node_modules missing\n');
   console.log('UI subcommands:');
   console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop');
-  console.log('  select | deselect | remove-capture | clear | clear-captures | play | pause | stop | seek | speed\n');
+  console.log('  select | deselect | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
+  console.log('  display-snapshot | series-window | render-table | memory-stats | metric-coverage\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
   console.log('  --notes        Run notes (create)');
@@ -5332,7 +5516,7 @@ function printUsage(command) {
     console.log('  - ui: { url, pollSeconds }');
     console.log('  - defaults/deployments: snapshot, mode (build|clone), count, parallel,');
     console.log('    readyTimeoutMs, readyIntervalMs, captureMode (parallel|sequential)');
-    console.log('  - provision: { args?, stateFile?, skipUpdate?, requireUpdate? }');
+    console.log('  - provision: { args?, stateFile?, skipUpdate?, requireUpdate?, memory?, vcpus? }');
     console.log('  - playback: { start?, stop?, pause? }');
     console.log('  - postProvision.exec: [ \"shell command\", ... ]');
     console.log('  - labels: { instance?, snapshot? } (metadata entries, key=value)');
@@ -5357,7 +5541,7 @@ function printUsage(command) {
   console.log('  # Stream capture + UI');
   console.log('  simeval stream capture --stream simulation --frames 50 --out sim.jsonl');
   console.log('  simeval stream forward --stream evaluation --frames 50 --ui ws://localhost:5000/ws/control');
-  console.log('  simeval stream upload --file capture.jsonl --ui ws://localhost:5000/ws/control');
+  console.log('  simeval stream upload --file capture.jsonl --ui http://localhost:5050');
   console.log('  simeval ui serve --ui-dir Stream-Metrics-UI');
   console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5000/ws/control');
   console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5000/ws/control');

@@ -174,7 +174,7 @@ simeval stream forward --stream evaluation --frames 200 --ui ws://localhost:5050
 
 Upload an existing capture into the UI:
 ```bash
-simeval stream upload --file evaluation.jsonl --ui ws://localhost:5050/ws/control
+simeval stream upload --file evaluation.jsonl --ui http://localhost:5050
 ```
 
 Control the UI over WebSocket:
