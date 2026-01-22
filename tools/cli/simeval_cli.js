@@ -1225,6 +1225,23 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'window-size') {
+      const windowSize = parseOptionalNumber(options['window-size'] ?? options.size, 'window-size');
+      if (!Number.isFinite(windowSize) || windowSize <= 0) {
+        throw new Error('Provide --window-size for ui window-size.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_window_size',
+        windowSize,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
     if (subcommand === 'state') {
       sendWsMessage(socket, { type: 'get_state', request_id: requestId });
       const response = await waitForWsResponse(socket, {
@@ -5448,6 +5465,7 @@ function printUsage(command) {
   console.log('UI subcommands:');
   console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop');
   console.log('  select | deselect | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
+  console.log('  window-size');
   console.log('  display-snapshot | series-window | render-table | memory-stats | metric-coverage\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
