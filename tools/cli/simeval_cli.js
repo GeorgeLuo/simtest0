@@ -1242,6 +1242,241 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'window-start') {
+      const windowStart = parseOptionalNumber(options['window-start'], 'window-start');
+      if (!Number.isFinite(windowStart) || windowStart <= 0) {
+        throw new Error('Provide --window-start for ui window-start.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_window_start',
+        windowStart,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'window-end') {
+      const windowEnd = parseOptionalNumber(options['window-end'], 'window-end');
+      if (!Number.isFinite(windowEnd) || windowEnd <= 0) {
+        throw new Error('Provide --window-end for ui window-end.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_window_end',
+        windowEnd,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'window-range') {
+      const windowStart = parseOptionalNumber(options['window-start'], 'window-start');
+      const windowEnd = parseOptionalNumber(options['window-end'], 'window-end');
+      if (!Number.isFinite(windowStart) || !Number.isFinite(windowEnd)) {
+        throw new Error('Provide --window-start and --window-end for ui window-range.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_window_range',
+        windowStart,
+        windowEnd,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'auto-scroll') {
+      const rawValue = options['auto-scroll'] ?? options.enabled ?? options.on ?? options.off;
+      if (rawValue === undefined) {
+        throw new Error('Provide --auto-scroll true|false for ui auto-scroll.');
+      }
+      if (options.off === true) {
+        sendWsMessage(socket, {
+          type: 'set_auto_scroll',
+          enabled: false,
+          request_id: requestId,
+        });
+      } else {
+        const enabled = parseBooleanOption(rawValue, undefined);
+        if (typeof enabled !== 'boolean') {
+          throw new Error('Invalid --auto-scroll value. Use true or false.');
+        }
+        sendWsMessage(socket, {
+          type: 'set_auto_scroll',
+          enabled,
+          request_id: requestId,
+        });
+      }
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'fullscreen') {
+      const rawValue = options.enabled ?? options.on ?? options.off;
+      if (rawValue === undefined) {
+        throw new Error('Provide --enabled true|false (or --on/--off) for ui fullscreen.');
+      }
+      if (options.off === true) {
+        sendWsMessage(socket, {
+          type: 'set_fullscreen',
+          enabled: false,
+          request_id: requestId,
+        });
+      } else {
+        const enabled = parseBooleanOption(rawValue, undefined);
+        if (typeof enabled !== 'boolean') {
+          throw new Error('Invalid --enabled value. Use true or false.');
+        }
+        sendWsMessage(socket, {
+          type: 'set_fullscreen',
+          enabled,
+          request_id: requestId,
+        });
+      }
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'add-annotation') {
+      const tick = parseOptionalNumber(options.tick, 'tick');
+      if (!Number.isFinite(tick) || tick <= 0) {
+        throw new Error('Provide --tick for ui add-annotation.');
+      }
+      const annotationId = options['annotation-id'] ?? options.id;
+      const label = options.label;
+      const color = options.color;
+      sendWsMessage(socket, {
+        type: 'add_annotation',
+        tick,
+        id: annotationId ? String(annotationId) : undefined,
+        label: label ? String(label) : undefined,
+        color: color ? String(color) : undefined,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'remove-annotation') {
+      const annotationId = options['annotation-id'] ?? options.id;
+      const tick = parseOptionalNumber(options.tick, 'tick');
+      if (!annotationId && !Number.isFinite(tick)) {
+        throw new Error('Provide --annotation-id or --tick for ui remove-annotation.');
+      }
+      sendWsMessage(socket, {
+        type: 'remove_annotation',
+        id: annotationId ? String(annotationId) : undefined,
+        tick: Number.isFinite(tick) ? tick : undefined,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'clear-annotations') {
+      sendWsMessage(socket, { type: 'clear_annotations', request_id: requestId });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'jump-annotation') {
+      const direction = String(options.direction || '').toLowerCase();
+      if (direction !== 'next' && direction !== 'previous') {
+        throw new Error('Provide --direction next|previous for ui jump-annotation.');
+      }
+      sendWsMessage(socket, { type: 'jump_annotation', direction, request_id: requestId });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'add-subtitle') {
+      const startTick = parseOptionalNumber(options['start-tick'], 'start-tick');
+      const endTick = parseOptionalNumber(options['end-tick'], 'end-tick');
+      if (!Number.isFinite(startTick) || !Number.isFinite(endTick)) {
+        throw new Error('Provide --start-tick and --end-tick for ui add-subtitle.');
+      }
+      const text = options.text || options.label;
+      if (!text) {
+        throw new Error('Provide --text for ui add-subtitle.');
+      }
+      const subtitleId = options['subtitle-id'] ?? options.id;
+      const color = options.color;
+      sendWsMessage(socket, {
+        type: 'add_subtitle',
+        startTick,
+        endTick,
+        text: String(text),
+        id: subtitleId ? String(subtitleId) : undefined,
+        color: color ? String(color) : undefined,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'remove-subtitle') {
+      const subtitleId = options['subtitle-id'] ?? options.id;
+      const startTick = parseOptionalNumber(options['start-tick'], 'start-tick');
+      const endTick = parseOptionalNumber(options['end-tick'], 'end-tick');
+      const text = options.text || options.label;
+      if (!subtitleId && !Number.isFinite(startTick) && !Number.isFinite(endTick) && !text) {
+        throw new Error('Provide --subtitle-id, --start-tick/--end-tick, or --text for ui remove-subtitle.');
+      }
+      sendWsMessage(socket, {
+        type: 'remove_subtitle',
+        id: subtitleId ? String(subtitleId) : undefined,
+        startTick: Number.isFinite(startTick) ? startTick : undefined,
+        endTick: Number.isFinite(endTick) ? endTick : undefined,
+        text: text ? String(text) : undefined,
+        request_id: requestId,
+      });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
+    if (subcommand === 'clear-subtitles') {
+      sendWsMessage(socket, { type: 'clear_subtitles', request_id: requestId });
+      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+      if (!ack) {
+        throw new Error('Timed out waiting for UI ack.');
+      }
+      return;
+    }
+
     if (subcommand === 'state') {
       sendWsMessage(socket, { type: 'get_state', request_id: requestId });
       const response = await waitForWsResponse(socket, {
@@ -5453,6 +5688,18 @@ function printUsage(command) {
   console.log('  --tick         Tick for ui seek');
   console.log('  --speed        Playback speed multiplier');
   console.log('  --window-size  Window size for ui display/series/table');
+  console.log('  --window-start Window start tick for ui window range');
+  console.log('  --window-end   Window end tick for ui window range');
+  console.log('  --auto-scroll  Auto-scroll enable/disable (true|false)');
+  console.log('  --enabled      Enable/disable ui fullscreen (true|false)');
+  console.log('  --annotation-id Annotation id for ui annotation commands');
+  console.log('  --subtitle-id  Subtitle id for ui subtitle commands');
+  console.log('  --start-tick   Subtitle start tick');
+  console.log('  --end-tick     Subtitle end tick');
+  console.log('  --label        Annotation label for ui add-annotation');
+  console.log('  --text         Subtitle text for ui add-subtitle');
+  console.log('  --color        Annotation color for ui add-annotation');
+  console.log('  --direction    Annotation jump direction (next|previous)');
   console.log('  --poll-ms      Live poll interval in milliseconds');
   console.log('  --poll-seconds Live poll interval in seconds');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
@@ -5465,7 +5712,9 @@ function printUsage(command) {
   console.log('UI subcommands:');
   console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop');
   console.log('  select | deselect | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
-  console.log('  window-size');
+  console.log('  window-size | window-start | window-end | window-range | auto-scroll | fullscreen');
+  console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
+  console.log('  add-subtitle | remove-subtitle | clear-subtitles');
   console.log('  display-snapshot | series-window | render-table | memory-stats | metric-coverage\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
