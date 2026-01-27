@@ -1296,27 +1296,19 @@ async function handleUi(argvRest) {
     }
 
     if (subcommand === 'auto-scroll') {
-      const rawValue = options['auto-scroll'] ?? options.enabled ?? options.on ?? options.off;
+      const rawValue = options.enabled;
       if (rawValue === undefined) {
-        throw new Error('Provide --auto-scroll true|false for ui auto-scroll.');
+        throw new Error('Provide --enabled true|false for ui auto-scroll.');
       }
-      if (options.off === true) {
-        sendWsMessage(socket, {
-          type: 'set_auto_scroll',
-          enabled: false,
-          request_id: requestId,
-        });
-      } else {
-        const enabled = parseBooleanOption(rawValue, undefined);
-        if (typeof enabled !== 'boolean') {
-          throw new Error('Invalid --auto-scroll value. Use true or false.');
-        }
-        sendWsMessage(socket, {
-          type: 'set_auto_scroll',
-          enabled,
-          request_id: requestId,
-        });
+      const enabled = parseBooleanOption(rawValue, undefined);
+      if (typeof enabled !== 'boolean') {
+        throw new Error('Invalid --enabled value. Use true or false.');
       }
+      sendWsMessage(socket, {
+        type: 'set_auto_scroll',
+        enabled,
+        request_id: requestId,
+      });
       const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
       if (!ack) {
         throw new Error('Timed out waiting for UI ack.');
@@ -1325,27 +1317,19 @@ async function handleUi(argvRest) {
     }
 
     if (subcommand === 'fullscreen') {
-      const rawValue = options.enabled ?? options.on ?? options.off;
+      const rawValue = options.enabled;
       if (rawValue === undefined) {
-        throw new Error('Provide --enabled true|false (or --on/--off) for ui fullscreen.');
+        throw new Error('Provide --enabled true|false for ui fullscreen.');
       }
-      if (options.off === true) {
-        sendWsMessage(socket, {
-          type: 'set_fullscreen',
-          enabled: false,
-          request_id: requestId,
-        });
-      } else {
-        const enabled = parseBooleanOption(rawValue, undefined);
-        if (typeof enabled !== 'boolean') {
-          throw new Error('Invalid --enabled value. Use true or false.');
-        }
-        sendWsMessage(socket, {
-          type: 'set_fullscreen',
-          enabled,
-          request_id: requestId,
-        });
+      const enabled = parseBooleanOption(rawValue, undefined);
+      if (typeof enabled !== 'boolean') {
+        throw new Error('Invalid --enabled value. Use true or false.');
       }
+      sendWsMessage(socket, {
+        type: 'set_fullscreen',
+        enabled,
+        request_id: requestId,
+      });
       const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
       if (!ack) {
         throw new Error('Timed out waiting for UI ack.');
@@ -5690,8 +5674,7 @@ function printUsage(command) {
   console.log('  --window-size  Window size for ui display/series/table');
   console.log('  --window-start Window start tick for ui window range');
   console.log('  --window-end   Window end tick for ui window range');
-  console.log('  --auto-scroll  Auto-scroll enable/disable (true|false)');
-  console.log('  --enabled      Enable/disable ui fullscreen (true|false)');
+  console.log('  --enabled      Enable/disable ui auto-scroll/fullscreen (true|false)');
   console.log('  --annotation-id Annotation id for ui annotation commands');
   console.log('  --subtitle-id  Subtitle id for ui subtitle commands');
   console.log('  --start-tick   Subtitle start tick');
