@@ -1046,10 +1046,12 @@ async function handleUi(argvRest) {
         throw new Error('Provide --mode file|live for ui mode.');
       }
       sendWsMessage(socket, { type: 'set_source_mode', mode, request_id: requestId });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('mode', uiUrl, requestId, { mode });
       return;
     }
 
@@ -1065,10 +1067,15 @@ async function handleUi(argvRest) {
         captureId: captureId ? String(captureId) : undefined,
         request_id: requestId,
       });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('live-source', uiUrl, requestId, {
+        source: String(source),
+        captureId: captureId ? String(captureId) : undefined,
+      });
       return;
     }
 
@@ -1089,14 +1096,17 @@ async function handleUi(argvRest) {
         filename: filename ? String(filename) : undefined,
         request_id: requestId,
       });
-      const ack = await waitForWsResponse(socket, {
+      await waitForUiAckOrThrow(socket, {
         requestId,
-        types: ['ack'],
         timeoutMs: timeoutMs + 2000,
+        errorMessage: 'Timed out waiting for UI ack.',
       });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      printUiSuccess('live-start', uiUrl, requestId, {
+        source: String(source),
+        captureId: captureId ? String(captureId) : undefined,
+        filename: filename ? String(filename) : undefined,
+        pollIntervalMs: pollIntervalMs ?? (pollSeconds ? Math.round(pollSeconds * 1000) : undefined),
+      });
       return;
     }
 
@@ -1107,10 +1117,14 @@ async function handleUi(argvRest) {
         captureId: captureId ? String(captureId) : undefined,
         request_id: requestId,
       });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('live-stop', uiUrl, requestId, {
+        captureId: captureId ? String(captureId) : undefined,
+      });
       return;
     }
 
@@ -1129,10 +1143,15 @@ async function handleUi(argvRest) {
         path,
         request_id: requestId,
       });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('select', uiUrl, requestId, {
+        captureId: String(captureId),
+        path,
+      });
       return;
     }
 
@@ -1146,10 +1165,14 @@ async function handleUi(argvRest) {
         captureId: String(captureId),
         request_id: requestId,
       });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('remove-capture', uiUrl, requestId, {
+        captureId: String(captureId),
+      });
       return;
     }
 
@@ -1165,37 +1188,48 @@ async function handleUi(argvRest) {
         fullPath: String(fullPath),
         request_id: requestId,
       });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('deselect', uiUrl, requestId, {
+        captureId: String(captureId),
+        fullPath: String(fullPath),
+      });
       return;
     }
 
     if (subcommand === 'clear') {
       sendWsMessage(socket, { type: 'clear_selection', request_id: requestId });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('clear', uiUrl, requestId);
       return;
     }
 
     if (subcommand === 'clear-captures') {
       sendWsMessage(socket, { type: 'clear_captures', request_id: requestId });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('clear-captures', uiUrl, requestId);
       return;
     }
 
     if (subcommand === 'play' || subcommand === 'pause' || subcommand === 'stop') {
       sendWsMessage(socket, { type: subcommand, request_id: requestId });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId);
       return;
     }
 
@@ -1205,10 +1239,12 @@ async function handleUi(argvRest) {
         throw new Error('Provide --tick for ui seek.');
       }
       sendWsMessage(socket, { type: 'seek', tick, request_id: requestId });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('seek', uiUrl, requestId, { tick });
       return;
     }
 
@@ -1218,10 +1254,12 @@ async function handleUi(argvRest) {
         throw new Error('Provide --speed for ui speed.');
       }
       sendWsMessage(socket, { type: 'set_speed', speed, request_id: requestId });
-      const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
-      if (!ack) {
-        throw new Error('Timed out waiting for UI ack.');
-      }
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('speed', uiUrl, requestId, { speed });
       return;
     }
 
@@ -1657,7 +1695,12 @@ async function handleUiServe(options) {
       discoveredAt: new Date().toISOString(),
     };
     saveUiState(uiStateFile, uiState);
-    console.log(`[ui] Metrics UI already running at ${probe.url}`);
+    printJson({
+      status: 'running',
+      url: probe.url,
+      pid,
+      stateFile: uiStateFile,
+    });
     return;
   }
 
@@ -5256,6 +5299,24 @@ async function waitForWsResponse(socket, { requestId, types, timeoutMs = 2000 })
 
     socket.addEventListener('message', onMessage);
     socket.addEventListener('error', onError);
+  });
+}
+
+async function waitForUiAckOrThrow(socket, { requestId, timeoutMs = 2000, errorMessage }) {
+  const ack = await waitForWsResponse(socket, { requestId, types: ['ack'], timeoutMs });
+  if (!ack) {
+    throw new Error(errorMessage || 'Timed out waiting for UI ack.');
+  }
+  return ack;
+}
+
+function printUiSuccess(action, uiUrl, requestId, details = {}) {
+  printJson({
+    status: 'success',
+    action,
+    uiUrl,
+    requestId,
+    ...details,
   });
 }
 
