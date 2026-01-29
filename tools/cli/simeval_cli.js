@@ -1607,6 +1607,31 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'render-debug') {
+      const captureId = options['capture-id'];
+      const windowSize = parseOptionalNumber(options['window-size'], 'window-size');
+      const windowStart = parseOptionalNumber(options['window-start'], 'window-start');
+      const windowEnd = parseOptionalNumber(options['window-end'], 'window-end');
+      sendWsMessage(socket, {
+        type: 'get_render_debug',
+        captureId: captureId ? String(captureId) : undefined,
+        windowSize: windowSize ?? undefined,
+        windowStart: windowStart ?? undefined,
+        windowEnd: windowEnd ?? undefined,
+        request_id: requestId,
+      });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['render_debug'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI render debug.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
     if (subcommand === 'memory-stats') {
       sendWsMessage(socket, { type: 'get_memory_stats', request_id: requestId });
       const response = await waitForWsResponse(socket, {
@@ -5759,7 +5784,7 @@ function printUsage(command) {
   console.log('  window-size | window-start | window-end | window-range | auto-scroll | fullscreen');
   console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  display-snapshot | series-window | render-table | memory-stats | metric-coverage\n');
+  console.log('  display-snapshot | series-window | render-table | render-debug | memory-stats | metric-coverage\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
   console.log('  --notes        Run notes (create)');
