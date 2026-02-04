@@ -1018,6 +1018,18 @@ async function handleUi(argvRest) {
   if (!uiInput) {
     throw new Error('Provide --ui to connect to the metrics UI.');
   }
+
+  if (subcommand === 'live-status') {
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a http(s):// URL for live-status.');
+    }
+    const url = buildUrl(uiHttpUrl, '/api/live/status');
+    const response = await requestJson(url, { method: 'GET' });
+    printJson(response);
+    return;
+  }
+
   const uiUrl = await resolveUiWsUrl(uiInput);
   if (!uiUrl) {
     throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
@@ -5779,7 +5791,7 @@ function printUsage(command) {
   console.log('  --ui-mode      dev (default) or start');
   console.log('  --skip-install Skip npm install if node_modules missing\n');
   console.log('UI subcommands:');
-  console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop');
+  console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop | live-status');
   console.log('  select | deselect | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
   console.log('  window-size | window-start | window-end | window-range | auto-scroll | fullscreen');
   console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
