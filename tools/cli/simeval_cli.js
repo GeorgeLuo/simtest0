@@ -1858,7 +1858,7 @@ async function handleUi(argvRest) {
       printJson({
         status: issues.length > 0 ? 'discrepancy' : 'ok',
         checkedAt: new Date().toISOString(),
-        captureId: captureId ? String(captureId) : null,
+        captureId: captureId ? String(captureId) : 'all',
         windowStart: effectiveWindowStart,
         windowEnd: effectiveWindowEnd,
         windowSize: effectiveWindowSize,
