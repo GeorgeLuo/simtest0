@@ -1644,6 +1644,223 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'check') {
+      const captureId = options['capture-id'];
+      const windowSize = parseOptionalNumber(options['window-size'], 'window-size');
+      const windowStart = parseOptionalNumber(options['window-start'], 'window-start');
+      const windowEnd = parseOptionalNumber(options['window-end'], 'window-end');
+
+      sendWsMessage(socket, { type: 'get_state', request_id: requestId });
+      const stateResponse = await waitForWsResponse(socket, {
+        requestId,
+        types: ['state_update'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!stateResponse) {
+        throw new Error('Timed out waiting for UI state.');
+      }
+      const state = stateResponse.payload ?? stateResponse;
+      const captures = Array.isArray(state.captures) ? state.captures : [];
+      const selectedMetrics = Array.isArray(state.selectedMetrics) ? state.selectedMetrics : [];
+      const targetCaptureIds = captureId
+        ? [String(captureId)]
+        : captures.map((capture) => capture.id);
+
+      sendWsMessage(socket, {
+        type: 'get_render_debug',
+        captureId: captureId ? String(captureId) : undefined,
+        windowSize: windowSize ?? undefined,
+        windowStart: windowStart ?? undefined,
+        windowEnd: windowEnd ?? undefined,
+        request_id: requestId,
+      });
+      const debugResponse = await waitForWsResponse(socket, {
+        requestId,
+        types: ['render_debug'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!debugResponse) {
+        throw new Error('Timed out waiting for UI render debug.');
+      }
+      const debug = debugResponse.payload ?? debugResponse;
+      const debugCaptures = Array.isArray(debug.captures) ? debug.captures : [];
+      const debugById = new Map(debugCaptures.map((entry) => [entry.id, entry]));
+
+      const issues = [];
+      const captureSummaries = [];
+
+      function compressRanges(list) {
+        const ranges = [];
+        for (const value of list) {
+          if (!ranges.length || value !== ranges[ranges.length - 1][1] + 1) {
+            ranges.push([value, value]);
+          } else {
+            ranges[ranges.length - 1][1] = value;
+          }
+        }
+        return ranges;
+      }
+
+      function findGapRanges(sortedValues) {
+        const gaps = [];
+        for (let i = 1; i < sortedValues.length; i += 1) {
+          const prev = sortedValues[i - 1];
+          const next = sortedValues[i];
+          if (next > prev + 1) {
+            gaps.push([prev + 1, next - 1]);
+          }
+        }
+        return gaps;
+      }
+
+      for (const id of targetCaptureIds) {
+        const debugCapture = debugById.get(id);
+        const captureState = captures.find((entry) => entry.id === id);
+        if (!debugCapture && !captureState) {
+          issues.push({
+            type: 'missing-capture',
+            captureId: id,
+            message: `Capture ${id} not found in UI state.`,
+          });
+          continue;
+        }
+
+        const selectedForCapture = selectedMetrics.filter((metric) => metric.captureId === id);
+        const selectedCount = selectedForCapture.length;
+
+        const summary = {
+          captureId: id,
+          tickCount: captureState?.tickCount ?? debugCapture?.tickCount ?? null,
+          recordCount: debugCapture?.recordCount ?? null,
+          selectedMetricCount: selectedCount,
+          duplicateTicks: 0,
+          nullTickRanges: [],
+          gapRanges: [],
+          windowStart: debug?.windowStart ?? null,
+          windowEnd: debug?.windowEnd ?? null,
+        };
+
+        if (debugCapture) {
+          if (
+            typeof debugCapture.recordCount === 'number'
+            && typeof debugCapture.tickCount === 'number'
+            && debugCapture.recordCount > debugCapture.tickCount
+          ) {
+            issues.push({
+              type: 'record-count-exceeds-tick-count',
+              captureId: id,
+              recordCount: debugCapture.recordCount,
+              tickCount: debugCapture.tickCount,
+            });
+          }
+
+          if (debugCapture.recordCount === 0 && selectedCount > 0) {
+            issues.push({
+              type: 'no-records-for-selected-metrics',
+              captureId: id,
+            });
+          }
+        }
+
+        if (selectedCount === 0) {
+          captureSummaries.push(summary);
+          continue;
+        }
+
+        const tableRequestId = buildMessageId(null, `ui-check-table-${id}`);
+        sendWsMessage(socket, {
+          type: 'get_render_table',
+          captureId: String(id),
+          windowSize: windowSize ?? undefined,
+          windowStart: windowStart ?? undefined,
+          windowEnd: windowEnd ?? undefined,
+          request_id: tableRequestId,
+        });
+        const tableResponse = await waitForWsResponse(socket, {
+          requestId: tableRequestId,
+          types: ['render_table'],
+          timeoutMs: timeoutMs + 2000,
+        });
+        if (!tableResponse) {
+          issues.push({
+            type: 'render-table-timeout',
+            captureId: id,
+          });
+          captureSummaries.push(summary);
+          continue;
+        }
+
+        const table = tableResponse.payload ?? tableResponse;
+        const rows = Array.isArray(table.rows) ? table.rows : [];
+        const ticks = [];
+        const nullTicks = [];
+        const tickCounts = new Map();
+
+        rows.forEach((row) => {
+          const tick = row[0];
+          if (typeof tick !== 'number') {
+            return;
+          }
+          ticks.push(tick);
+          tickCounts.set(tick, (tickCounts.get(tick) ?? 0) + 1);
+          const values = row.slice(1);
+          if (values.some((value) => typeof value !== 'number')) {
+            nullTicks.push(tick);
+          }
+        });
+
+        const uniqueTicks = Array.from(new Set(ticks)).sort((a, b) => a - b);
+        const duplicateTicks = Array.from(tickCounts.values()).reduce(
+          (total, count) => total + Math.max(0, count - 1),
+          0,
+        );
+        const nullRanges = compressRanges(nullTicks.sort((a, b) => a - b));
+        const gapRanges = findGapRanges(uniqueTicks);
+
+        summary.duplicateTicks = duplicateTicks;
+        summary.nullTickRanges = nullRanges;
+        summary.gapRanges = gapRanges;
+        summary.windowStart = typeof table.windowStart === 'number' ? table.windowStart : summary.windowStart;
+        summary.windowEnd = typeof table.windowEnd === 'number' ? table.windowEnd : summary.windowEnd;
+
+        if (duplicateTicks > 0) {
+          issues.push({
+            type: 'duplicate-ticks',
+            captureId: id,
+            count: duplicateTicks,
+          });
+        }
+        if (nullRanges.length > 0) {
+          issues.push({
+            type: 'null-ticks',
+            captureId: id,
+            ranges: nullRanges,
+          });
+        }
+        if (gapRanges.length > 0) {
+          issues.push({
+            type: 'missing-ticks',
+            captureId: id,
+            ranges: gapRanges,
+          });
+        }
+
+        captureSummaries.push(summary);
+      }
+
+      printJson({
+        status: issues.length > 0 ? 'discrepancy' : 'ok',
+        checkedAt: new Date().toISOString(),
+        captureId: captureId ? String(captureId) : null,
+        windowStart: windowStart ?? null,
+        windowEnd: windowEnd ?? null,
+        windowSize: windowSize ?? null,
+        issues,
+        captures: captureSummaries,
+      });
+      return;
+    }
+
     if (subcommand === 'memory-stats') {
       sendWsMessage(socket, { type: 'get_memory_stats', request_id: requestId });
       const response = await waitForWsResponse(socket, {
@@ -5796,7 +6013,7 @@ function printUsage(command) {
   console.log('  window-size | window-start | window-end | window-range | auto-scroll | fullscreen');
   console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  display-snapshot | series-window | render-table | render-debug | memory-stats | metric-coverage\n');
+  console.log('  display-snapshot | series-window | render-table | render-debug | memory-stats | metric-coverage | check\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
   console.log('  --notes        Run notes (create)');
@@ -5893,6 +6110,7 @@ function printUsage(command) {
   console.log('  simeval ui serve --ui-dir Stream-Metrics-UI');
   console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5000/ws/control');
   console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5000/ws/control');
+  console.log('  simeval ui check --capture-id live-a --ui ws://localhost:5000/ws/control');
   console.log('  ');
   console.log('  # Runs + logs');
   console.log('  simeval run create --name demo --server http://127.0.0.1:3000/api');
