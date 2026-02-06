@@ -1848,13 +1848,20 @@ async function handleUi(argvRest) {
         captureSummaries.push(summary);
       }
 
+      const effectiveWindowStart =
+        typeof debug?.windowStart === 'number' ? debug.windowStart : (windowStart ?? null);
+      const effectiveWindowEnd =
+        typeof debug?.windowEnd === 'number' ? debug.windowEnd : (windowEnd ?? null);
+      const effectiveWindowSize =
+        typeof debug?.windowSize === 'number' ? debug.windowSize : (windowSize ?? null);
+
       printJson({
         status: issues.length > 0 ? 'discrepancy' : 'ok',
         checkedAt: new Date().toISOString(),
         captureId: captureId ? String(captureId) : null,
-        windowStart: windowStart ?? null,
-        windowEnd: windowEnd ?? null,
-        windowSize: windowSize ?? null,
+        windowStart: effectiveWindowStart,
+        windowEnd: effectiveWindowEnd,
+        windowSize: effectiveWindowSize,
         issues,
         captures: captureSummaries,
       });
