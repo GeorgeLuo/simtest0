@@ -432,6 +432,14 @@ function buildBuildArgs(options, snapshot) {
   if (diskSize) {
     args.push('--disk-size', String(diskSize));
   }
+  const memory = parseOptionalNumber(options.memory, 'memory');
+  if (memory) {
+    args.push('--memory', String(memory));
+  }
+  const vcpus = parseOptionalNumber(options.vcpus, 'vcpus');
+  if (vcpus) {
+    args.push('--vcpus', String(vcpus));
+  }
   if (options['repo-url']) {
     args.push('--repo-url', String(options['repo-url']));
   }
@@ -483,6 +491,14 @@ function buildCloneArgs(options, snapshot) {
   const diskSize = options['disk-size'] ?? options['disk'];
   if (diskSize) {
     args.push('--disk-size', String(diskSize));
+  }
+  const memory = parseOptionalNumber(options.memory, 'memory');
+  if (memory) {
+    args.push('--memory', String(memory));
+  }
+  const vcpus = parseOptionalNumber(options.vcpus, 'vcpus');
+  if (vcpus) {
+    args.push('--vcpus', String(vcpus));
   }
   const timeout = parseOptionalNumber(options.timeout, 'timeout');
   if (timeout) {
@@ -861,6 +877,8 @@ function printUsage(message) {
     console.log('  --auth-mode MODE          expose-http auth mode');
     console.log('  --metadata key=value      Metadata entries (repeatable)');
     console.log('  --disk-size MB            Disk size override');
+    console.log('  --memory MB               Memory size override');
+    console.log('  --vcpus COUNT             vCPU count override');
     console.log('  --skip-update             Skip morphcloud update');
     console.log('  --require-update          Fail if morphcloud update is unavailable');
     console.log('  --state PATH              State file location');

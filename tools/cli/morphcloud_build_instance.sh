@@ -26,6 +26,8 @@ Optional:
   --name NAME             Metadata name for the instance (default: sim-eval-<timestamp>)
   --metadata key=value    Extra metadata to attach (repeatable)
   --disk-size MB          Disk size in MB for the new instance (default: 2048)
+  --memory MB             Memory size in MB for the new instance
+  --vcpus COUNT           Number of vCPUs for the new instance
   --repo-url URL          Git repository to clone (default: https://github.com/GeorgeLuo/simtest0.git)
   --repo-branch BRANCH    Branch to checkout (default: main)
   --service-name NAME     Name for systemd + exposed HTTP service (default: simeval)
@@ -75,6 +77,8 @@ EXPOSE_AUTH_MODE="none"
 SKIP_TESTS=0
 KEEP_ON_FAILURE=0
 DISK_SIZE="2048"
+MEMORY_SIZE=""
+VCPUS=""
 METADATA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -93,6 +97,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --disk-size)
       DISK_SIZE="$2"
+      shift 2
+      ;;
+    --memory)
+      MEMORY_SIZE="$2"
+      shift 2
+      ;;
+    --vcpus)
+      VCPUS="$2"
       shift 2
       ;;
     --repo-url)
@@ -201,6 +213,12 @@ if ((${#METADATA_ARGS[@]})); then
 fi
 if [[ -n "$DISK_SIZE" ]]; then
   BOOT_ARGS+=(--disk-size "$DISK_SIZE")
+fi
+if [[ -n "$MEMORY_SIZE" ]]; then
+  BOOT_ARGS+=(--memory "$MEMORY_SIZE")
+fi
+if [[ -n "$VCPUS" ]]; then
+  BOOT_ARGS+=(--vcpus "$VCPUS")
 fi
 
 log "Booting instance from snapshot $SNAPSHOT_ID..."

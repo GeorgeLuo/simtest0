@@ -142,7 +142,7 @@ async function handleStatus(argvRest) {
 }
 
 async function handleStatusAll(options) {
-  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 2000;
+  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 5000;
   const checkedAt = new Date().toISOString();
   const pruneLocal = Boolean(options.prune);
   const pruneMorph = Boolean(options['prune-morph'] || options['stop-morph']);
@@ -1048,7 +1048,7 @@ async function handleUi(argvRest) {
     throw new Error('Failed to register with the UI WebSocket.');
   }
 
-  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 2000;
+  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 5000;
   const requestId = buildMessageId(null, `ui-${subcommand}`);
 
   try {
@@ -1167,6 +1167,33 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'analysis-select') {
+      const captureId = options['capture-id'];
+      if (!captureId) {
+        throw new Error('Provide --capture-id for ui analysis-select.');
+      }
+      const path = parsePathInput(options.path ?? options['path-json']);
+      if (!path || path.length === 0) {
+        throw new Error('Provide --path (JSON array recommended) for ui analysis-select.');
+      }
+      sendWsMessage(socket, {
+        type: 'select_analysis_metric',
+        captureId: String(captureId),
+        path,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('analysis-select', uiUrl, requestId, {
+        captureId: String(captureId),
+        path,
+      });
+      return;
+    }
+
     if (subcommand === 'remove-capture') {
       const captureId = options['capture-id'];
       if (!captureId) {
@@ -1212,6 +1239,31 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'analysis-deselect') {
+      const captureId = options['capture-id'];
+      const path = parsePathInput(options.path ?? options['path-json']);
+      const fullPath = options['full-path'] || options.fullPath || (path ? path.join('.') : null);
+      if (!captureId || !fullPath) {
+        throw new Error('Provide --capture-id and --full-path (or --path) for ui analysis-deselect.');
+      }
+      sendWsMessage(socket, {
+        type: 'deselect_analysis_metric',
+        captureId: String(captureId),
+        fullPath: String(fullPath),
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('analysis-deselect', uiUrl, requestId, {
+        captureId: String(captureId),
+        fullPath: String(fullPath),
+      });
+      return;
+    }
+
     if (subcommand === 'clear') {
       sendWsMessage(socket, { type: 'clear_selection', request_id: requestId });
       await waitForUiAckOrThrow(socket, {
@@ -1220,6 +1272,17 @@ async function handleUi(argvRest) {
         errorMessage: 'Timed out waiting for UI ack.',
       });
       printUiSuccess('clear', uiUrl, requestId);
+      return;
+    }
+
+    if (subcommand === 'analysis-clear') {
+      sendWsMessage(socket, { type: 'clear_analysis_metrics', request_id: requestId });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('analysis-clear', uiUrl, requestId);
       return;
     }
 
@@ -1644,6 +1707,20 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'debug') {
+      sendWsMessage(socket, { type: 'get_ui_debug', request_id: requestId });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['ui_debug'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for UI debug.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
     if (subcommand === 'check') {
       const captureId = options['capture-id'];
       const windowSize = parseOptionalNumber(options['window-size'], 'window-size');
@@ -1660,6 +1737,12 @@ async function handleUi(argvRest) {
         throw new Error('Timed out waiting for UI state.');
       }
       const state = stateResponse.payload ?? stateResponse;
+      const stateWindowStart = typeof state.windowStart === 'number' ? state.windowStart : 1;
+      const stateWindowSize = typeof state.windowSize === 'number' ? state.windowSize : 1;
+      const stateWindowEnd =
+        typeof state.windowEnd === 'number'
+          ? state.windowEnd
+          : Math.max(1, stateWindowStart + Math.max(1, stateWindowSize) - 1);
       const captures = Array.isArray(state.captures) ? state.captures : [];
       const selectedMetrics = Array.isArray(state.selectedMetrics) ? state.selectedMetrics : [];
       const targetCaptureIds = captureId
@@ -1725,19 +1808,32 @@ async function handleUi(argvRest) {
           continue;
         }
 
+        const tickCount =
+          typeof captureState?.tickCount === 'number'
+            ? captureState.tickCount
+            : (typeof debugCapture?.tickCount === 'number' ? debugCapture.tickCount : 0);
+        const recordCount =
+          typeof debugCapture?.recordCount === 'number' ? debugCapture.recordCount : 0;
+
         const selectedForCapture = selectedMetrics.filter((metric) => metric.captureId === id);
         const selectedCount = selectedForCapture.length;
 
         const summary = {
           captureId: id,
-          tickCount: captureState?.tickCount ?? debugCapture?.tickCount ?? null,
-          recordCount: debugCapture?.recordCount ?? null,
+          tickCount,
+          recordCount,
           selectedMetricCount: selectedCount,
           duplicateTicks: 0,
           nullTickRanges: [],
           gapRanges: [],
-          windowStart: debug?.windowStart ?? null,
-          windowEnd: debug?.windowEnd ?? null,
+          windowStart:
+            typeof debug?.windowStart === 'number'
+              ? debug.windowStart
+              : (typeof windowStart === 'number' ? windowStart : stateWindowStart),
+          windowEnd:
+            typeof debug?.windowEnd === 'number'
+              ? debug.windowEnd
+              : (typeof windowEnd === 'number' ? windowEnd : stateWindowEnd),
         };
 
         if (debugCapture) {
@@ -1849,11 +1945,19 @@ async function handleUi(argvRest) {
       }
 
       const effectiveWindowStart =
-        typeof debug?.windowStart === 'number' ? debug.windowStart : (windowStart ?? null);
+        typeof debug?.windowStart === 'number'
+          ? debug.windowStart
+          : (typeof windowStart === 'number' ? windowStart : stateWindowStart);
       const effectiveWindowEnd =
-        typeof debug?.windowEnd === 'number' ? debug.windowEnd : (windowEnd ?? null);
+        typeof debug?.windowEnd === 'number'
+          ? debug.windowEnd
+          : (typeof windowEnd === 'number' ? windowEnd : stateWindowEnd);
       const effectiveWindowSize =
-        typeof debug?.windowSize === 'number' ? debug.windowSize : (windowSize ?? null);
+        typeof debug?.windowSize === 'number'
+          ? debug.windowSize
+          : (typeof windowSize === 'number'
+              ? windowSize
+              : Math.max(1, effectiveWindowEnd - effectiveWindowStart + 1));
 
       printJson({
         status: issues.length > 0 ? 'discrepancy' : 'ok',
@@ -4404,7 +4508,7 @@ async function deployStop(options) {
   const stateFile = resolveDeployStateFile(options);
   const state = loadDeployState(stateFile);
   const signal = typeof options.signal === 'string' ? options.signal : 'SIGTERM';
-  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 2000;
+  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 5000;
   const results = [];
 
   if (options.all) {
@@ -4645,7 +4749,7 @@ function resolveUiServeOptions(options) {
     options['ui-mode'] ?? CLI_CONFIG?.data?.uiMode ?? 'dev',
   );
   const uiDir = resolveUiDirectory(options['ui-dir'], CLI_CONFIG?.data?.uiDir);
-  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 1000;
+  const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 5000;
   const skipInstall = Boolean(options['skip-install'] ?? options['no-install']);
 
   return {
@@ -6016,11 +6120,11 @@ function printUsage(command) {
   console.log('  --skip-install Skip npm install if node_modules missing\n');
   console.log('UI subcommands:');
   console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop | live-status');
-  console.log('  select | deselect | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
+  console.log('  select | deselect | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
   console.log('  window-size | window-start | window-end | window-range | auto-scroll | fullscreen');
   console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  display-snapshot | series-window | render-table | render-debug | memory-stats | metric-coverage | check\n');
+  console.log('  display-snapshot | series-window | render-table | render-debug | debug | memory-stats | metric-coverage | check\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
   console.log('  --notes        Run notes (create)');
@@ -6112,12 +6216,14 @@ function printUsage(command) {
   console.log('  ');
   console.log('  # Stream capture + UI');
   console.log('  simeval stream capture --stream simulation --frames 50 --out sim.jsonl');
-  console.log('  simeval stream forward --stream evaluation --frames 50 --ui ws://localhost:5000/ws/control');
+  console.log('  simeval stream forward --stream evaluation --frames 50 --ui ws://localhost:5050/ws/control');
   console.log('  simeval stream upload --file capture.jsonl --ui http://localhost:5050');
   console.log('  simeval ui serve --ui-dir Stream-Metrics-UI');
-  console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5000/ws/control');
-  console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5000/ws/control');
-  console.log('  simeval ui check --capture-id live-a --ui ws://localhost:5000/ws/control');
+  console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui analysis-select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui debug --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui check --capture-id live-a --ui ws://localhost:5050/ws/control');
   console.log('  ');
   console.log('  # Runs + logs');
   console.log('  simeval run create --name demo --server http://127.0.0.1:3000/api');

@@ -18,6 +18,8 @@
  *   --auth-mode MODE         expose-http auth mode (none|api_key, default: none)
  *   --metadata key=value     Additional metadata entries (repeatable)
  *   --disk-size MB           Optional disk size override for morphcloud boot
+ *   --memory MB              Memory size in MB for the new instance
+ *   --vcpus COUNT            Number of vCPUs for the new instance
  *   --timeout SECONDS        Max time to wait for ready status (default: 300)
  *   --poll-interval SECONDS  Poll interval while waiting for ready (default: 5)
  *   --json                   Emit final summary as JSON (progress logs stay on stderr)
@@ -83,6 +85,12 @@ async function main() {
   }
   if (args.diskSize) {
     bootArgs.push('--disk-size', String(args.diskSize));
+  }
+  if (args.memory) {
+    bootArgs.push('--memory', String(args.memory));
+  }
+  if (args.vcpus) {
+    bootArgs.push('--vcpus', String(args.vcpus));
   }
   const bootResult = await runMorphcloud(bootArgs);
   const instanceId = parseInstanceId(bootResult);
@@ -182,6 +190,12 @@ function parseArgs(argv) {
       case 'disk-size':
         result.diskSize = value;
         break;
+      case 'memory':
+        result.memory = value;
+        break;
+      case 'vcpus':
+        result.vcpus = value;
+        break;
       case 'timeout':
         result.timeout = Number(value);
         if (!Number.isFinite(result.timeout) || result.timeout <= 0) {
@@ -213,6 +227,8 @@ Options:
   --auth-mode MODE         expose-http auth mode (none|api_key, default: none)
   --metadata key=value     Additional metadata entries (repeatable)
   --disk-size MB           Optional disk size override for morphcloud boot
+  --memory MB              Memory size in MB for the new instance
+  --vcpus COUNT            Number of vCPUs for the new instance
   --timeout SECONDS        Max time to wait for ready status (default: 300)
   --poll-interval SECONDS  Poll interval while waiting for ready (default: 5)
   --json                   Emit the final summary as JSON
