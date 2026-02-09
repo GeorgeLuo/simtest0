@@ -1,0 +1,53 @@
+{
+  "name": "@simeval/ecs",
+  "version": "0.1.0",
+  "description": "Reusable ECS engine and simulation players for SimEval.",
+  "keywords": [
+    "ecs",
+    "simulation",
+    "simeval"
+  ],
+  "author": "",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GeorgeLuo/simtest0.git",
+    "directory": "packages/ecs"
+  },
+  "bugs": {
+    "url": "https://github.com/GeorgeLuo/simtest0/issues"
+  },
+  "homepage": "https://github.com/GeorgeLuo/simtest0/tree/main/packages/ecs",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}

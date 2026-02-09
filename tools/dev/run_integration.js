@@ -411,8 +411,7 @@ async function stageEvaluationMonitor(workspaceDir) {
 
 function generateMonitorSource() {
   return `'use strict';
-const { join } = require('path');
-const { System } = require(join(__dirname, '../../../dist/core/systems/System'));
+const { System } = require('@simeval/ecs');
 
 const FrameComponent = {
   id: 'evaluation.frame',
@@ -558,8 +557,7 @@ module.exports = {
 
 function generateSimulationSystemSource() {
   return `'use strict';
-const { join } = require('path');
-const { System } = require(join(__dirname, '../../../dist/core/systems/System'));
+const { System } = require('@simeval/ecs');
 
 const TemperatureComponent = {
   id: 'temperature',

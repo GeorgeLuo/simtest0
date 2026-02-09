@@ -2,20 +2,20 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import type { Dirent } from 'fs';
 import { createServer, Server } from './server';
-import type { IOPlayer } from './core/IOPlayer';
-import { SimulationPlayer } from './core/simplayer/SimulationPlayer';
-import { EvaluationPlayer, EvaluationMessageType } from './core/evalplayer/EvaluationPlayer';
-import { EntityManager } from './core/entity/EntityManager';
-import { ComponentManager } from './core/components/ComponentManager';
-import type { ComponentType } from './core/components/ComponentType';
-import { SystemManager } from './core/systems/SystemManager';
-import { Bus } from './core/messaging/Bus';
-import { FrameFilter } from './core/messaging/outbound/FrameFilter';
-import type { Frame } from './core/messaging/outbound/Frame';
-import type { Acknowledgement } from './core/messaging/outbound/Acknowledgement';
 import type { SimulationSystemDescriptor, SimulationComponentDescriptor } from './routes/simulation';
 import type { EvaluationComponentDescriptor, EvaluationSystemDescriptor } from './routes/evaluation';
-import { System, type SystemContext } from './core/systems/System';
+import {
+  SimulationPlayer,
+  EvaluationPlayer,
+  EvaluationMessageType,
+  EntityManager,
+  ComponentManager,
+  SystemManager,
+  Bus,
+  FrameFilter,
+  System,
+} from '@simeval/ecs';
+import type { IOPlayer, ComponentType, Frame, Acknowledgement, SystemContext } from '@simeval/ecs';
 
 const DEFAULT_PORT = 3000;
 

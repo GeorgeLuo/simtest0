@@ -10,6 +10,9 @@
     "test": "jest",
     "test:watch": "jest --watchAll"
   },
+  "dependencies": {
+    "@simeval/ecs": "file:../../packages/ecs"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

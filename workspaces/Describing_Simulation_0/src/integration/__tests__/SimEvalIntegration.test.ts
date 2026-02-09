@@ -1,6 +1,5 @@
 import { createServer, type BootstrapOptions } from '../../server';
-import type { IOPlayer } from '../../core/IOPlayer';
-import type { EvaluationPlayer } from '../../core/evalplayer/EvaluationPlayer';
+import type { IOPlayer, EvaluationPlayer } from '@simeval/ecs';
 import { Router } from '../../routes/router';
 
 jest.mock('../../routes/simulation', () => ({

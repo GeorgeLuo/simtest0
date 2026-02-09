@@ -1,8 +1,5 @@
 import http from 'http';
-import type { EvaluationPlayer } from './core/evalplayer/EvaluationPlayer';
-import type { IOPlayer } from './core/IOPlayer';
-import type { System } from './core/systems/System';
-import type { ComponentType } from './core/components/ComponentType';
+import type { EvaluationPlayer, IOPlayer, System, ComponentType } from '@simeval/ecs';
 import { Router } from './routes/router';
 import {
   registerSimulationRoutes,
