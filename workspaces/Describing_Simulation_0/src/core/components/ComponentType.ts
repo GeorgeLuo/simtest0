@@ -1,1 +1,1 @@
-export type { ComponentType, ComponentInstance } from '@simeval/ecs';
+export type { ComponentType, ComponentInstance } from '@georgeluo/ecs';

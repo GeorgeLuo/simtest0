@@ -1,1 +1,1 @@
-export { SystemManager } from '@simeval/ecs';
+export { SystemManager } from '@georgeluo/ecs';

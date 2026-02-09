@@ -5,7 +5,7 @@ SimEval server workspace plus CLI tooling.
 ## Repository Layout
 
 - `workspaces/Describing_Simulation_0/` — SimEval server (TypeScript; `dist/main.js` runtime).
-- `packages/ecs/` — reusable ECS library package (`@simeval/ecs`).
+- `packages/ecs/` — reusable ECS library package (`@georgeluo/ecs`).
 - `tools/cli/simeval_cli.js` — CLI (deploy, plugins, playback, stream capture/forward/upload, UI control, run metadata, codebase, wait, config, log, fleet).
 - `tools/cli/morphcloud_distributor.js` — fleet CLI for provisioning Morphcloud SimEval servers and dispatching remote commands.
 - `tools/dev/start.sh` — Quick-start helper for local development.
@@ -30,14 +30,14 @@ npm --prefix packages/ecs install
 
 ## ECS Library
 
-`@simeval/ecs` is the canonical ECS implementation.
+`@georgeluo/ecs` is the canonical ECS implementation.
 
 - Source: `packages/ecs/src/`
 - Build output: `packages/ecs/dist/`
 - Package entry: `packages/ecs/src/index.ts`
 
 Compatibility note:
-- `workspaces/Describing_Simulation_0/src/core/**` is intentionally retained as shim files that re-export from `@simeval/ecs`.
+- `workspaces/Describing_Simulation_0/src/core/**` is intentionally retained as shim files that re-export from `@georgeluo/ecs`.
 - This preserves the original workspace/spec path layout while keeping one real implementation.
 
 Build the ECS package locally:

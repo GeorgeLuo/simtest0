@@ -1,1 +1,1 @@
-export type { Operation } from '@simeval/ecs';
+export type { Operation } from '@georgeluo/ecs';

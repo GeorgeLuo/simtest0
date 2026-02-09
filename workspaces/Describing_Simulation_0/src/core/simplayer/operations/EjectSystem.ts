@@ -1,2 +1,2 @@
-export { EjectSystem } from '@simeval/ecs';
-export type { EjectSystemPayload } from '@simeval/ecs';
+export { EjectSystem } from '@georgeluo/ecs';
+export type { EjectSystemPayload } from '@georgeluo/ecs';

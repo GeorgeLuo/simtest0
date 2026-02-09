@@ -7,8 +7,8 @@ Artifacts for Phase 2 — Artifact Creation live here. Follow the schedule outli
 - Local TypeScript toolchain configured via `package.json` and `tsconfig.json`; see scripts for `npm run build`, `npm run test`, and `npm run start`.
 - Jest with `ts-jest` is prepared for the TDD flow described in `instruction_documents/Describing_Simulation_0_simeval_implementation_guidelines.md`.
 - Runtime source files live under `src/`.
-- ECS implementation source of truth is `../../packages/ecs/src/` (`@simeval/ecs` package).
-- `src/core/**` is a compatibility shim layer that re-exports from `@simeval/ecs` to preserve historical/spec path layout.
+- ECS implementation source of truth is `../../packages/ecs/src/` (`@georgeluo/ecs` package).
+- `src/core/**` is a compatibility shim layer that re-exports from `@georgeluo/ecs` to preserve historical/spec path layout.
 - Launch the SimEval server locally with `npm run start`; the CLI logs the listening host and port once ready.
 - From the repository root, `./tools/dev/start.sh` installs dependencies if needed, starts the server in the background, and records log/PID files under `verifications/` for quick bring-up.
 - Programmatic consumers may pass `cycleIntervalMs` to `start(...)` to adjust tick pacing (default `50` ms; set to `0` in benchmarking tools for fast-cycle runs).
@@ -24,5 +24,5 @@ Artifacts for Phase 2 — Artifact Creation live here. Follow the schedule outli
 
 ## ECS Package Notes
 
-- This workspace depends on `@simeval/ecs` (currently linked via local `file:` dependency in the monorepo).
-- For external consumers, install `@simeval/ecs` via npm/pnpm/yarn after publish.
+- This workspace depends on `@georgeluo/ecs` (currently linked via local `file:` dependency in the monorepo).
+- For external consumers, install `@georgeluo/ecs` via npm/pnpm/yarn after publish.

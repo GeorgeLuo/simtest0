@@ -1,1 +1,1 @@
-export { FrameFilter } from '@simeval/ecs';
+export { FrameFilter } from '@georgeluo/ecs';

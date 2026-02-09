@@ -14,8 +14,8 @@ import {
   Bus,
   FrameFilter,
   System,
-} from '@simeval/ecs';
-import type { IOPlayer, ComponentType, Frame, Acknowledgement, SystemContext } from '@simeval/ecs';
+} from '@georgeluo/ecs';
+import type { IOPlayer, ComponentType, Frame, Acknowledgement, SystemContext } from '@georgeluo/ecs';
 
 const DEFAULT_PORT = 3000;
 

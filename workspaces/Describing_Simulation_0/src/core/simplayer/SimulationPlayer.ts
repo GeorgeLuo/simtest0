@@ -1,1 +1,1 @@
-export { SimulationPlayer, SimulationMessageType } from '@simeval/ecs';
+export { SimulationPlayer, SimulationMessageType } from '@georgeluo/ecs';

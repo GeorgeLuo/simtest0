@@ -1,4 +1,4 @@
-# @simeval/ecs
+# @georgeluo/ecs
 
 Reusable ECS core extracted from `workspaces/Describing_Simulation_0/src/core`.
 
@@ -11,15 +11,15 @@ Reusable ECS core extracted from `workspaces/Describing_Simulation_0/src/core`.
 ## Install
 
 ```bash
-npm install @simeval/ecs
+npm install @georgeluo/ecs
 ```
 
 ```bash
-pnpm add @simeval/ecs
+pnpm add @georgeluo/ecs
 ```
 
 ```bash
-yarn add @simeval/ecs
+yarn add @georgeluo/ecs
 ```
 
 For this monorepo before publish, use a local file dependency:
@@ -27,7 +27,7 @@ For this monorepo before publish, use a local file dependency:
 ```json
 {
   "dependencies": {
-    "@simeval/ecs": "file:../../packages/ecs"
+    "@georgeluo/ecs": "file:../../packages/ecs"
   }
 }
 ```
@@ -48,7 +48,7 @@ import {
   type Frame,
   type Acknowledgement,
   type System,
-} from '@simeval/ecs';
+} from '@georgeluo/ecs';
 ```
 
 ## Inject systems into EvaluationPlayer

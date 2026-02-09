@@ -1,5 +1,5 @@
 import type { Router } from './router';
-import type { PlayerStatus } from '@simeval/ecs';
+import type { PlayerStatus } from '@georgeluo/ecs';
 
 interface StatusProvider {
   describe: () => PlayerStatus;

@@ -1,1 +1,1 @@
-export { MessageHandler } from '@simeval/ecs';
+export { MessageHandler } from '@georgeluo/ecs';

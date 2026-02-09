@@ -1,2 +1,2 @@
-export { EvaluationPlayer, EvaluationMessageType } from '@simeval/ecs';
-export type { FrameRecord } from '@simeval/ecs';
+export { EvaluationPlayer, EvaluationMessageType } from '@georgeluo/ecs';
+export type { FrameRecord } from '@georgeluo/ecs';

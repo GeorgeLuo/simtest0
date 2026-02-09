@@ -1,1 +1,1 @@
-export { ComponentManager } from '@simeval/ecs';
+export { ComponentManager } from '@georgeluo/ecs';

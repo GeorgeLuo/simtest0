@@ -1,1 +1,1 @@
-export { TimeSystem } from '@simeval/ecs';
+export { TimeSystem } from '@georgeluo/ecs';

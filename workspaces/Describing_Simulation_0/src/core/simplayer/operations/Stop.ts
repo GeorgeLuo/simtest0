@@ -1,2 +1,2 @@
-export { Stop } from '@simeval/ecs';
-export type { StopPayload } from '@simeval/ecs';
+export { Stop } from '@georgeluo/ecs';
+export type { StopPayload } from '@georgeluo/ecs';

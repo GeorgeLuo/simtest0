@@ -1,1 +1,1 @@
-export { EntityManager } from '@simeval/ecs';
+export { EntityManager } from '@georgeluo/ecs';

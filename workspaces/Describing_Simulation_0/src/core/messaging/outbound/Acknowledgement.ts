@@ -1,1 +1,1 @@
-export type { Acknowledgement, AcknowledgementStatus } from '@simeval/ecs';
+export type { Acknowledgement, AcknowledgementStatus } from '@georgeluo/ecs';

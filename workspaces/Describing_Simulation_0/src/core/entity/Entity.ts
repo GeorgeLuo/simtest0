@@ -1,2 +1,2 @@
-export { createEntityId } from '@simeval/ecs';
-export type { Entity } from '@simeval/ecs';
+export { createEntityId } from '@georgeluo/ecs';
+export type { Entity } from '@georgeluo/ecs';

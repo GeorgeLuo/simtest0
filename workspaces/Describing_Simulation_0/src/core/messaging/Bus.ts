@@ -1,2 +1,2 @@
-export { Bus } from '@simeval/ecs';
-export type { BusCallback } from '@simeval/ecs';
+export { Bus } from '@georgeluo/ecs';
+export type { BusCallback } from '@georgeluo/ecs';

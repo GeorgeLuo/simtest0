@@ -411,7 +411,7 @@ async function stageEvaluationMonitor(workspaceDir) {
 
 function generateMonitorSource() {
   return `'use strict';
-const { System } = require('@simeval/ecs');
+const { System } = require('@georgeluo/ecs');
 
 const FrameComponent = {
   id: 'evaluation.frame',
@@ -557,7 +557,7 @@ module.exports = {
 
 function generateSimulationSystemSource() {
   return `'use strict';
-const { System } = require('@simeval/ecs');
+const { System } = require('@georgeluo/ecs');
 
 const TemperatureComponent = {
   id: 'temperature',

@@ -1,6 +1,6 @@
 import { registerSystemRoutes } from '../system';
 import type { Router } from '../router';
-import type { PlayerStatus } from '@simeval/ecs';
+import type { PlayerStatus } from '@georgeluo/ecs';
 
 describe('system routes', () => {
   const createRouter = () => {

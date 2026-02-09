@@ -1,2 +1,2 @@
-export { InjectFrame } from '@simeval/ecs';
-export type { InjectFramePayload } from '@simeval/ecs';
+export { InjectFrame } from '@georgeluo/ecs';
+export type { InjectFramePayload } from '@georgeluo/ecs';

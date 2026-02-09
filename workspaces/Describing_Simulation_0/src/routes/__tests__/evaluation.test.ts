@@ -1,6 +1,6 @@
 import { registerEvaluationRoutes, type EvaluationComponentDescriptor, type EvaluationSystemDescriptor } from '../evaluation';
 import type { Router } from '../router';
-import type { EvaluationPlayer, Bus, Frame, Acknowledgement, System, ComponentType } from '@simeval/ecs';
+import type { EvaluationPlayer, Bus, Frame, Acknowledgement, System, ComponentType } from '@georgeluo/ecs';
 
 describe('evaluation routes', () => {
   const createRouter = () => {

@@ -1,5 +1,5 @@
 import type { Router } from './router';
-import type { IOPlayer, Bus, Frame, Acknowledgement, System, ComponentType } from '@simeval/ecs';
+import type { IOPlayer, Bus, Frame, Acknowledgement, System, ComponentType } from '@georgeluo/ecs';
 
 type OutboundMessage = Frame | Acknowledgement;
 const SSE_CONNECTED_CHUNK = ':connected\n\n';

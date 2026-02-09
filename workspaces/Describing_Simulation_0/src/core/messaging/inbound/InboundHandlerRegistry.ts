@@ -1,1 +1,1 @@
-export { InboundHandlerRegistry } from '@simeval/ecs';
+export { InboundHandlerRegistry } from '@georgeluo/ecs';

@@ -1,2 +1,2 @@
-export { System } from '@simeval/ecs';
-export type { SystemContext } from '@simeval/ecs';
+export { System } from '@georgeluo/ecs';
+export type { SystemContext } from '@georgeluo/ecs';

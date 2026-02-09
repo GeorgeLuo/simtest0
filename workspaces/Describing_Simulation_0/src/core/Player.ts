@@ -1,2 +1,2 @@
-export { Player } from '@simeval/ecs';
-export type { PlayerState, PlayerStatus } from '@simeval/ecs';
+export { Player } from '@georgeluo/ecs';
+export type { PlayerState, PlayerStatus } from '@georgeluo/ecs';

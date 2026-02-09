@@ -1,6 +1,6 @@
 {
-  "name": "@simeval/ecs",
-  "version": "0.1.0",
+  "name": "@georgeluo/ecs",
+  "version": "0.1.1",
   "description": "Reusable ECS engine and simulation players for SimEval.",
   "keywords": [
     "ecs",

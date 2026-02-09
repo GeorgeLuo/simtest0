@@ -1,1 +1,1 @@
-export type { Frame } from '@simeval/ecs';
+export type { Frame } from '@georgeluo/ecs';

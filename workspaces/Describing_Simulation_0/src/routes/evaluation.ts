@@ -7,7 +7,7 @@ import type {
   Acknowledgement,
   System,
   ComponentType,
-} from '@simeval/ecs';
+} from '@georgeluo/ecs';
 
 type OutboundMessage = Frame | Acknowledgement;
 const SSE_CONNECTED_CHUNK = ':connected\n\n';

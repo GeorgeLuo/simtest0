@@ -1,2 +1,2 @@
-export { Pause } from '@simeval/ecs';
-export type { PausePayload } from '@simeval/ecs';
+export { Pause } from '@georgeluo/ecs';
+export type { PausePayload } from '@georgeluo/ecs';

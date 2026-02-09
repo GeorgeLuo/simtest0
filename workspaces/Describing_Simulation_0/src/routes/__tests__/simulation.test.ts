@@ -1,6 +1,6 @@
 import { registerSimulationRoutes } from '../simulation';
 import type { Router } from '../router';
-import type { IOPlayer, Bus, Frame, Acknowledgement, System } from '@simeval/ecs';
+import type { IOPlayer, Bus, Frame, Acknowledgement, System } from '@georgeluo/ecs';
 import type { SimulationSystemDescriptor } from '../simulation';
 
 describe('simulation routes', () => {

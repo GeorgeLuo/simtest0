@@ -1,1 +1,1 @@
-export { IOPlayer } from '@simeval/ecs';
+export { IOPlayer } from '@georgeluo/ecs';
