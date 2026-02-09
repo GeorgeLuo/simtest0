@@ -967,7 +967,7 @@ We have the idea that a simulation is a world model. The world exists as a simul
 
 In theory, there is a perfect description of the world by the complete enumeration of phenomena of the world, precisely codified into systems and components. Somewhere on the left tail of the spectrum in descriptive quality is a natural language idea of the world, the world of a ball descending due to the force of gravity, reduced to “a ball is falling.” Paradoxically the precise enumeration can only be said to be *correct* as internally consistent, that the frame of the world maps correctly to an external understanding. Why does this distinction matter and what correctness is missing?
 
-In the world of the falling ball, we may be able to say there’s a sense of position, of height, but we can only infer this is due to gravity, maybe gravity on earth. Then we can only guess at how to model gravity; it may be kinematics or a multi-body problem or some other concept. So many models (combinations of systems and components) can map to “a ball is falling.” Then, true correctness is not only internally consistent and consistent to an external understanding, but to a *specific* external understanding. Given the bend of this document towards generating simulation from natural language, this point gives rise to caution: 
+In the world of the falling ball, we may be able to say there’s a sense of position, of height, but we can only infer this is due to gravity, maybe gravity on earth. Then we can only guess at how to model gravity; it may be kinematics or a multi-body problem or some other concept. So, many models (combinations of systems and components) can map to “a ball is falling.” Then, true correctness is not only internally consistent and consistent to an external understanding, but to a *specific* external understanding. Given the bend of this document towards generating simulation from natural language, this point gives rise to caution: 
 
 a simulation can only be as correct as the world description is to intent.
 
@@ -1285,7 +1285,7 @@ Suppose you were to conceptualize a monolithic thing with output that matches th
 
 “Given the dataset as observations, create a world description of a realistic world that can produce the signals through causal processes.”
 
-Assuming we have a faithful world description and this is codified into ECS, we now have a proposed explanation of data. We can overlay component values to check against the original data and tune the explanation to simulate a like world. This and similar ideas are interesting and perhaps useful, and we can form a limit on the usefulness of simulation.
+Assuming we have a faithful world description and this is codified into ECS, we now have a proposed explanation of data. We can overlay component values to check against the original data and tune the explanation to simulate a like world. This and similar ideas are interesting and perhaps useful, and we can form an upper bound to the usefulness of simulation.
 
 Identifying a successful world is asking:
 
@@ -1301,6 +1301,10 @@ Now on the outer bound of the epistemic:
 
 * How can we change the world to increase the occurrence of good things?  
 * How can we change the world to reduce the occurrence of wrong things?
+
+Simulation approximates models for the world towards revealing improvements that can then be validated as a slightly different world. Our foray into simulation as explanation is intended to start with a problem space that is modest in terms of imagination. An explanation can concretely be mapped to the thing that we’re explaining and its effectiveness is graded against observed reality.
+
+#### High-Mix Manufacturing
 
 # Agentic Instructions
 
