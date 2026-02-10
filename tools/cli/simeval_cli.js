@@ -1286,6 +1286,95 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'derivation-group-create') {
+      const groupId = options['group-id'] || options.groupId || options.id;
+      const name = options.name;
+      sendWsMessage(socket, {
+        type: 'create_derivation_group',
+        groupId: groupId ? String(groupId) : undefined,
+        name: name ? String(name) : undefined,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('derivation-group-create', uiUrl, requestId, {
+        groupId: groupId ? String(groupId) : undefined,
+        name: name ? String(name) : undefined,
+      });
+      return;
+    }
+
+    if (subcommand === 'derivation-group-delete') {
+      const groupId = options['group-id'] || options.groupId || options.id;
+      if (!groupId) {
+        throw new Error('Provide --group-id for ui derivation-group-delete.');
+      }
+      sendWsMessage(socket, {
+        type: 'delete_derivation_group',
+        groupId: String(groupId),
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('derivation-group-delete', uiUrl, requestId, { groupId: String(groupId) });
+      return;
+    }
+
+    if (subcommand === 'derivation-group-active') {
+      const groupId = options['group-id'] || options.groupId || options.id;
+      if (!groupId) {
+        throw new Error('Provide --group-id for ui derivation-group-active.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_active_derivation_group',
+        groupId: String(groupId),
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('derivation-group-active', uiUrl, requestId, { groupId: String(groupId) });
+      return;
+    }
+
+    if (subcommand === 'derivation-group-update') {
+      const groupId = options['group-id'] || options.groupId || options.id;
+      if (!groupId) {
+        throw new Error('Provide --group-id for ui derivation-group-update.');
+      }
+      const newGroupId = options['new-group-id'] || options.newGroupId || options['new-id'];
+      const name = options.name;
+      if (!newGroupId && !name) {
+        throw new Error('Provide --new-group-id and/or --name for ui derivation-group-update.');
+      }
+      sendWsMessage(socket, {
+        type: 'update_derivation_group',
+        groupId: String(groupId),
+        newGroupId: newGroupId ? String(newGroupId) : undefined,
+        name: name ? String(name) : undefined,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('derivation-group-update', uiUrl, requestId, {
+        groupId: String(groupId),
+        newGroupId: newGroupId ? String(newGroupId) : undefined,
+        name: name ? String(name) : undefined,
+      });
+      return;
+    }
+
     if (subcommand === 'clear-captures') {
       sendWsMessage(socket, { type: 'clear_captures', request_id: requestId });
       await waitForUiAckOrThrow(socket, {
@@ -6095,6 +6184,8 @@ function printUsage(command) {
   console.log('  --skip-install Skip npm install for ui serve');
   console.log('  --path         Metric path (JSON array recommended for dotted keys)');
   console.log('  --full-path    Full metric path for ui deselect');
+  console.log('  --group-id     Derivation group id (ui derivation-group-*)');
+  console.log('  --new-group-id New derivation group id (ui derivation-group-update)');
   console.log('  --tick         Tick for ui seek');
   console.log('  --speed        Playback speed multiplier');
   console.log('  --window-size  Window size for ui display/series/table');
@@ -6121,6 +6212,7 @@ function printUsage(command) {
   console.log('UI subcommands:');
   console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop | live-status');
   console.log('  select | deselect | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
+  console.log('  derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update');
   console.log('  window-size | window-start | window-end | window-range | auto-scroll | fullscreen');
   console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  add-subtitle | remove-subtitle | clear-subtitles');
