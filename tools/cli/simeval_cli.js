@@ -1375,6 +1375,156 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'derivation-group-display') {
+      const groupId = options['group-id'] || options.groupId || options.id;
+      sendWsMessage(socket, {
+        type: 'set_display_derivation_group',
+        groupId: groupId ? String(groupId) : undefined,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('derivation-group-display', uiUrl, requestId, {
+        groupId: groupId ? String(groupId) : '',
+      });
+      return;
+    }
+
+    if (subcommand === 'derivation-group-reorder') {
+      const groupId = options['group-id'] || options.groupId || options.id;
+      if (!groupId) {
+        throw new Error('Provide --group-id for ui derivation-group-reorder.');
+      }
+      const fromIndex = parseOptionalInteger(
+        options['from-index'] ?? options.from,
+        'from-index',
+        { min: 0 },
+      );
+      const toIndex = parseOptionalInteger(
+        options['to-index'] ?? options.to,
+        'to-index',
+        { min: 0 },
+      );
+      if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex)) {
+        throw new Error('Provide --from-index and --to-index for ui derivation-group-reorder.');
+      }
+      sendWsMessage(socket, {
+        type: 'reorder_derivation_group_metrics',
+        groupId: String(groupId),
+        fromIndex,
+        toIndex,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('derivation-group-reorder', uiUrl, requestId, {
+        groupId: String(groupId),
+        fromIndex,
+        toIndex,
+      });
+      return;
+    }
+
+    if (subcommand === 'derivation-run') {
+      const groupId = options['group-id'] || options.groupId || options.id;
+      if (!groupId) {
+        throw new Error('Provide --group-id for ui derivation-run.');
+      }
+      const rawKind = String(options.kind ?? '').trim().toLowerCase();
+      if (rawKind !== 'diff' && rawKind !== 'moving_average') {
+        throw new Error('Provide --kind diff|moving_average for ui derivation-run.');
+      }
+      const window = parseOptionalInteger(options.window, 'window', { min: 1 });
+      const inputIndex = parseOptionalInteger(options['input-index'], 'input-index', { min: 0 });
+      const leftIndex = parseOptionalInteger(options['left-index'], 'left-index', { min: 0 });
+      const rightIndex = parseOptionalInteger(options['right-index'], 'right-index', { min: 0 });
+      const outputCaptureId =
+        options['output-capture-id'] ?? options['capture-output-id'] ?? options.outputCaptureId;
+      sendWsMessage(socket, {
+        type: 'run_derivation',
+        kind: rawKind,
+        groupId: String(groupId),
+        window: Number.isFinite(window) ? window : undefined,
+        inputIndex: Number.isFinite(inputIndex) ? inputIndex : undefined,
+        leftIndex: Number.isFinite(leftIndex) ? leftIndex : undefined,
+        rightIndex: Number.isFinite(rightIndex) ? rightIndex : undefined,
+        outputCaptureId: outputCaptureId ? String(outputCaptureId) : undefined,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('derivation-run', uiUrl, requestId, {
+        kind: rawKind,
+        groupId: String(groupId),
+        window: Number.isFinite(window) ? window : undefined,
+        inputIndex: Number.isFinite(inputIndex) ? inputIndex : undefined,
+        leftIndex: Number.isFinite(leftIndex) ? leftIndex : undefined,
+        rightIndex: Number.isFinite(rightIndex) ? rightIndex : undefined,
+        outputCaptureId: outputCaptureId ? String(outputCaptureId) : undefined,
+      });
+      return;
+    }
+
+    if (subcommand === 'derivation-plugins') {
+      sendWsMessage(socket, { type: 'get_derivation_plugins', request_id: requestId });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['derivation_plugins'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for derivation plugin list.');
+      }
+      printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'derivation-plugin-run') {
+      const groupId = options['group-id'] || options.groupId || options.id;
+      if (!groupId) {
+        throw new Error('Provide --group-id for ui derivation-plugin-run.');
+      }
+      const pluginId = options['plugin-id'] ?? options.pluginId;
+      if (!pluginId) {
+        throw new Error('Provide --plugin-id for ui derivation-plugin-run.');
+      }
+      const outputCaptureId =
+        options['output-capture-id'] ?? options['capture-output-id'] ?? options.outputCaptureId;
+      const params = parseOptionalJson(
+        options.params ?? options['params-json'],
+        'params',
+      );
+      sendWsMessage(socket, {
+        type: 'run_derivation_plugin',
+        groupId: String(groupId),
+        pluginId: String(pluginId),
+        params: params ?? undefined,
+        outputCaptureId: outputCaptureId ? String(outputCaptureId) : undefined,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('derivation-plugin-run', uiUrl, requestId, {
+        groupId: String(groupId),
+        pluginId: String(pluginId),
+        outputCaptureId: outputCaptureId ? String(outputCaptureId) : undefined,
+        params: params ?? undefined,
+      });
+      return;
+    }
+
     if (subcommand === 'clear-captures') {
       sendWsMessage(socket, { type: 'clear_captures', request_id: requestId });
       await waitForUiAckOrThrow(socket, {
@@ -5263,6 +5413,30 @@ function parseOptionalNumber(value, label) {
   return parsed;
 }
 
+function parseOptionalInteger(value, label, options = {}) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  const min = Number.isFinite(options.min) ? Number(options.min) : 0;
+  if (!Number.isInteger(parsed) || parsed < min) {
+    throw new Error(`Invalid --${label} value. Expected an integer >= ${min}.`);
+  }
+  return parsed;
+}
+
+function parseOptionalJson(value, label) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  try {
+    return JSON.parse(String(value));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid --${label} JSON: ${message}`);
+  }
+}
+
 function parsePathInput(value) {
   if (value === undefined || value === null) {
     return null;
@@ -6186,6 +6360,16 @@ function printUsage(command) {
   console.log('  --full-path    Full metric path for ui deselect');
   console.log('  --group-id     Derivation group id (ui derivation-group-*)');
   console.log('  --new-group-id New derivation group id (ui derivation-group-update)');
+  console.log('  --plugin-id    Derivation plugin id (ui derivation-plugin-run)');
+  console.log('  --params       Derivation plugin params as JSON (ui derivation-plugin-run)');
+  console.log('  --kind         Derivation kind for ui derivation-run (diff|moving_average)');
+  console.log('  --window       Derivation window size (ui derivation-run)');
+  console.log('  --input-index  Input metric index (ui derivation-run moving_average)');
+  console.log('  --left-index   Left metric index (ui derivation-run diff)');
+  console.log('  --right-index  Right metric index (ui derivation-run diff)');
+  console.log('  --from-index   Source metric index (ui derivation-group-reorder)');
+  console.log('  --to-index     Target metric index (ui derivation-group-reorder)');
+  console.log('  --output-capture-id Output capture id for derivation runs');
   console.log('  --tick         Tick for ui seek');
   console.log('  --speed        Playback speed multiplier');
   console.log('  --window-size  Window size for ui display/series/table');
@@ -6212,7 +6396,8 @@ function printUsage(command) {
   console.log('UI subcommands:');
   console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop | live-status');
   console.log('  select | deselect | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
-  console.log('  derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update');
+  console.log('  derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update | derivation-group-display | derivation-group-reorder');
+  console.log('  derivation-run | derivation-plugins | derivation-plugin-run');
   console.log('  window-size | window-start | window-end | window-range | auto-scroll | fullscreen');
   console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  add-subtitle | remove-subtitle | clear-subtitles');
@@ -6314,6 +6499,10 @@ function printUsage(command) {
   console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui analysis-select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui derivation-group-display --group-id compare_pending_jobs --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui derivation-group-reorder --group-id compare_pending_jobs --from-index 0 --to-index 1 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui derivation-plugins --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui derivation-plugin-run --group-id compare_pending_jobs --plugin-id diff --output-capture-id pending_diff --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui debug --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui check --capture-id live-a --ui ws://localhost:5050/ws/control');
   console.log('  ');
