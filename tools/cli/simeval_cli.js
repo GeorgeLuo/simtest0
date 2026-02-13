@@ -1030,6 +1030,70 @@ async function handleUi(argvRest) {
     return;
   }
 
+  if (subcommand === 'derivation-plugin-upload') {
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a http(s):// or ws:// URL for derivation-plugin-upload.');
+    }
+    const sourcePath = options.file || options.source;
+    if (!sourcePath) {
+      throw new Error('Provide --file (or --source) for ui derivation-plugin-upload.');
+    }
+    const resolvedSource = path.resolve(process.cwd(), String(sourcePath));
+    if (!fs.existsSync(resolvedSource) || !fs.statSync(resolvedSource).isFile()) {
+      throw new Error(`Plugin file not found: ${resolvedSource}`);
+    }
+    const uploadName = options.name ? String(options.name) : path.basename(resolvedSource);
+    const fileBuffer = fs.readFileSync(resolvedSource);
+    const form = new FormData();
+    form.append('file', new Blob([fileBuffer]), uploadName);
+    const endpoint = buildUrl(uiHttpUrl, '/api/derivations/plugins/upload');
+    const response = await fetch(endpoint, { method: 'POST', body: form });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = payload && payload.error ? payload.error : `Plugin upload failed (${response.status}).`;
+      throw new Error(message);
+    }
+    printJson(payload ?? { status: 'success' });
+    return;
+  }
+
+  if (subcommand === 'derivation-plugin-source') {
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a http(s):// or ws:// URL for derivation-plugin-source.');
+    }
+    const pluginId = options['plugin-id'] ?? options.pluginId;
+    if (!pluginId) {
+      throw new Error('Provide --plugin-id for ui derivation-plugin-source.');
+    }
+    const endpoint = buildUrl(
+      uiHttpUrl,
+      `/api/derivations/plugins/${encodeURIComponent(String(pluginId))}/source`,
+    );
+    const response = await requestJson(endpoint, { method: 'GET' });
+    printJson(response);
+    return;
+  }
+
+  if (subcommand === 'derivation-plugin-delete') {
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a http(s):// or ws:// URL for derivation-plugin-delete.');
+    }
+    const pluginId = options['plugin-id'] ?? options.pluginId;
+    if (!pluginId) {
+      throw new Error('Provide --plugin-id for ui derivation-plugin-delete.');
+    }
+    const endpoint = buildUrl(
+      uiHttpUrl,
+      `/api/derivations/plugins/${encodeURIComponent(String(pluginId))}`,
+    );
+    const response = await requestJson(endpoint, { method: 'DELETE' });
+    printJson(response);
+    return;
+  }
+
   const uiUrl = await resolveUiWsUrl(uiInput);
   if (!uiUrl) {
     throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
@@ -1049,7 +1113,9 @@ async function handleUi(argvRest) {
   }
 
   const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 5000;
-  const requestId = buildMessageId(null, `ui-${subcommand}`);
+  const requestId =
+    (options['message-id'] ? String(options['message-id']) : null)
+    || buildMessageId(null, `ui-${subcommand}`);
 
   try {
     if (subcommand === 'mode') {
@@ -1446,6 +1512,15 @@ async function handleUi(argvRest) {
       const rightIndex = parseOptionalInteger(options['right-index'], 'right-index', { min: 0 });
       const outputCaptureId =
         options['output-capture-id'] ?? options['capture-output-id'] ?? options.outputCaptureId;
+      const waitComplete = parseBooleanOption(
+        options['wait-complete'] ?? options.waitComplete,
+        false,
+      );
+      const waitCompleteTimeoutMs =
+        parseOptionalNumber(
+          options['wait-complete-timeout'] ?? options['wait-timeout'],
+          'wait-complete-timeout',
+        ) ?? Math.max(timeoutMs, 30000);
       sendWsMessage(socket, {
         type: 'run_derivation',
         kind: rawKind,
@@ -1462,7 +1537,7 @@ async function handleUi(argvRest) {
         timeoutMs,
         errorMessage: 'Timed out waiting for UI ack.',
       });
-      printUiSuccess('derivation-run', uiUrl, requestId, {
+      const successPayload = {
         kind: rawKind,
         groupId: String(groupId),
         window: Number.isFinite(window) ? window : undefined,
@@ -1470,6 +1545,21 @@ async function handleUi(argvRest) {
         leftIndex: Number.isFinite(leftIndex) ? leftIndex : undefined,
         rightIndex: Number.isFinite(rightIndex) ? rightIndex : undefined,
         outputCaptureId: outputCaptureId ? String(outputCaptureId) : undefined,
+      };
+      if (!waitComplete) {
+        printUiSuccess('derivation-run', uiUrl, requestId, successPayload);
+        return;
+      }
+      const completion = await waitForDerivationCompletionOrThrow(socket, {
+        requestId,
+        timeoutMs: waitCompleteTimeoutMs,
+        actionLabel: 'derivation run',
+      });
+      printUiSuccess('derivation-run', uiUrl, requestId, {
+        ...successPayload,
+        waitComplete: true,
+        completionType: completion.type,
+        completion: completion.payload ?? null,
       });
       return;
     }
@@ -1503,6 +1593,15 @@ async function handleUi(argvRest) {
         options.params ?? options['params-json'],
         'params',
       );
+      const waitComplete = parseBooleanOption(
+        options['wait-complete'] ?? options.waitComplete,
+        false,
+      );
+      const waitCompleteTimeoutMs =
+        parseOptionalNumber(
+          options['wait-complete-timeout'] ?? options['wait-timeout'],
+          'wait-complete-timeout',
+        ) ?? Math.max(timeoutMs, 30000);
       sendWsMessage(socket, {
         type: 'run_derivation_plugin',
         groupId: String(groupId),
@@ -1516,11 +1615,26 @@ async function handleUi(argvRest) {
         timeoutMs,
         errorMessage: 'Timed out waiting for UI ack.',
       });
-      printUiSuccess('derivation-plugin-run', uiUrl, requestId, {
+      const successPayload = {
         groupId: String(groupId),
         pluginId: String(pluginId),
         outputCaptureId: outputCaptureId ? String(outputCaptureId) : undefined,
         params: params ?? undefined,
+      };
+      if (!waitComplete) {
+        printUiSuccess('derivation-plugin-run', uiUrl, requestId, successPayload);
+        return;
+      }
+      const completion = await waitForDerivationCompletionOrThrow(socket, {
+        requestId,
+        timeoutMs: waitCompleteTimeoutMs,
+        actionLabel: 'derivation plugin run',
+      });
+      printUiSuccess('derivation-plugin-run', uiUrl, requestId, {
+        ...successPayload,
+        waitComplete: true,
+        completionType: completion.type,
+        completion: completion.payload ?? null,
       });
       return;
     }
@@ -1965,248 +2079,160 @@ async function handleUi(argvRest) {
       const windowSize = parseOptionalNumber(options['window-size'], 'window-size');
       const windowStart = parseOptionalNumber(options['window-start'], 'window-start');
       const windowEnd = parseOptionalNumber(options['window-end'], 'window-end');
-
-      sendWsMessage(socket, { type: 'get_state', request_id: requestId });
-      const stateResponse = await waitForWsResponse(socket, {
-        requestId,
-        types: ['state_update'],
-        timeoutMs: timeoutMs + 2000,
+      const check = await collectUiCheckReport(socket, {
+        captureId: captureId ? String(captureId) : null,
+        windowSize,
+        windowStart,
+        windowEnd,
+        timeoutMs,
+        requestIdBase: requestId,
       });
-      if (!stateResponse) {
-        throw new Error('Timed out waiting for UI state.');
-      }
-      const state = stateResponse.payload ?? stateResponse;
-      const stateWindowStart = typeof state.windowStart === 'number' ? state.windowStart : 1;
-      const stateWindowSize = typeof state.windowSize === 'number' ? state.windowSize : 1;
-      const stateWindowEnd =
-        typeof state.windowEnd === 'number'
-          ? state.windowEnd
-          : Math.max(1, stateWindowStart + Math.max(1, stateWindowSize) - 1);
-      const captures = Array.isArray(state.captures) ? state.captures : [];
-      const selectedMetrics = Array.isArray(state.selectedMetrics) ? state.selectedMetrics : [];
-      const targetCaptureIds = captureId
-        ? [String(captureId)]
-        : captures.map((capture) => capture.id);
+      printJson(check.report);
+      return;
+    }
 
-      sendWsMessage(socket, {
-        type: 'get_render_debug',
-        captureId: captureId ? String(captureId) : undefined,
-        windowSize: windowSize ?? undefined,
-        windowStart: windowStart ?? undefined,
-        windowEnd: windowEnd ?? undefined,
-        request_id: requestId,
+    if (subcommand === 'doctor') {
+      const captureId = options['capture-id'];
+      const windowSize = parseOptionalNumber(options['window-size'], 'window-size');
+      const windowStart = parseOptionalNumber(options['window-start'], 'window-start');
+      const windowEnd = parseOptionalNumber(options['window-end'], 'window-end');
+      const shouldFix = parseBooleanOption(options.fix ?? options.apply, false) === true;
+
+      const before = await collectUiCheckReport(socket, {
+        captureId: captureId ? String(captureId) : null,
+        windowSize,
+        windowStart,
+        windowEnd,
+        timeoutMs,
+        requestIdBase: `${requestId}-before`,
       });
-      const debugResponse = await waitForWsResponse(socket, {
-        requestId,
-        types: ['render_debug'],
-        timeoutMs: timeoutMs + 2000,
-      });
-      if (!debugResponse) {
-        throw new Error('Timed out waiting for UI render debug.');
-      }
-      const debug = debugResponse.payload ?? debugResponse;
-      const debugCaptures = Array.isArray(debug.captures) ? debug.captures : [];
-      const debugById = new Map(debugCaptures.map((entry) => [entry.id, entry]));
 
-      const issues = [];
-      const captureSummaries = [];
+      const actions = [];
+      let after = null;
 
-      function compressRanges(list) {
-        const ranges = [];
-        for (const value of list) {
-          if (!ranges.length || value !== ranges[ranges.length - 1][1] + 1) {
-            ranges.push([value, value]);
-          } else {
-            ranges[ranges.length - 1][1] = value;
-          }
-        }
-        return ranges;
-      }
+      if (shouldFix) {
+        const removeCaptureIds = new Set();
+        const deselectEntries = [];
+        const nullOnlyCaptureIds = new Set();
 
-      function findGapRanges(sortedValues) {
-        const gaps = [];
-        for (let i = 1; i < sortedValues.length; i += 1) {
-          const prev = sortedValues[i - 1];
-          const next = sortedValues[i];
-          if (next > prev + 1) {
-            gaps.push([prev + 1, next - 1]);
-          }
-        }
-        return gaps;
-      }
-
-      for (const id of targetCaptureIds) {
-        const debugCapture = debugById.get(id);
-        const captureState = captures.find((entry) => entry.id === id);
-        if (!debugCapture && !captureState) {
-          issues.push({
-            type: 'missing-capture',
-            captureId: id,
-            message: `Capture ${id} not found in UI state.`,
-          });
-          continue;
-        }
-
-        const tickCount =
-          typeof captureState?.tickCount === 'number'
-            ? captureState.tickCount
-            : (typeof debugCapture?.tickCount === 'number' ? debugCapture.tickCount : 0);
-        const recordCount =
-          typeof debugCapture?.recordCount === 'number' ? debugCapture.recordCount : 0;
-
-        const selectedForCapture = selectedMetrics.filter((metric) => metric.captureId === id);
-        const selectedCount = selectedForCapture.length;
-
-        const summary = {
-          captureId: id,
-          tickCount,
-          recordCount,
-          selectedMetricCount: selectedCount,
-          duplicateTicks: 0,
-          nullTickRanges: [],
-          gapRanges: [],
-          windowStart:
-            typeof debug?.windowStart === 'number'
-              ? debug.windowStart
-              : (typeof windowStart === 'number' ? windowStart : stateWindowStart),
-          windowEnd:
-            typeof debug?.windowEnd === 'number'
-              ? debug.windowEnd
-              : (typeof windowEnd === 'number' ? windowEnd : stateWindowEnd),
-        };
-
-        if (debugCapture) {
+        before.report.issues.forEach((issue) => {
           if (
-            typeof debugCapture.recordCount === 'number'
-            && typeof debugCapture.tickCount === 'number'
-            && debugCapture.recordCount > debugCapture.tickCount
+            issue.type === 'no-records-for-selected-metrics'
+            || issue.type === 'record-count-exceeds-tick-count'
+            || issue.type === 'duplicate-ticks'
           ) {
-            issues.push({
-              type: 'record-count-exceeds-tick-count',
-              captureId: id,
-              recordCount: debugCapture.recordCount,
-              tickCount: debugCapture.tickCount,
-            });
+            if (issue.captureId) {
+              removeCaptureIds.add(String(issue.captureId));
+            }
           }
-
-          if (debugCapture.recordCount === 0 && selectedCount > 0) {
-            issues.push({
-              type: 'no-records-for-selected-metrics',
-              captureId: id,
-            });
+          if (issue.type === 'null-ticks' && issue.captureId && Array.isArray(issue.ranges)) {
+            const fullyNullInWindow = issue.ranges.some((range) => (
+              Array.isArray(range)
+              && typeof range[0] === 'number'
+              && typeof range[1] === 'number'
+              && range[0] <= before.report.windowStart
+              && range[1] >= before.report.windowEnd
+            ));
+            if (fullyNullInWindow) {
+              nullOnlyCaptureIds.add(String(issue.captureId));
+            }
           }
-        }
-
-        if (selectedCount === 0) {
-          captureSummaries.push(summary);
-          continue;
-        }
-
-        const tableRequestId = buildMessageId(null, `ui-check-table-${id}`);
-        sendWsMessage(socket, {
-          type: 'get_render_table',
-          captureId: String(id),
-          windowSize: windowSize ?? undefined,
-          windowStart: windowStart ?? undefined,
-          windowEnd: windowEnd ?? undefined,
-          request_id: tableRequestId,
         });
-        const tableResponse = await waitForWsResponse(socket, {
-          requestId: tableRequestId,
-          types: ['render_table'],
-          timeoutMs: timeoutMs + 2000,
-        });
-        if (!tableResponse) {
-          issues.push({
-            type: 'render-table-timeout',
-            captureId: id,
-          });
-          captureSummaries.push(summary);
-          continue;
-        }
 
-        const table = tableResponse.payload ?? tableResponse;
-        const rows = Array.isArray(table.rows) ? table.rows : [];
-        const ticks = [];
-        const nullTicks = [];
-        const tickCounts = new Map();
-
-        rows.forEach((row) => {
-          const tick = row[0];
-          if (typeof tick !== 'number') {
+        before.selectedMetrics.forEach((metric) => {
+          if (!metric || typeof metric !== 'object') {
             return;
           }
-          ticks.push(tick);
-          tickCounts.set(tick, (tickCounts.get(tick) ?? 0) + 1);
-          const values = row.slice(1);
-          if (values.some((value) => typeof value !== 'number')) {
-            nullTicks.push(tick);
+          const metricCaptureId = String(metric.captureId ?? '');
+          if (!metricCaptureId) {
+            return;
+          }
+          const summary = before.report.captures.find((entry) => entry.captureId === metricCaptureId);
+          if (summary && summary.recordCount === 0) {
+            deselectEntries.push({
+              captureId: metricCaptureId,
+              fullPath: String(metric.fullPath ?? ''),
+            });
+            return;
+          }
+          if (nullOnlyCaptureIds.has(metricCaptureId)) {
+            deselectEntries.push({
+              captureId: metricCaptureId,
+              fullPath: String(metric.fullPath ?? ''),
+            });
           }
         });
 
-        const uniqueTicks = Array.from(new Set(ticks)).sort((a, b) => a - b);
-        const duplicateTicks = Array.from(tickCounts.values()).reduce(
-          (total, count) => total + Math.max(0, count - 1),
-          0,
-        );
-        const nullRanges = compressRanges(nullTicks.sort((a, b) => a - b));
-        const gapRanges = findGapRanges(uniqueTicks);
-
-        summary.duplicateTicks = duplicateTicks;
-        summary.nullTickRanges = nullRanges;
-        summary.gapRanges = gapRanges;
-        summary.windowStart = typeof table.windowStart === 'number' ? table.windowStart : summary.windowStart;
-        summary.windowEnd = typeof table.windowEnd === 'number' ? table.windowEnd : summary.windowEnd;
-
-        if (duplicateTicks > 0) {
-          issues.push({
-            type: 'duplicate-ticks',
-            captureId: id,
-            count: duplicateTicks,
+        for (const removeId of removeCaptureIds) {
+          const fixRequestId = buildMessageId(null, `ui-doctor-remove-${removeId}`);
+          sendWsMessage(socket, {
+            type: 'remove_capture',
+            captureId: removeId,
+            request_id: fixRequestId,
           });
-        }
-        if (nullRanges.length > 0) {
-          issues.push({
-            type: 'null-ticks',
-            captureId: id,
-            ranges: nullRanges,
+          await waitForUiAckOrThrow(socket, {
+            requestId: fixRequestId,
+            timeoutMs,
+            errorMessage: `Timed out removing capture ${removeId}.`,
           });
-        }
-        if (gapRanges.length > 0) {
-          issues.push({
-            type: 'missing-ticks',
-            captureId: id,
-            ranges: gapRanges,
+          actions.push({
+            type: 'remove_capture',
+            captureId: removeId,
           });
         }
 
-        captureSummaries.push(summary);
+        const seenDeselect = new Set();
+        for (const entry of deselectEntries) {
+          if (!entry.fullPath) {
+            continue;
+          }
+          const dedupeKey = `${entry.captureId}::${entry.fullPath}`;
+          if (seenDeselect.has(dedupeKey)) {
+            continue;
+          }
+          seenDeselect.add(dedupeKey);
+          const fixRequestId = buildMessageId(
+            null,
+            `ui-doctor-deselect-${entry.captureId}-${entry.fullPath}`,
+          );
+          sendWsMessage(socket, {
+            type: 'deselect_metric',
+            captureId: entry.captureId,
+            fullPath: entry.fullPath,
+            request_id: fixRequestId,
+          });
+          await waitForUiAckOrThrow(socket, {
+            requestId: fixRequestId,
+            timeoutMs,
+            errorMessage: `Timed out deselecting metric ${entry.captureId}::${entry.fullPath}.`,
+          });
+          actions.push({
+            type: 'deselect_metric',
+            captureId: entry.captureId,
+            fullPath: entry.fullPath,
+          });
+        }
+
+        after = await collectUiCheckReport(socket, {
+          captureId: captureId ? String(captureId) : null,
+          windowSize,
+          windowStart,
+          windowEnd,
+          timeoutMs,
+          requestIdBase: `${requestId}-after`,
+        });
       }
 
-      const effectiveWindowStart =
-        typeof debug?.windowStart === 'number'
-          ? debug.windowStart
-          : (typeof windowStart === 'number' ? windowStart : stateWindowStart);
-      const effectiveWindowEnd =
-        typeof debug?.windowEnd === 'number'
-          ? debug.windowEnd
-          : (typeof windowEnd === 'number' ? windowEnd : stateWindowEnd);
-      const effectiveWindowSize =
-        typeof debug?.windowSize === 'number'
-          ? debug.windowSize
-          : (typeof windowSize === 'number'
-              ? windowSize
-              : Math.max(1, effectiveWindowEnd - effectiveWindowStart + 1));
-
       printJson({
-        status: issues.length > 0 ? 'discrepancy' : 'ok',
+        status: shouldFix
+          ? (after?.report.status ?? 'unknown')
+          : before.report.status,
         checkedAt: new Date().toISOString(),
-        captureId: captureId ? String(captureId) : 'all',
-        windowStart: effectiveWindowStart,
-        windowEnd: effectiveWindowEnd,
-        windowSize: effectiveWindowSize,
-        issues,
-        captures: captureSummaries,
+        fixed: shouldFix,
+        actionCount: actions.length,
+        actions,
+        before: before.report,
+        after: after ? after.report : undefined,
       });
       return;
     }
@@ -2255,6 +2281,43 @@ async function handleUi(argvRest) {
         throw new Error('Timed out waiting for UI capabilities.');
       }
       printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'trace') {
+      const traceRequestId =
+        options['request-id']
+        || options.requestId
+        || options.id
+        || options['message-id'];
+      if (!traceRequestId) {
+        throw new Error('Provide --request-id (or --message-id) for ui trace.');
+      }
+      const sendCommandRaw = options.send ?? options.command;
+      const sendCommand =
+        sendCommandRaw === undefined
+          ? null
+          : parseOptionalJson(sendCommandRaw, 'send');
+      if (sendCommand !== null) {
+        if (!sendCommand || typeof sendCommand !== 'object' || Array.isArray(sendCommand)) {
+          throw new Error('Provide --send as a JSON object command, e.g. {\"type\":\"run_derivation_plugin\",...}.');
+        }
+        if (!sendCommand.type || typeof sendCommand.type !== 'string') {
+          throw new Error('Trace --send JSON must include a string \"type\" field.');
+        }
+      }
+      const includeAck = parseBooleanOption(
+        options['include-ack'] ?? options.includeAck,
+        true,
+      );
+      const traceTimeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 30000;
+      const trace = await traceUiRequest(socket, {
+        requestId: String(traceRequestId),
+        timeoutMs: traceTimeoutMs,
+        includeAck,
+        sendCommand,
+      });
+      printJson(trace);
       return;
     }
 
@@ -5938,6 +6001,442 @@ async function waitForUiAckOrThrow(socket, { requestId, timeoutMs = 2000, errorM
   return ack;
 }
 
+async function waitForDerivationCompletionOrThrow(
+  socket,
+  { requestId, timeoutMs = 30000, actionLabel = 'derivation run' },
+) {
+  let response;
+  try {
+    response = await waitForWsResponse(socket, {
+      requestId,
+      types: ['ui_notice', 'ui_error'],
+      timeoutMs,
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? error.message
+        : `Failed while waiting for ${actionLabel} completion.`,
+    );
+  }
+  if (!response) {
+    throw new Error(`Timed out waiting for ${actionLabel} completion.`);
+  }
+  if (response.type === 'ui_error') {
+    throw new Error(response.error || `UI reported ${actionLabel} failure.`);
+  }
+  return response;
+}
+
+async function traceUiRequest(
+  socket,
+  {
+    requestId,
+    timeoutMs = 30000,
+    includeAck = true,
+    sendCommand = null,
+  },
+) {
+  const startMs = Date.now();
+  const startIso = new Date(startMs).toISOString();
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeline = [];
+
+    const finish = (status, extra = {}) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      const endMs = Date.now();
+      resolve({
+        status,
+        requestId,
+        startedAt: startIso,
+        finishedAt: new Date(endMs).toISOString(),
+        elapsedMs: Math.max(0, endMs - startMs),
+        eventCount: timeline.length,
+        events: timeline,
+        ...extra,
+      });
+    };
+
+    const timer = setTimeout(() => {
+      finish('timeout');
+    }, timeoutMs);
+
+    const onMessage = (event) => {
+      const raw = typeof event.data === 'string' ? event.data : event.data?.toString();
+      if (!raw) {
+        return;
+      }
+      let message;
+      try {
+        message = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      if (!message || message.request_id !== requestId) {
+        return;
+      }
+
+      const type = typeof message.type === 'string' ? message.type : '';
+      if (!includeAck && type === 'ack') {
+        return;
+      }
+      if (
+        type !== 'ack'
+        && type !== 'ui_notice'
+        && type !== 'ui_error'
+        && type !== 'error'
+      ) {
+        return;
+      }
+
+      const nowMs = Date.now();
+      const entry = {
+        type,
+        at: new Date(nowMs).toISOString(),
+        elapsedMs: Math.max(0, nowMs - startMs),
+      };
+      if (type === 'ack') {
+        entry.command = message?.payload?.command ?? null;
+      } else if (type === 'ui_notice') {
+        entry.message = message?.payload?.message ?? null;
+        entry.context = message?.payload?.context ?? null;
+      } else {
+        entry.error = message?.error ?? null;
+        entry.context = message?.payload?.context ?? null;
+      }
+      timeline.push(entry);
+
+      if (type === 'ui_notice') {
+        finish('completed', { completionType: 'ui_notice' });
+        return;
+      }
+      if (type === 'ui_error' || type === 'error') {
+        finish('failed', { completionType: type });
+      }
+    };
+
+    const onClose = (event) => {
+      finish('socket_closed', {
+        closeCode: event?.code ?? null,
+        closeReason: event?.reason || null,
+      });
+    };
+
+    const onError = (error) => {
+      finish('socket_error', {
+        error: error?.message ?? String(error ?? 'WebSocket error'),
+      });
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.removeEventListener('message', onMessage);
+      socket.removeEventListener('close', onClose);
+      socket.removeEventListener('error', onError);
+    };
+
+    socket.addEventListener('message', onMessage);
+    socket.addEventListener('close', onClose);
+    socket.addEventListener('error', onError);
+
+    if (sendCommand && typeof sendCommand === 'object') {
+      const outbound = { ...sendCommand, request_id: requestId };
+      const sent = sendWsMessage(socket, outbound);
+      if (!sent) {
+        finish('send_failed', {
+          error: 'WebSocket is not open.',
+          sentCommand: outbound,
+        });
+        return;
+      }
+      timeline.push({
+        type: 'trace_sent',
+        at: new Date(Date.now()).toISOString(),
+        elapsedMs: 0,
+        commandType: outbound.type ?? null,
+      });
+    }
+  });
+}
+
+function compressConsecutiveRanges(list) {
+  const sorted = [...list].sort((a, b) => a - b);
+  const ranges = [];
+  for (const value of sorted) {
+    if (!ranges.length || value !== ranges[ranges.length - 1][1] + 1) {
+      ranges.push([value, value]);
+    } else {
+      ranges[ranges.length - 1][1] = value;
+    }
+  }
+  return ranges;
+}
+
+function findMissingTickRanges(sortedValues) {
+  const gaps = [];
+  for (let i = 1; i < sortedValues.length; i += 1) {
+    const prev = sortedValues[i - 1];
+    const next = sortedValues[i];
+    if (next > prev + 1) {
+      gaps.push([prev + 1, next - 1]);
+    }
+  }
+  return gaps;
+}
+
+async function collectUiCheckReport(
+  socket,
+  {
+    captureId = null,
+    windowSize = undefined,
+    windowStart = undefined,
+    windowEnd = undefined,
+    timeoutMs = 5000,
+    requestIdBase = null,
+  } = {},
+) {
+  const idPrefix = requestIdBase || buildMessageId(null, 'ui-check');
+  const stateRequestId = `${idPrefix}-state`;
+  sendWsMessage(socket, { type: 'get_state', request_id: stateRequestId });
+  const stateResponse = await waitForWsResponse(socket, {
+    requestId: stateRequestId,
+    types: ['state_update'],
+    timeoutMs: timeoutMs + 2000,
+  });
+  if (!stateResponse) {
+    throw new Error('Timed out waiting for UI state.');
+  }
+  const state = stateResponse.payload ?? stateResponse;
+  const stateWindowStart = typeof state.windowStart === 'number' ? state.windowStart : 1;
+  const stateWindowSize = typeof state.windowSize === 'number' ? state.windowSize : 1;
+  const stateWindowEnd =
+    typeof state.windowEnd === 'number'
+      ? state.windowEnd
+      : Math.max(1, stateWindowStart + Math.max(1, stateWindowSize) - 1);
+  const captures = Array.isArray(state.captures) ? state.captures : [];
+  const selectedMetrics = Array.isArray(state.selectedMetrics) ? state.selectedMetrics : [];
+  const targetCaptureIds = captureId
+    ? [String(captureId)]
+    : captures.map((capture) => capture.id);
+
+  const debugRequestId = `${idPrefix}-render-debug`;
+  sendWsMessage(socket, {
+    type: 'get_render_debug',
+    captureId: captureId ? String(captureId) : undefined,
+    windowSize: windowSize ?? undefined,
+    windowStart: windowStart ?? undefined,
+    windowEnd: windowEnd ?? undefined,
+    request_id: debugRequestId,
+  });
+  const debugResponse = await waitForWsResponse(socket, {
+    requestId: debugRequestId,
+    types: ['render_debug'],
+    timeoutMs: timeoutMs + 2000,
+  });
+  if (!debugResponse) {
+    throw new Error('Timed out waiting for UI render debug.');
+  }
+  const debug = debugResponse.payload ?? debugResponse;
+  const debugCaptures = Array.isArray(debug.captures) ? debug.captures : [];
+  const debugById = new Map(debugCaptures.map((entry) => [entry.id, entry]));
+
+  const issues = [];
+  const captureSummaries = [];
+
+  for (const id of targetCaptureIds) {
+    const debugCapture = debugById.get(id);
+    const captureState = captures.find((entry) => entry.id === id);
+    if (!debugCapture && !captureState) {
+      issues.push({
+        type: 'missing-capture',
+        captureId: id,
+        message: `Capture ${id} not found in UI state.`,
+      });
+      continue;
+    }
+
+    const tickCount =
+      typeof captureState?.tickCount === 'number'
+        ? captureState.tickCount
+        : (typeof debugCapture?.tickCount === 'number' ? debugCapture.tickCount : 0);
+    const recordCount =
+      typeof debugCapture?.recordCount === 'number' ? debugCapture.recordCount : 0;
+
+    const selectedForCapture = selectedMetrics.filter((metric) => metric.captureId === id);
+    const selectedCount = selectedForCapture.length;
+
+    const summary = {
+      captureId: id,
+      tickCount,
+      recordCount,
+      selectedMetricCount: selectedCount,
+      duplicateTicks: 0,
+      nullTickRanges: [],
+      gapRanges: [],
+      windowStart:
+        typeof debug?.windowStart === 'number'
+          ? debug.windowStart
+          : (typeof windowStart === 'number' ? windowStart : stateWindowStart),
+      windowEnd:
+        typeof debug?.windowEnd === 'number'
+          ? debug.windowEnd
+          : (typeof windowEnd === 'number' ? windowEnd : stateWindowEnd),
+    };
+
+    if (debugCapture) {
+      if (
+        typeof debugCapture.recordCount === 'number'
+        && typeof debugCapture.tickCount === 'number'
+        && debugCapture.recordCount > debugCapture.tickCount
+      ) {
+        issues.push({
+          type: 'record-count-exceeds-tick-count',
+          captureId: id,
+          recordCount: debugCapture.recordCount,
+          tickCount: debugCapture.tickCount,
+        });
+      }
+
+      if (debugCapture.recordCount === 0 && selectedCount > 0) {
+        issues.push({
+          type: 'no-records-for-selected-metrics',
+          captureId: id,
+        });
+      }
+    }
+
+    if (selectedCount === 0) {
+      captureSummaries.push(summary);
+      continue;
+    }
+
+    const tableRequestId = `${idPrefix}-table-${id}`;
+    sendWsMessage(socket, {
+      type: 'get_render_table',
+      captureId: String(id),
+      windowSize: windowSize ?? undefined,
+      windowStart: windowStart ?? undefined,
+      windowEnd: windowEnd ?? undefined,
+      request_id: tableRequestId,
+    });
+    let tableResponse;
+    try {
+      tableResponse = await waitForWsResponse(socket, {
+        requestId: tableRequestId,
+        types: ['render_table'],
+        timeoutMs: timeoutMs + 2000,
+      });
+    } catch (error) {
+      issues.push({
+        type: 'render-table-error',
+        captureId: id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      captureSummaries.push(summary);
+      continue;
+    }
+    if (!tableResponse) {
+      issues.push({
+        type: 'render-table-timeout',
+        captureId: id,
+      });
+      captureSummaries.push(summary);
+      continue;
+    }
+
+    const table = tableResponse.payload ?? tableResponse;
+    const rows = Array.isArray(table.rows) ? table.rows : [];
+    const ticks = [];
+    const nullTicks = [];
+    const tickCounts = new Map();
+
+    rows.forEach((row) => {
+      const tick = row[0];
+      if (typeof tick !== 'number') {
+        return;
+      }
+      ticks.push(tick);
+      tickCounts.set(tick, (tickCounts.get(tick) ?? 0) + 1);
+      const values = row.slice(1);
+      if (values.some((value) => typeof value !== 'number')) {
+        nullTicks.push(tick);
+      }
+    });
+
+    const uniqueTicks = Array.from(new Set(ticks)).sort((a, b) => a - b);
+    const duplicateTicks = Array.from(tickCounts.values()).reduce(
+      (total, count) => total + Math.max(0, count - 1),
+      0,
+    );
+    const nullRanges = compressConsecutiveRanges(nullTicks);
+    const gapRanges = findMissingTickRanges(uniqueTicks);
+
+    summary.duplicateTicks = duplicateTicks;
+    summary.nullTickRanges = nullRanges;
+    summary.gapRanges = gapRanges;
+    summary.windowStart = typeof table.windowStart === 'number' ? table.windowStart : summary.windowStart;
+    summary.windowEnd = typeof table.windowEnd === 'number' ? table.windowEnd : summary.windowEnd;
+
+    if (duplicateTicks > 0) {
+      issues.push({
+        type: 'duplicate-ticks',
+        captureId: id,
+        count: duplicateTicks,
+      });
+    }
+    if (nullRanges.length > 0) {
+      issues.push({
+        type: 'null-ticks',
+        captureId: id,
+        ranges: nullRanges,
+      });
+    }
+    if (gapRanges.length > 0) {
+      issues.push({
+        type: 'missing-ticks',
+        captureId: id,
+        ranges: gapRanges,
+      });
+    }
+
+    captureSummaries.push(summary);
+  }
+
+  const effectiveWindowStart =
+    typeof debug?.windowStart === 'number'
+      ? debug.windowStart
+      : (typeof windowStart === 'number' ? windowStart : stateWindowStart);
+  const effectiveWindowEnd =
+    typeof debug?.windowEnd === 'number'
+      ? debug.windowEnd
+      : (typeof windowEnd === 'number' ? windowEnd : stateWindowEnd);
+  const effectiveWindowSize =
+    typeof debug?.windowSize === 'number'
+      ? debug.windowSize
+      : (typeof windowSize === 'number'
+          ? windowSize
+          : Math.max(1, effectiveWindowEnd - effectiveWindowStart + 1));
+
+  return {
+    report: {
+      status: issues.length > 0 ? 'discrepancy' : 'ok',
+      checkedAt: new Date().toISOString(),
+      captureId: captureId ? String(captureId) : 'all',
+      windowStart: effectiveWindowStart,
+      windowEnd: effectiveWindowEnd,
+      windowSize: effectiveWindowSize,
+      issues,
+      captures: captureSummaries,
+    },
+    selectedMetrics,
+  };
+}
+
 function printUiSuccess(action, uiUrl, requestId, details = {}) {
   printJson({
     status: 'success',
@@ -6360,6 +6859,7 @@ function printUsage(command) {
   console.log('  --full-path    Full metric path for ui deselect');
   console.log('  --group-id     Derivation group id (ui derivation-group-*)');
   console.log('  --new-group-id New derivation group id (ui derivation-group-update)');
+  console.log('  --file         Plugin file path (ui derivation-plugin-upload)');
   console.log('  --plugin-id    Derivation plugin id (ui derivation-plugin-run)');
   console.log('  --params       Derivation plugin params as JSON (ui derivation-plugin-run)');
   console.log('  --kind         Derivation kind for ui derivation-run (diff|moving_average)');
@@ -6370,6 +6870,12 @@ function printUsage(command) {
   console.log('  --from-index   Source metric index (ui derivation-group-reorder)');
   console.log('  --to-index     Target metric index (ui derivation-group-reorder)');
   console.log('  --output-capture-id Output capture id for derivation runs');
+  console.log('  --wait-complete Wait for derivation completion event (ui derivation-run / derivation-plugin-run)');
+  console.log('  --wait-complete-timeout Wait timeout in ms for completion event');
+  console.log('  --request-id   Request id for ui trace (or set via --message-id)');
+  console.log('  --include-ack  Include ack events in ui trace (true|false)');
+  console.log('  --send         JSON command to send from ui trace socket');
+  console.log('  --fix          Apply doctor remediation actions (ui doctor)');
   console.log('  --tick         Tick for ui seek');
   console.log('  --speed        Playback speed multiplier');
   console.log('  --window-size  Window size for ui display/series/table');
@@ -6398,10 +6904,12 @@ function printUsage(command) {
   console.log('  select | deselect | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
   console.log('  derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update | derivation-group-display | derivation-group-reorder');
   console.log('  derivation-run | derivation-plugins | derivation-plugin-run');
+  console.log('  derivation-plugin-upload | derivation-plugin-source | derivation-plugin-delete');
+  console.log('  trace');
   console.log('  window-size | window-start | window-end | window-range | auto-scroll | fullscreen');
   console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  display-snapshot | series-window | render-table | render-debug | debug | memory-stats | metric-coverage | check\n');
+  console.log('  display-snapshot | series-window | render-table | render-debug | debug | memory-stats | metric-coverage | check | doctor\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
   console.log('  --notes        Run notes (create)');
@@ -6501,10 +7009,17 @@ function printUsage(command) {
   console.log('  simeval ui analysis-select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui derivation-group-display --group-id compare_pending_jobs --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui derivation-group-reorder --group-id compare_pending_jobs --from-index 0 --to-index 1 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui derivation-plugin-upload --file ./examples/derivation-plugins/diff.mjs --ui http://localhost:5050');
   console.log('  simeval ui derivation-plugins --ui ws://localhost:5050/ws/control');
-  console.log('  simeval ui derivation-plugin-run --group-id compare_pending_jobs --plugin-id diff --output-capture-id pending_diff --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui derivation-plugin-source --plugin-id diff --ui http://localhost:5050');
+  console.log('  simeval ui derivation-plugin-run --group-id compare_pending_jobs --plugin-id diff --output-capture-id pending_diff --wait-complete --ui ws://localhost:5050/ws/control');
+  console.log('  simeval --message-id trace-123 ui derivation-plugin-run --group-id compare_pending_jobs --plugin-id diff --output-capture-id pending_diff --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui trace --request-id trace-123 --timeout 30000 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui trace --request-id trace-123 --send \'{"type":"run_derivation_plugin","groupId":"compare_pending_jobs","pluginId":"diff","outputCaptureId":"pending_diff"}\' --timeout 30000 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui derivation-plugin-delete --plugin-id diff --ui http://localhost:5050');
   console.log('  simeval ui debug --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui check --capture-id live-a --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui doctor --fix --ui ws://localhost:5050/ws/control');
   console.log('  ');
   console.log('  # Runs + logs');
   console.log('  simeval run create --name demo --server http://127.0.0.1:3000/api');
