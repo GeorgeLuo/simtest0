@@ -1094,6 +1094,136 @@ async function handleUi(argvRest) {
     return;
   }
 
+  if (subcommand === 'verify') {
+    const observeMs = parseOptionalNumber(options['observe-ms'], 'observe-ms') ?? 5000;
+    const intervalMs = parseOptionalNumber(options.interval, 'interval') ?? 1000;
+    const requireSelected = parseBooleanOption(options['require-selected'], true) !== false;
+    const captureId = options['capture-id'];
+    if (observeMs <= 0) {
+      throw new Error('Invalid --observe-ms value. Expected a positive number.');
+    }
+    if (intervalMs <= 0) {
+      throw new Error('Invalid --interval value. Expected a positive number.');
+    }
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+    const autoServe = parseBooleanOption(options['auto-serve'], true) !== false;
+    const shutdownOnExit = parseBooleanOption(options['shutdown-on-exit'], true) !== false;
+    const lifecycle = await ensureUiServerForVerification({
+      options,
+      uiHttpUrl,
+      requireWs: false,
+      autoServe,
+      shutdownOnExit,
+    });
+    let verify = null;
+    let verifyError = null;
+    let cleanupResult = null;
+    try {
+      verify = await collectUiServerVerifyReport(lifecycle.uiHttpUrl, {
+        captureId: captureId ? String(captureId) : null,
+        observeMs,
+        intervalMs,
+        requireSelected,
+      });
+    } catch (error) {
+      verifyError = error;
+    } finally {
+      cleanupResult = await finalizeUiServerForVerification(lifecycle);
+    }
+    if (verifyError) {
+      throw verifyError;
+    }
+    verify.report.server = {
+      url: lifecycle.uiHttpUrl,
+      autoServed: lifecycle.startedByVerifier,
+      shutdownOnExit: lifecycle.shutdownOnExit,
+      shutdownAttempted: cleanupResult?.attempted === true,
+      shutdownResult: cleanupResult?.result || 'not-requested',
+      shutdownError: cleanupResult?.error || null,
+    };
+    printJson(verify.report);
+    if (verify.report.status !== 'ok') {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (subcommand === 'verify-regression') {
+    const observeMs = parseOptionalNumber(options['observe-ms'], 'observe-ms') ?? 8000;
+    const intervalMs = parseOptionalNumber(options.interval, 'interval') ?? 400;
+    const pollMs = parseOptionalNumber(options['poll-ms'], 'poll-ms') ?? 120;
+    const frames = parseOptionalNumber(options.frames, 'frames') ?? 24000;
+    const requireSelected = parseBooleanOption(options['require-selected'], true) !== false;
+    if (observeMs <= 0) {
+      throw new Error('Invalid --observe-ms value. Expected a positive number.');
+    }
+    if (intervalMs <= 0) {
+      throw new Error('Invalid --interval value. Expected a positive number.');
+    }
+    if (pollMs <= 0) {
+      throw new Error('Invalid --poll-ms value. Expected a positive number.');
+    }
+    if (frames <= 10) {
+      throw new Error('Invalid --frames value. Expected a number greater than 10.');
+    }
+
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+    const uiWsUrl = await resolveUiWsUrl(uiInput);
+    if (!uiWsUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+    const autoServe = parseBooleanOption(options['auto-serve'], true) !== false;
+    const shutdownOnExit = parseBooleanOption(options['shutdown-on-exit'], true) !== false;
+    const lifecycle = await ensureUiServerForVerification({
+      options,
+      uiHttpUrl,
+      requireWs: true,
+      autoServe,
+      shutdownOnExit,
+    });
+    let verify = null;
+    let verifyError = null;
+    let cleanupResult = null;
+    try {
+      verify = await runUiRegressionVerify({
+        uiHttpUrl: lifecycle.uiHttpUrl,
+        uiWsUrl: lifecycle.uiWsUrl,
+        observeMs,
+        intervalMs,
+        pollMs,
+        frames,
+        requireSelected,
+        captureId: options['capture-id'] ? String(options['capture-id']) : null,
+      });
+    } catch (error) {
+      verifyError = error;
+    } finally {
+      cleanupResult = await finalizeUiServerForVerification(lifecycle);
+    }
+    if (verifyError) {
+      throw verifyError;
+    }
+    verify.report.server = {
+      url: lifecycle.uiHttpUrl,
+      autoServed: lifecycle.startedByVerifier,
+      shutdownOnExit: lifecycle.shutdownOnExit,
+      shutdownAttempted: cleanupResult?.attempted === true,
+      shutdownResult: cleanupResult?.result || 'not-requested',
+      shutdownError: cleanupResult?.error || null,
+    };
+    printJson(verify.report);
+    if (verify.report.status !== 'ok') {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   const uiUrl = await resolveUiWsUrl(uiInput);
   if (!uiUrl) {
     throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
@@ -1301,6 +1431,37 @@ async function handleUi(argvRest) {
       printUiSuccess('deselect', uiUrl, requestId, {
         captureId: String(captureId),
         fullPath: String(fullPath),
+      });
+      return;
+    }
+
+    if (subcommand === 'metric-axis') {
+      const captureId = options['capture-id'];
+      const path = parsePathInput(options.path ?? options['path-json']);
+      const fullPath = options['full-path'] || options.fullPath || (path ? path.join('.') : null);
+      if (!captureId || !fullPath) {
+        throw new Error('Provide --capture-id and --full-path (or --path) for ui metric-axis.');
+      }
+      const axisRaw = String(options.axis ?? '').trim().toLowerCase();
+      if (axisRaw !== 'y1' && axisRaw !== 'y2') {
+        throw new Error('Provide --axis y1|y2 for ui metric-axis.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_metric_axis',
+        captureId: String(captureId),
+        fullPath: String(fullPath),
+        axis: axisRaw,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('metric-axis', uiUrl, requestId, {
+        captureId: String(captureId),
+        fullPath: String(fullPath),
+        axis: axisRaw,
       });
       return;
     }
@@ -1761,6 +1922,48 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'y-range') {
+      const min = Number(options.min);
+      const max = Number(options.max);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        throw new Error('Provide --min and --max for ui y-range with max > min.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_y_range',
+        min,
+        max,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('y-range', uiUrl, requestId, { min, max });
+      return;
+    }
+
+    if (subcommand === 'y2-range') {
+      const min = Number(options.min);
+      const max = Number(options.max);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        throw new Error('Provide --min and --max for ui y2-range with max > min.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_y2_range',
+        min,
+        max,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess('y2-range', uiUrl, requestId, { min, max });
+      return;
+    }
+
     if (subcommand === 'auto-scroll') {
       const rawValue = options.enabled;
       if (rawValue === undefined) {
@@ -2088,6 +2291,283 @@ async function handleUi(argvRest) {
         requestIdBase: requestId,
       });
       printJson(check.report);
+      return;
+    }
+
+    if (subcommand === 'verify-flow') {
+      const captureId = options['capture-id'];
+      const windowSize = parseOptionalNumber(options['window-size'], 'window-size');
+      const windowStart = parseOptionalNumber(options['window-start'], 'window-start');
+      const windowEnd = parseOptionalNumber(options['window-end'], 'window-end');
+      const observeMs = parseOptionalNumber(options['observe-ms'], 'observe-ms') ?? 12000;
+      const intervalMs = parseOptionalNumber(options.interval, 'interval') ?? 1000;
+      const requireSelected = parseBooleanOption(options['require-selected'], true) !== false;
+      if (observeMs <= 0) {
+        throw new Error('Invalid --observe-ms value. Expected a positive number.');
+      }
+      if (intervalMs <= 0) {
+        throw new Error('Invalid --interval value. Expected a positive number.');
+      }
+
+      const baselineCheck = await collectUiCheckReport(socket, {
+        captureId: captureId ? String(captureId) : null,
+        windowSize,
+        windowStart,
+        windowEnd,
+        timeoutMs,
+        requestIdBase: `${requestId}-baseline-check`,
+      });
+      const baselineDebug = await collectUiDebugSnapshot(socket, {
+        timeoutMs,
+        requestIdBase: `${requestId}-baseline-debug`,
+      });
+
+      const selectedMetrics = Array.isArray(baselineCheck.selectedMetrics)
+        ? baselineCheck.selectedMetrics.filter((metric) => (
+          metric
+          && typeof metric.captureId === 'string'
+          && typeof metric.fullPath === 'string'
+          && metric.fullPath.length > 0
+        ))
+        : [];
+
+      const selectedCaptureIds = Array.from(
+        new Set(selectedMetrics.map((metric) => String(metric.captureId))),
+      );
+      const candidateCaptureIds = captureId
+        ? [String(captureId)]
+        : (selectedCaptureIds.length > 0
+          ? selectedCaptureIds
+          : baselineCheck.report.captures.map((entry) => String(entry.captureId)));
+
+      const liveStreams = Array.isArray(baselineDebug?.state?.liveStreams)
+        ? baselineDebug.state.liveStreams
+        : [];
+      const liveSourceByCapture = new Map();
+      liveStreams.forEach((entry) => {
+        if (!entry || typeof entry.id !== 'string') {
+          return;
+        }
+        liveSourceByCapture.set(String(entry.id), {
+          source: typeof entry.source === 'string' ? entry.source : '',
+          filename: typeof entry.filename === 'string' ? entry.filename : undefined,
+          pollIntervalMs:
+            Number.isFinite(Number(entry.pollIntervalMs)) && Number(entry.pollIntervalMs) > 0
+              ? Number(entry.pollIntervalMs)
+              : undefined,
+        });
+      });
+
+      const setupIssues = [];
+      const actions = [];
+      const targets = [];
+
+      for (const id of candidateCaptureIds) {
+        if (!id) {
+          continue;
+        }
+        const sourceEntry = liveSourceByCapture.get(id);
+        if (!sourceEntry || !sourceEntry.source) {
+          setupIssues.push({
+            type: 'verify-flow-missing-source',
+            captureId: id,
+            message: `No live source recorded for capture ${id}.`,
+          });
+          continue;
+        }
+
+        const removeRequestId = `${requestId}-remove-${id}`;
+        sendWsMessage(socket, {
+          type: 'remove_capture',
+          captureId: id,
+          request_id: removeRequestId,
+        });
+        await waitForUiAckOrThrow(socket, {
+          requestId: removeRequestId,
+          timeoutMs,
+          errorMessage: `Timed out removing capture ${id} for verify-flow.`,
+        });
+        actions.push({
+          type: 'remove_capture',
+          captureId: id,
+        });
+
+        const restartRequestId = `${requestId}-restart-${id}`;
+        sendWsMessage(socket, {
+          type: 'live_start',
+          source: sourceEntry.source,
+          captureId: id,
+          filename: sourceEntry.filename,
+          pollIntervalMs: sourceEntry.pollIntervalMs,
+          request_id: restartRequestId,
+        });
+        await waitForUiAckOrThrow(socket, {
+          requestId: restartRequestId,
+          timeoutMs: timeoutMs + 3000,
+          errorMessage: `Timed out restarting capture ${id} for verify-flow.`,
+        });
+        actions.push({
+          type: 'live_start',
+          captureId: id,
+          source: sourceEntry.source,
+        });
+        targets.push(id);
+      }
+
+      if (targets.length === 0) {
+        setupIssues.push({
+          type: 'verify-flow-no-targets',
+          message: captureId
+            ? `Unable to verify capture ${captureId}; no restartable source found.`
+            : 'No restartable captures found for verify-flow.',
+        });
+      }
+
+      const byCaptureMetric = new Map();
+      selectedMetrics.forEach((metric) => {
+        const id = String(metric.captureId || '');
+        if (!id || byCaptureMetric.has(id)) {
+          return;
+        }
+        byCaptureMetric.set(id, metric);
+      });
+
+      for (const id of targets) {
+        const metric = byCaptureMetric.get(id);
+        if (!metric) {
+          if (requireSelected) {
+            setupIssues.push({
+              type: 'verify-flow-missing-selected-metric',
+              captureId: id,
+              message: `No selected metric found for capture ${id}.`,
+            });
+          }
+          continue;
+        }
+        const fullPath = String(metric.fullPath || '');
+        const metricPath =
+          Array.isArray(metric.path) && metric.path.length > 0
+            ? metric.path.map((part) => String(part))
+            : (fullPath ? fullPath.split('.') : []);
+
+        if (!fullPath || metricPath.length === 0) {
+          setupIssues.push({
+            type: 'verify-flow-invalid-metric-path',
+            captureId: id,
+            fullPath,
+            message: `Unable to parse metric path for ${id}::${fullPath || '<unknown>'}.`,
+          });
+          continue;
+        }
+
+        const deselectRequestId = `${requestId}-deselect-${id}`;
+        sendWsMessage(socket, {
+          type: 'deselect_metric',
+          captureId: id,
+          fullPath,
+          request_id: deselectRequestId,
+        });
+        await waitForUiAckOrThrow(socket, {
+          requestId: deselectRequestId,
+          timeoutMs,
+          errorMessage: `Timed out deselecting metric ${id}::${fullPath}.`,
+        });
+        actions.push({
+          type: 'deselect_metric',
+          captureId: id,
+          fullPath,
+        });
+
+        const selectRequestId = `${requestId}-select-${id}`;
+        sendWsMessage(socket, {
+          type: 'select_metric',
+          captureId: id,
+          path: metricPath,
+          request_id: selectRequestId,
+        });
+        await waitForUiAckOrThrow(socket, {
+          requestId: selectRequestId,
+          timeoutMs,
+          errorMessage: `Timed out reselecting metric ${id}::${fullPath}.`,
+        });
+        actions.push({
+          type: 'select_metric',
+          captureId: id,
+          fullPath,
+        });
+      }
+
+      if (actions.length > 0) {
+        await delay(300);
+      }
+
+      const verify = await collectUiVerifyReport(socket, {
+        captureId: captureId ? String(captureId) : null,
+        windowSize,
+        windowStart,
+        windowEnd,
+        timeoutMs,
+        requestIdBase: `${requestId}-verify-flow`,
+        observeMs,
+        intervalMs,
+        requireSelected,
+        allowResetsForCaptures: targets,
+      });
+
+      const flowIssues = [];
+      targets.forEach((id) => {
+        const baselineSummary = baselineCheck.report.captures.find((entry) => entry.captureId === id);
+        const baselineTick = Number(baselineSummary?.tickCount) || 0;
+        const tickSamples = verify.report.samples
+          .map((sample) => {
+            const captures = Array.isArray(sample?.captures) ? sample.captures : [];
+            const captureSample = captures.find((entry) => entry.captureId === id);
+            return Number(captureSample?.tickCount);
+          })
+          .filter((value) => Number.isFinite(value));
+        if (tickSamples.length === 0) {
+          flowIssues.push({
+            type: 'verify-flow-no-samples',
+            captureId: id,
+            message: `No tick samples observed for capture ${id}.`,
+          });
+          return;
+        }
+        const minTick = Math.min(...tickSamples);
+        const maxTick = Math.max(...tickSamples);
+        const resetThreshold = baselineTick > 0 ? Math.max(5, Math.floor(baselineTick * 0.25)) : 0;
+        const sawReset = baselineTick > 0 ? minTick <= resetThreshold : true;
+        const sawGrowth = maxTick > 0;
+        if (!sawReset || !sawGrowth) {
+          flowIssues.push({
+            type: 'verify-flow-not-exercised',
+            captureId: id,
+            baselineTick,
+            minTick,
+            maxTick,
+            message: `Capture ${id} did not show reset+growth during verify-flow.`,
+          });
+        }
+      });
+
+      if (setupIssues.length > 0 || flowIssues.length > 0) {
+        verify.report.failures = [...verify.report.failures, ...setupIssues, ...flowIssues];
+        verify.report.status = 'failed';
+      }
+
+      verify.report.mode = 'verify-flow';
+      verify.report.actions = actions;
+      verify.report.targets = targets;
+      verify.report.baseline = {
+        checkedAt: baselineCheck.report.checkedAt,
+        captures: baselineCheck.report.captures,
+        selectedMetricCount: selectedMetrics.length,
+      };
+
+      printJson(verify.report);
+      if (verify.report.status !== 'ok') {
+        process.exitCode = 1;
+      }
       return;
     }
 
@@ -2425,6 +2905,192 @@ async function handleUiShutdown(options) {
     saveUiState(uiStateFile, uiState);
   }
   printJson({ url: uiUrl, response });
+}
+
+function resolveUiServeOptionsForUrl(options, uiHttpUrl) {
+  const serveOptions = resolveUiServeOptions(options);
+  try {
+    const parsed = new URL(uiHttpUrl);
+    return {
+      ...serveOptions,
+      host: parsed.hostname || serveOptions.host,
+      port: parsed.port ? Number(parsed.port) : serveOptions.port,
+    };
+  } catch {
+    return serveOptions;
+  }
+}
+
+async function waitForUiServerReady({ uiHttpUrl, timeoutMs = 30000, intervalMs = 250 }) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const probe = await probeUiHttpUrl(uiHttpUrl, Math.min(2000, timeoutMs));
+    if (probe.running && probe.isUi) {
+      return true;
+    }
+    await delay(intervalMs);
+  }
+  return false;
+}
+
+async function startUiServerForVerification({ options, uiHttpUrl }) {
+  const serveOptions = resolveUiServeOptionsForUrl(options, uiHttpUrl);
+  const probe = await probeUiServer({
+    host: serveOptions.host,
+    port: serveOptions.port,
+    timeoutMs: serveOptions.timeoutMs,
+  });
+  if (probe.running) {
+    if (!probe.isUi) {
+      throw new Error(
+        `Port ${serveOptions.port} is in use but does not look like the Metrics UI.`,
+      );
+    }
+    return {
+      startedByVerifier: false,
+      uiHttpUrl: `http://${serveOptions.host}:${serveOptions.port}`,
+      logFile: null,
+      uiStateFile: resolveUiStateFile(options),
+    };
+  }
+
+  await ensureUiDependencies(serveOptions.uiDir, serveOptions.skipInstall);
+
+  const logFile = resolveCliLogFile(options, 'ui_verify');
+  const env = {
+    ...process.env,
+    HOST: serveOptions.host,
+    PORT: String(serveOptions.port),
+  };
+  const script = serveOptions.mode === 'start' ? 'start' : 'dev';
+  const pid = spawnDetachedProcess({
+    command: 'npm',
+    args: ['--prefix', serveOptions.uiDir, 'run', script],
+    cwd: serveOptions.uiDir,
+    env,
+    logFile,
+  });
+
+  const uiStateFile = resolveUiStateFile(options);
+  const uiState = loadUiState(uiStateFile);
+  const key = buildUiKey(serveOptions.host, serveOptions.port);
+  uiState.deployments[key] = {
+    key,
+    host: serveOptions.host,
+    port: serveOptions.port,
+    url: `http://${serveOptions.host}:${serveOptions.port}`,
+    pid,
+    uiDir: serveOptions.uiDir,
+    mode: serveOptions.mode,
+    logFile,
+    startedAt: new Date().toISOString(),
+  };
+  saveUiState(uiStateFile, uiState);
+
+  const startedUrl = `http://${serveOptions.host}:${serveOptions.port}`;
+  const ready = await waitForUiServerReady({
+    uiHttpUrl: startedUrl,
+    timeoutMs: Math.max(10000, serveOptions.timeoutMs * 3),
+    intervalMs: 250,
+  });
+  if (!ready) {
+    throw new Error(`Timed out waiting for Metrics UI to start at ${startedUrl}.`);
+  }
+
+  return {
+    startedByVerifier: true,
+    uiHttpUrl: startedUrl,
+    logFile,
+    uiStateFile,
+  };
+}
+
+async function ensureUiServerForVerification({
+  options,
+  uiHttpUrl,
+  requireWs = false,
+  autoServe = true,
+  shutdownOnExit = true,
+}) {
+  const initialProbe = await probeUiHttpUrl(uiHttpUrl, 3000);
+  if (initialProbe.running && !initialProbe.isUi) {
+    throw new Error(`Target ${uiHttpUrl} is running but is not the Metrics UI.`);
+  }
+
+  let startedByVerifier = false;
+  let logFile = null;
+  let uiStateFile = resolveUiStateFile(options);
+  let resolvedHttpUrl = uiHttpUrl;
+
+  if (!initialProbe.running) {
+    if (!autoServe) {
+      throw new Error(`Metrics UI is not running at ${uiHttpUrl}. Enable --auto-serve or start UI first.`);
+    }
+    const started = await startUiServerForVerification({ options, uiHttpUrl });
+    startedByVerifier = Boolean(started.startedByVerifier);
+    resolvedHttpUrl = started.uiHttpUrl || uiHttpUrl;
+    logFile = started.logFile || null;
+    uiStateFile = started.uiStateFile || uiStateFile;
+  } else {
+    resolvedHttpUrl = initialProbe.url || uiHttpUrl;
+  }
+
+  const verifyProbe = await probeUiHttpUrl(resolvedHttpUrl, 3000);
+  if (!verifyProbe.running || !verifyProbe.isUi) {
+    throw new Error(`Metrics UI is not reachable at ${resolvedHttpUrl}.`);
+  }
+
+  const uiWsUrl = requireWs ? await resolveUiWsUrl(resolvedHttpUrl) : null;
+  if (requireWs && !uiWsUrl) {
+    throw new Error(`Unable to resolve Metrics UI websocket url from ${resolvedHttpUrl}.`);
+  }
+
+  return {
+    uiHttpUrl: resolvedHttpUrl,
+    uiWsUrl,
+    startedByVerifier,
+    shutdownOnExit: startedByVerifier && shutdownOnExit,
+    logFile,
+    uiStateFile,
+  };
+}
+
+async function finalizeUiServerForVerification(lifecycle) {
+  if (!lifecycle || !lifecycle.startedByVerifier || !lifecycle.shutdownOnExit) {
+    return {
+      attempted: false,
+      result: 'not-requested',
+      error: null,
+    };
+  }
+
+  const uiHttpUrl = lifecycle.uiHttpUrl;
+  try {
+    const probe = await probeUiHttpUrl(uiHttpUrl, 2000);
+    if (probe.running) {
+      await requestJson(`${uiHttpUrl}/api/shutdown`, { method: 'POST' });
+    }
+    const uiStateFile = lifecycle.uiStateFile;
+    if (uiStateFile) {
+      const uiState = loadUiState(uiStateFile);
+      const key = buildUiKeyFromUrl(uiHttpUrl);
+      if (key && uiState.deployments[key]) {
+        delete uiState.deployments[key];
+        saveUiState(uiStateFile, uiState);
+      }
+    }
+    return {
+      attempted: true,
+      result: 'stopped',
+      error: null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      result: 'failed',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function handleConfig(argvRest) {
@@ -6437,6 +7103,1933 @@ async function collectUiCheckReport(
   };
 }
 
+async function collectUiDebugSnapshot(
+  socket,
+  {
+    timeoutMs = 5000,
+    requestIdBase = null,
+  } = {},
+) {
+  const requestId = `${requestIdBase || buildMessageId(null, 'ui-verify')}-debug`;
+  sendWsMessage(socket, { type: 'get_ui_debug', request_id: requestId });
+  const response = await waitForWsResponse(socket, {
+    requestId,
+    types: ['ui_debug'],
+    timeoutMs: timeoutMs + 2000,
+  });
+  if (!response) {
+    throw new Error('Timed out waiting for UI debug.');
+  }
+  return response.payload ?? response;
+}
+
+async function collectUiMetricCoverageSnapshot(
+  socket,
+  {
+    captureId = null,
+    timeoutMs = 5000,
+    requestIdBase = null,
+  } = {},
+) {
+  const requestId = `${requestIdBase || buildMessageId(null, 'ui-verify')}-coverage`;
+  sendWsMessage(socket, {
+    type: 'get_metric_coverage',
+    captureId: captureId ? String(captureId) : undefined,
+    request_id: requestId,
+  });
+  const response = await waitForWsResponse(socket, {
+    requestId,
+    types: ['metric_coverage'],
+    timeoutMs: timeoutMs + 2000,
+  });
+  if (!response) {
+    throw new Error('Timed out waiting for UI metric coverage.');
+  }
+  return response.payload ?? response;
+}
+
+function toMetricPath(metric) {
+  if (!metric || typeof metric !== 'object') {
+    return null;
+  }
+  if (Array.isArray(metric.path) && metric.path.length > 0) {
+    const path = metric.path
+      .map((entry) => String(entry ?? '').trim())
+      .filter((entry) => entry.length > 0);
+    return path.length > 0 ? path : null;
+  }
+  if (typeof metric.fullPath === 'string' && metric.fullPath.trim().length > 0) {
+    const path = metric.fullPath
+      .split('.')
+      .map((entry) => String(entry ?? '').trim())
+      .filter((entry) => entry.length > 0);
+    return path.length > 0 ? path : null;
+  }
+  return null;
+}
+
+function toServerLiveStatusMap(liveStatus, debugCaptures) {
+  const map = new Map();
+  const streams = Array.isArray(liveStatus?.streams) ? liveStatus.streams : [];
+  streams.forEach((stream) => {
+    if (!stream || typeof stream.captureId !== 'string') {
+      return;
+    }
+    if (typeof stream.lastError === 'string' && stream.lastError.trim().length > 0) {
+      map.set(stream.captureId, 'error');
+      return;
+    }
+    map.set(stream.captureId, 'connected');
+  });
+  const captures = Array.isArray(debugCaptures?.captures) ? debugCaptures.captures : [];
+  captures.forEach((capture) => {
+    if (!capture || typeof capture.captureId !== 'string') {
+      return;
+    }
+    if (!map.has(capture.captureId)) {
+      map.set(capture.captureId, capture.ended ? 'completed' : 'idle');
+    }
+  });
+  return map;
+}
+
+async function collectUiServerVerifySnapshot(
+  uiHttpUrl,
+  {
+    captureId = null,
+    requireSelected = true,
+    preferCache = true,
+  } = {},
+) {
+  const [debugState, debugCaptures, liveStatus] = await Promise.all([
+    requestJson(buildUrl(uiHttpUrl, '/api/debug/state'), { method: 'GET' }),
+    requestJson(buildUrl(uiHttpUrl, '/api/debug/captures'), { method: 'GET' }),
+    requestJson(buildUrl(uiHttpUrl, '/api/live/status'), { method: 'GET' }),
+  ]);
+
+  const captures = Array.isArray(debugCaptures?.captures) ? debugCaptures.captures : [];
+  const capturesById = new Map(
+    captures
+      .filter((entry) => entry && typeof entry.captureId === 'string')
+      .map((entry) => [entry.captureId, entry]),
+  );
+
+  const rawSelectedMetrics = Array.isArray(debugState?.state?.selectedMetrics)
+    ? debugState.state.selectedMetrics
+    : [];
+  const selectedMetrics = rawSelectedMetrics
+    .filter((metric) => metric && typeof metric.captureId === 'string')
+    .map((metric) => {
+      const path = toMetricPath(metric);
+      const fullPath = typeof metric.fullPath === 'string'
+        ? metric.fullPath
+        : (path ? path.join('.') : '');
+      return {
+        captureId: String(metric.captureId),
+        path,
+        fullPath,
+        label: typeof metric.label === 'string' ? metric.label : fullPath,
+      };
+    })
+    .filter((metric) => metric.path && metric.fullPath);
+
+  const selectedCaptureIds = Array.from(
+    new Set(selectedMetrics.map((metric) => metric.captureId)),
+  );
+
+  const targetCaptureIds = captureId
+    ? [String(captureId)]
+    : (selectedCaptureIds.length > 0
+      ? selectedCaptureIds
+      : captures
+        .filter((entry) => typeof entry.captureId === 'string' && typeof entry.source === 'string' && entry.source)
+        .map((entry) => entry.captureId));
+
+  const selectedByCapture = new Map();
+  selectedMetrics.forEach((metric) => {
+    if (!targetCaptureIds.includes(metric.captureId)) {
+      return;
+    }
+    const key = `${metric.captureId}::${metric.fullPath}`;
+    const existing = selectedByCapture.get(metric.captureId) ?? new Map();
+    if (!existing.has(key)) {
+      existing.set(key, metric);
+    }
+    selectedByCapture.set(metric.captureId, existing);
+  });
+
+  const seriesByCapture = new Map();
+  const seriesErrors = [];
+
+  for (const id of targetCaptureIds) {
+    const metricMap = selectedByCapture.get(id) ?? new Map();
+    const metricList = Array.from(metricMap.values());
+    if (metricList.length === 0) {
+      seriesByCapture.set(id, []);
+      continue;
+    }
+    const paths = metricList.map((metric) => metric.path).filter(Array.isArray);
+    try {
+      const seriesResponse = await requestJson(buildUrl(uiHttpUrl, '/api/series/batch'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          captureId: id,
+          paths,
+          preferCache: preferCache !== false,
+        }),
+      });
+      const series = Array.isArray(seriesResponse?.series) ? seriesResponse.series : [];
+      seriesByCapture.set(id, series);
+    } catch (error) {
+      seriesByCapture.set(id, []);
+      seriesErrors.push({
+        captureId: id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const liveStatusByCapture = toServerLiveStatusMap(liveStatus, debugCaptures);
+  return {
+    sampledAt: new Date().toISOString(),
+    captureId: captureId ? String(captureId) : 'all',
+    frontendConnected: Boolean(debugState?.frontendConnected),
+    stateSource: typeof debugState?.stateSource === 'string' ? debugState.stateSource : 'unknown',
+    captures,
+    capturesById,
+    liveStatusByCapture,
+    targetCaptureIds,
+    selectedMetrics,
+    selectedByCapture,
+    seriesByCapture,
+    seriesErrors,
+    requireSelected,
+  };
+}
+
+function evaluateUiServerVerifySnapshots({
+  snapshots,
+  captureId = null,
+  requireSelected = true,
+}) {
+  const failures = [];
+  const transientIssues = [];
+  const captureTraces = new Map();
+  const metricTraces = new Map();
+
+  snapshots.forEach((snapshot) => {
+    const targetIds = Array.isArray(snapshot.targetCaptureIds) ? snapshot.targetCaptureIds : [];
+    if (snapshot.stateSource === 'empty') {
+      failures.push({
+        type: 'missing-dashboard-state',
+        message: 'No persisted or live dashboard state available for verification.',
+      });
+    }
+    if (Array.isArray(snapshot.seriesErrors) && snapshot.seriesErrors.length > 0) {
+      snapshot.seriesErrors.forEach((entry) => {
+        failures.push({
+          type: 'series-query-error',
+          captureId: entry.captureId ?? null,
+          error: entry.error ?? 'series query failed',
+        });
+      });
+    }
+
+    targetIds.forEach((id) => {
+      const capture = snapshot.capturesById.get(id);
+      const selectedMetricMap = snapshot.selectedByCapture.get(id) ?? new Map();
+      const selectedMetricCount = selectedMetricMap.size;
+      const selectedMetricList = Array.from(selectedMetricMap.values());
+      const seriesList = Array.isArray(snapshot.seriesByCapture.get(id))
+        ? snapshot.seriesByCapture.get(id)
+        : [];
+      const seriesByFullPath = new Map(
+        seriesList
+          .filter((series) => series && typeof series.fullPath === 'string')
+          .map((series) => [String(series.fullPath), series]),
+      );
+
+      if (!capture) {
+        failures.push({
+          type: 'missing-capture',
+          captureId: id,
+          message: `Capture ${id} not present in server debug captures.`,
+        });
+        return;
+      }
+
+      if (!capture.source || typeof capture.source !== 'string') {
+        failures.push({
+          type: 'missing-capture-source',
+          captureId: id,
+          message: `Capture ${id} has no source recorded on server.`,
+        });
+      }
+
+      if (requireSelected && selectedMetricCount <= 0) {
+        failures.push({
+          type: 'no-selected-metrics',
+          captureId: id,
+          message: `Capture ${id} has no selected metrics.`,
+        });
+      }
+
+      let recordCount = 0;
+      let hasPartialSeries = false;
+      seriesList.forEach((series) => {
+        const numericCount = Number(series?.numericCount) || 0;
+        if (numericCount > recordCount) {
+          recordCount = numericCount;
+        }
+        if (series?.partial) {
+          hasPartialSeries = true;
+        }
+      });
+
+      const tickCount = Number(capture.lastTick) || 0;
+      const liveStatus = snapshot.liveStatusByCapture.get(id) ?? 'idle';
+      const loading = liveStatus === 'connected' || liveStatus === 'connecting' || Boolean(hasPartialSeries);
+
+      const captureSample = {
+        checkedAt: snapshot.sampledAt,
+        tickCount,
+        recordCount,
+        selectedMetricCount,
+        loading,
+        liveStatus,
+      };
+
+      if (!captureTraces.has(id)) {
+        captureTraces.set(id, []);
+      }
+      captureTraces.get(id).push(captureSample);
+
+      selectedMetricList.forEach((metric) => {
+        const fullPath = metric.fullPath;
+        const series = seriesByFullPath.get(fullPath);
+        const key = `${id}::${fullPath}`;
+        const sample = {
+          checkedAt: snapshot.sampledAt,
+          numericCount: Number(series?.numericCount) || 0,
+          total: Number(series?.tickCount) || 0,
+          lastTick: Number(series?.lastTick) || 0,
+          loading,
+          liveStatus,
+        };
+        const existing = metricTraces.get(key);
+        if (existing) {
+          existing.samples.push(sample);
+        } else {
+          metricTraces.set(key, {
+            key,
+            captureId: id,
+            fullPath,
+            label: metric.label || fullPath,
+            samples: [sample],
+          });
+        }
+      });
+    });
+  });
+
+  if (captureTraces.size === 0) {
+    failures.push({
+      type: 'no-captures',
+      message: captureId
+        ? `Capture ${captureId} not found in server verification snapshots.`
+        : 'No captures found in server verification snapshots.',
+    });
+  }
+
+  const captureSummaries = [];
+  captureTraces.forEach((trace, id) => {
+    const first = trace[0];
+    const last = trace[trace.length - 1];
+    if (!first || !last) {
+      return;
+    }
+
+    for (let index = 1; index < trace.length; index += 1) {
+      const prev = trace[index - 1];
+      const next = trace[index];
+      if (next.tickCount < prev.tickCount) {
+        failures.push({
+          type: 'tick-count-decreased',
+          captureId: id,
+          from: prev.tickCount,
+          to: next.tickCount,
+          at: next.checkedAt ?? null,
+        });
+      }
+      if (next.recordCount < prev.recordCount) {
+        failures.push({
+          type: 'record-count-decreased',
+          captureId: id,
+          from: prev.recordCount,
+          to: next.recordCount,
+          at: next.checkedAt ?? null,
+        });
+      }
+    }
+
+    const tickDelta = last.tickCount - first.tickCount;
+    const recordDelta = last.recordCount - first.recordCount;
+    if (last.selectedMetricCount > 0 && tickDelta > 0 && recordDelta <= 0 && !last.loading) {
+      failures.push({
+        type: 'no-record-growth-while-ticks-grew',
+        captureId: id,
+        tickDelta,
+        recordDelta,
+      });
+    }
+    if (
+      last.selectedMetricCount > 0
+      && (last.liveStatus === 'completed' || last.liveStatus === 'idle')
+      && last.tickCount > 0
+      && last.recordCount === 0
+    ) {
+      failures.push({
+        type: 'completed-without-records',
+        captureId: id,
+        tickCount: last.tickCount,
+      });
+    }
+
+    captureSummaries.push({
+      captureId: id,
+      firstTickCount: first.tickCount,
+      lastTickCount: last.tickCount,
+      firstRecordCount: first.recordCount,
+      lastRecordCount: last.recordCount,
+      tickDelta,
+      recordDelta,
+      selectedMetricCount: last.selectedMetricCount,
+      liveStatus: last.liveStatus,
+      loadingAtEnd: last.loading,
+      sampleCount: trace.length,
+    });
+  });
+
+  const metricSummaries = [];
+  metricTraces.forEach((trace, key) => {
+    const samples = Array.isArray(trace.samples) ? trace.samples : [];
+    if (samples.length === 0) {
+      return;
+    }
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    if (!first || !last) {
+      return;
+    }
+    let increments = 0;
+    for (let index = 1; index < samples.length; index += 1) {
+      const prev = samples[index - 1];
+      const next = samples[index];
+      if (next.numericCount < prev.numericCount) {
+        failures.push({
+          type: 'metric-numeric-count-decreased',
+          captureId: trace.captureId,
+          fullPath: trace.fullPath,
+          from: prev.numericCount,
+          to: next.numericCount,
+          at: next.checkedAt ?? null,
+        });
+      }
+      if (next.numericCount > prev.numericCount) {
+        increments += 1;
+      }
+    }
+    if (last.liveStatus === 'completed' && last.total > 0 && last.numericCount === 0) {
+      failures.push({
+        type: 'completed-metric-without-values',
+        captureId: trace.captureId,
+        fullPath: trace.fullPath,
+        total: last.total,
+      });
+    }
+    if (last.loading && first.numericCount === 0 && last.numericCount === 0 && last.total === 0) {
+      transientIssues.push({
+        type: 'metric-still-loading',
+        captureId: trace.captureId,
+        fullPath: trace.fullPath,
+      });
+    }
+    metricSummaries.push({
+      key,
+      captureId: trace.captureId,
+      fullPath: trace.fullPath,
+      label: trace.label,
+      firstNumericCount: first.numericCount,
+      lastNumericCount: last.numericCount,
+      total: last.total,
+      delta: last.numericCount - first.numericCount,
+      increments,
+      liveStatus: last.liveStatus,
+      loadingAtEnd: last.loading,
+      sampleCount: samples.length,
+    });
+  });
+
+  const normalizedFailures = dedupeIssueList(failures);
+  const normalizedTransientIssues = dedupeIssueList(transientIssues);
+  return {
+    status: normalizedFailures.length > 0 ? 'failed' : (normalizedTransientIssues.length > 0 ? 'warning' : 'ok'),
+    checkedAt: new Date().toISOString(),
+    captureId: captureId ? String(captureId) : 'all',
+    captures: captureSummaries,
+    metrics: metricSummaries,
+    failures: normalizedFailures,
+    transientIssues: normalizedTransientIssues,
+  };
+}
+
+async function collectUiServerVerifyReport(
+  uiHttpUrl,
+  {
+    captureId = null,
+    observeMs = 5000,
+    intervalMs = 1000,
+    requireSelected = true,
+  } = {},
+) {
+  const start = Date.now();
+  const snapshots = [];
+  let index = 0;
+  while (true) {
+    snapshots.push(
+      await collectUiServerVerifySnapshot(uiHttpUrl, {
+        captureId,
+        requireSelected,
+        preferCache: true,
+      }),
+    );
+    index += 1;
+    const elapsed = Date.now() - start;
+    if (elapsed >= observeMs) {
+      break;
+    }
+    await delay(Math.min(intervalMs, Math.max(1, observeMs - elapsed)));
+  }
+
+  const report = evaluateUiServerVerifySnapshots({
+    snapshots,
+    captureId,
+    requireSelected,
+  });
+
+  report.observeMs = observeMs;
+  report.intervalMs = intervalMs;
+  report.mode = 'server';
+  report.samples = snapshots.map((snapshot) => {
+    const sampleCaptures = snapshot.targetCaptureIds.map((id) => {
+      const capture = snapshot.capturesById.get(id);
+      const selectedMetricMap = snapshot.selectedByCapture.get(id) ?? new Map();
+      const seriesList = Array.isArray(snapshot.seriesByCapture.get(id))
+        ? snapshot.seriesByCapture.get(id)
+        : [];
+      let recordCount = 0;
+      seriesList.forEach((series) => {
+        const numericCount = Number(series?.numericCount) || 0;
+        if (numericCount > recordCount) {
+          recordCount = numericCount;
+        }
+      });
+      return {
+        captureId: id,
+        tickCount: Number(capture?.lastTick) || 0,
+        recordCount,
+        selectedMetricCount: selectedMetricMap.size,
+      };
+    });
+    return {
+      sampledAt: snapshot.sampledAt,
+      checkStatus: 'server',
+      issueCount: 0,
+      loadingProbe: {
+        pendingSeries: 0,
+        pendingAppends: 0,
+        pendingComponentUpdates: 0,
+        pendingTicks: 0,
+      },
+      captures: sampleCaptures,
+      metricCoverageCount: sampleCaptures.reduce(
+        (total, entry) => total + Number(entry.selectedMetricCount || 0),
+        0,
+      ),
+      frontendConnected: snapshot.frontendConnected,
+      stateSource: snapshot.stateSource,
+    };
+  });
+
+  return { report };
+}
+
+async function createGeneratedRegressionCaptureFile({
+  frames = 24000,
+  prefix = 'ui-regression',
+} = {}) {
+  const safePrefix = String(prefix || 'ui-regression').replace(/[^a-zA-Z0-9._-]/g, '-');
+  const filePath = path.join(
+    os.tmpdir(),
+    `${safePrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jsonl`,
+  );
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  const lines = [];
+  for (let tick = 1; tick <= frames; tick += 1) {
+    const value = Math.round(60 + (18 * Math.sin(tick / 9)) + (tick * 0.42));
+    const frame = {
+      tick,
+      entities: {
+        0: {
+          regression_signal: {
+            value,
+            control: tick % 11,
+          },
+        },
+      },
+    };
+    lines.push(JSON.stringify(frame));
+  }
+  await fs.promises.writeFile(filePath, `${lines.join('\n')}\n`, 'utf8');
+  return { filePath, frames };
+}
+
+function getRegressionLiveStatus(liveStatus, captureId, captureEntry) {
+  const streams = Array.isArray(liveStatus?.streams) ? liveStatus.streams : [];
+  const stream = streams.find((entry) => entry && entry.captureId === captureId);
+  if (stream) {
+    if (typeof stream.lastError === 'string' && stream.lastError.trim().length > 0) {
+      return 'error';
+    }
+    return 'connected';
+  }
+  if (captureEntry?.ended) {
+    return 'completed';
+  }
+  return 'idle';
+}
+
+async function isMetricSelectedOnServer(uiHttpUrl, captureId, fullPath) {
+  const state = await requestJson(buildUrl(uiHttpUrl, '/api/debug/state'), { method: 'GET' });
+  const selectedMetrics = Array.isArray(state?.state?.selectedMetrics)
+    ? state.state.selectedMetrics
+    : [];
+  return selectedMetrics.some((metric) => (
+    metric
+    && metric.captureId === captureId
+    && (metric.fullPath === fullPath
+      || (
+        Array.isArray(metric.path)
+        && metric.path.map((part) => String(part)).join('.') === fullPath
+      ))
+  ));
+}
+
+async function startUiRegressionLiveCapture(uiHttpUrl, {
+  captureId,
+  source,
+  filename,
+  pollIntervalMs,
+}) {
+  await requestJson(buildUrl(uiHttpUrl, '/api/live/stop'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ captureId }),
+  });
+  const response = await requestJson(buildUrl(uiHttpUrl, '/api/live/start'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      captureId,
+      source,
+      filename,
+      pollIntervalMs,
+    }),
+  });
+  return response;
+}
+
+function summarizeUiRegressionFlowSamples(samples, expectedFrames) {
+  const list = Array.isArray(samples) ? samples : [];
+  const first = list[0] ?? null;
+  const last = list[list.length - 1] ?? null;
+  if (!first || !last) {
+    return {
+      sampleCount: list.length,
+      firstTick: 0,
+      lastTick: 0,
+      firstNumericCount: 0,
+      lastNumericCount: 0,
+      tickDelta: 0,
+      numericDelta: 0,
+      increments: 0,
+      progressionType: 'none',
+      monotonicTick: true,
+      monotonicNumeric: true,
+      completed: false,
+      hasValues: false,
+      finalLiveStatus: 'idle',
+    };
+  }
+
+  let monotonicTick = true;
+  let monotonicNumeric = true;
+  let increments = 0;
+  for (let index = 1; index < list.length; index += 1) {
+    const prev = list[index - 1];
+    const next = list[index];
+    if ((next.captureLastTick ?? 0) < (prev.captureLastTick ?? 0)) {
+      monotonicTick = false;
+    }
+    if ((next.numericCount ?? 0) < (prev.numericCount ?? 0)) {
+      monotonicNumeric = false;
+    }
+    if ((next.numericCount ?? 0) > (prev.numericCount ?? 0)) {
+      increments += 1;
+    }
+  }
+
+  const firstNumericCount = Number(first.numericCount) || 0;
+  const lastNumericCount = Number(last.numericCount) || 0;
+  const firstTick = Number(first.captureLastTick) || 0;
+  const lastTick = Number(last.captureLastTick) || 0;
+  let progressionType = 'none';
+  if (lastNumericCount > 0) {
+    const bigJump = increments <= 1 && (lastNumericCount - firstNumericCount) >= 20;
+    if (bigJump) {
+      progressionType = 'jump';
+    } else if (increments >= 2) {
+      progressionType = 'progressive';
+    } else {
+      progressionType = 'sparse';
+    }
+  }
+  return {
+    sampleCount: list.length,
+    firstTick,
+    lastTick,
+    firstNumericCount,
+    lastNumericCount,
+    tickDelta: lastTick - firstTick,
+    numericDelta: lastNumericCount - firstNumericCount,
+    increments,
+    progressionType,
+    monotonicTick,
+    monotonicNumeric,
+    completed: lastTick >= expectedFrames && lastNumericCount >= expectedFrames,
+    hasValues: lastNumericCount > 0,
+    finalLiveStatus: typeof last.liveStatus === 'string' ? last.liveStatus : 'idle',
+  };
+}
+
+async function observeUiRegressionFlow(uiHttpUrl, {
+  flowName,
+  captureId,
+  metricPath,
+  fullPath,
+  observeMs,
+  intervalMs,
+  expectedFrames,
+}) {
+  const samples = [];
+  const start = Date.now();
+  while (true) {
+    const [seriesResponse, debugCaptures, liveStatus] = await Promise.all([
+      requestJson(buildUrl(uiHttpUrl, '/api/series/batch'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          captureId,
+          paths: [metricPath],
+          preferCache: true,
+        }),
+      }),
+      requestJson(buildUrl(uiHttpUrl, '/api/debug/captures'), { method: 'GET' }),
+      requestJson(buildUrl(uiHttpUrl, '/api/live/status'), { method: 'GET' }),
+    ]);
+
+    const series = Array.isArray(seriesResponse?.series) ? seriesResponse.series[0] : null;
+    const captures = Array.isArray(debugCaptures?.captures) ? debugCaptures.captures : [];
+    const captureEntry = captures.find((entry) => entry && entry.captureId === captureId) ?? null;
+    const sample = {
+      sampledAt: new Date().toISOString(),
+      captureId,
+      fullPath,
+      captureLastTick: Number(captureEntry?.lastTick) || 0,
+      numericCount: Number(series?.numericCount) || 0,
+      tickCount: Number(series?.tickCount) || 0,
+      seriesLastTick: Number(series?.lastTick) || 0,
+      partial: Boolean(series?.partial),
+      liveStatus: getRegressionLiveStatus(liveStatus, captureId, captureEntry),
+    };
+    samples.push(sample);
+
+    const elapsed = Date.now() - start;
+    const isComplete = sample.captureLastTick >= expectedFrames && sample.numericCount >= expectedFrames;
+    if (elapsed >= observeMs || isComplete) {
+      break;
+    }
+    await delay(intervalMs);
+  }
+
+  return {
+    name: flowName,
+    captureId,
+    fullPath,
+    samples,
+    summary: summarizeUiRegressionFlowSamples(samples, expectedFrames),
+  };
+}
+
+async function fetchUiSeriesEntry(uiHttpUrl, {
+  captureId,
+  metricPath,
+  preferCache = true,
+}) {
+  const response = await requestJson(buildUrl(uiHttpUrl, '/api/series/batch'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      captureId,
+      paths: [metricPath],
+      preferCache,
+    }),
+  });
+  const entry = Array.isArray(response?.series) ? response.series[0] : null;
+  const points = Array.isArray(entry?.points) ? entry.points : [];
+  return {
+    captureId,
+    path: [...metricPath],
+    fullPath: metricPath.join('.'),
+    numericCount: Number(entry?.numericCount) || 0,
+    tickCount: Number(entry?.tickCount) || 0,
+    lastTick: Number(entry?.lastTick) || 0,
+    partial: Boolean(entry?.partial),
+    points,
+  };
+}
+
+async function fetchUiSeriesBatch(uiHttpUrl, {
+  captureId,
+  metricPaths,
+  preferCache = true,
+}) {
+  const response = await requestJson(buildUrl(uiHttpUrl, '/api/series/batch'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      captureId,
+      paths: metricPaths,
+      preferCache,
+    }),
+  });
+  const entries = Array.isArray(response?.series) ? response.series : [];
+  const byPath = new Map();
+  entries.forEach((entry) => {
+    const path = Array.isArray(entry?.path)
+      ? entry.path.map((part) => String(part))
+      : [];
+    if (path.length === 0) {
+      return;
+    }
+    byPath.set(path.join('.'), {
+      captureId,
+      path,
+      fullPath: path.join('.'),
+      numericCount: Number(entry?.numericCount) || 0,
+      tickCount: Number(entry?.tickCount) || 0,
+      lastTick: Number(entry?.lastTick) || 0,
+      partial: Boolean(entry?.partial),
+      points: Array.isArray(entry?.points) ? entry.points : [],
+    });
+  });
+  return byPath;
+}
+
+function buildNumericPointMap(seriesEntry) {
+  const map = new Map();
+  const points = Array.isArray(seriesEntry?.points) ? seriesEntry.points : [];
+  points.forEach((point) => {
+    const tick = Number(point?.tick);
+    const value = point?.value;
+    if (!Number.isFinite(tick) || typeof value !== 'number' || Number.isNaN(value)) {
+      return;
+    }
+    map.set(tick, value);
+  });
+  return map;
+}
+
+function evaluateDerivedDiffSeries({
+  valueSeries,
+  controlSeries,
+  diffSeries,
+  tolerance = 1e-9,
+  sampleLimit = 64,
+}) {
+  const failures = [];
+  const warnings = [];
+  const valueMap = buildNumericPointMap(valueSeries);
+  const controlMap = buildNumericPointMap(controlSeries);
+  const diffMap = buildNumericPointMap(diffSeries);
+  const commonTicks = Array.from(diffMap.keys())
+    .filter((tick) => valueMap.has(tick) && controlMap.has(tick))
+    .sort((a, b) => a - b);
+
+  if (commonTicks.length === 0) {
+    failures.push({
+      type: 'derivation-diff-no-common-ticks',
+      message: 'No shared numeric ticks between source and derived diff series.',
+    });
+    return {
+      status: 'failed',
+      failures: dedupeIssueList(failures),
+      warnings: dedupeIssueList(warnings),
+      comparedTicks: 0,
+      mismatches: 0,
+      sampleTicks: [],
+    };
+  }
+
+  const sampleTicks = [];
+  if (commonTicks.length <= sampleLimit) {
+    sampleTicks.push(...commonTicks);
+  } else {
+    const step = Math.max(1, Math.floor(commonTicks.length / sampleLimit));
+    for (let index = 0; index < commonTicks.length; index += step) {
+      sampleTicks.push(commonTicks[index]);
+      if (sampleTicks.length >= sampleLimit) {
+        break;
+      }
+    }
+    const last = commonTicks[commonTicks.length - 1];
+    if (!sampleTicks.includes(last)) {
+      sampleTicks.push(last);
+    }
+  }
+
+  let mismatchCount = 0;
+  sampleTicks.forEach((tick) => {
+    const value = Number(valueMap.get(tick));
+    const control = Number(controlMap.get(tick));
+    const actual = Number(diffMap.get(tick));
+    const expected = value - control;
+    const delta = Math.abs(actual - expected);
+    if (!Number.isFinite(expected) || !Number.isFinite(actual) || delta > tolerance) {
+      mismatchCount += 1;
+      if (mismatchCount <= 10) {
+        failures.push({
+          type: 'derivation-diff-mismatch',
+          tick,
+          expected,
+          actual,
+          delta,
+          tolerance,
+        });
+      }
+    }
+  });
+
+  if (mismatchCount > 10) {
+    warnings.push({
+      type: 'derivation-diff-mismatch-truncated',
+      mismatchCount,
+      message: 'Only first 10 mismatches are reported.',
+    });
+  }
+
+  return {
+    status: mismatchCount > 0 ? 'failed' : 'ok',
+    failures: dedupeIssueList(failures),
+    warnings: dedupeIssueList(warnings),
+    comparedTicks: sampleTicks.length,
+    mismatches: mismatchCount,
+    sampleTicks,
+  };
+}
+
+async function runUiDerivationRegressionChecks({
+  uiHttpUrl,
+  socket,
+  sendCommand,
+  baseCaptureId,
+  idBase,
+  frames,
+  observeMs,
+  intervalMs,
+}) {
+  const failures = [];
+  const warnings = [];
+  const baseValuePath = ['0', 'regression_signal', 'value'];
+  const baseControlPath = ['0', 'regression_signal', 'control'];
+  const outputMetricPath = ['0', 'derivations', 'diff'];
+  const groupId = `${idBase}-derive-group`;
+  const outputCaptureId = `${idBase}-derive-diff`;
+  let completion = null;
+  let derivedFlow = null;
+  let correctness = null;
+  let groupState = null;
+
+  try {
+    await sendCommand('remove_capture', { captureId: outputCaptureId });
+  } catch {
+    // ignore: may not exist
+  }
+
+  try {
+    await sendCommand('create_derivation_group', {
+      groupId,
+      name: groupId,
+    });
+    await sendCommand('set_active_derivation_group', { groupId });
+    await sendCommand('select_analysis_metric', {
+      captureId: baseCaptureId,
+      path: baseValuePath,
+    });
+    await sendCommand('select_analysis_metric', {
+      captureId: baseCaptureId,
+      path: baseControlPath,
+    });
+
+    try {
+      const state = await requestJson(buildUrl(uiHttpUrl, '/api/debug/state'), { method: 'GET' });
+      const groups = Array.isArray(state?.state?.derivationGroups)
+        ? state.state.derivationGroups
+        : [];
+      groupState = groups.find((entry) => entry && entry.id === groupId) ?? null;
+      const metricCount = Array.isArray(groupState?.metrics) ? groupState.metrics.length : 0;
+      if (metricCount < 2) {
+        failures.push({
+          type: 'derivation-group-metric-count',
+          groupId,
+          metricCount,
+          expectedAtLeast: 2,
+          message: 'Derivation group did not retain expected input metrics.',
+        });
+      }
+    } catch (error) {
+      warnings.push({
+        type: 'derivation-group-state-unavailable',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const runRequestId = await sendCommand('run_derivation', {
+      kind: 'diff',
+      groupId,
+      leftIndex: 0,
+      rightIndex: 1,
+      outputCaptureId,
+    });
+    completion = await waitForDerivationCompletionOrThrow(socket, {
+      requestId: runRequestId,
+      timeoutMs: Math.max(30000, observeMs + 8000),
+      actionLabel: 'verify-regression derivation',
+    });
+
+    derivedFlow = await observeUiRegressionFlow(uiHttpUrl, {
+      flowName: 'derivation-diff',
+      captureId: outputCaptureId,
+      metricPath: outputMetricPath,
+      fullPath: outputMetricPath.join('.'),
+      observeMs,
+      intervalMs,
+      expectedFrames: frames,
+    });
+
+    const baseSeries = await fetchUiSeriesBatch(uiHttpUrl, {
+      captureId: baseCaptureId,
+      metricPaths: [baseValuePath, baseControlPath],
+      preferCache: true,
+    });
+    const valueSeries = baseSeries.get(baseValuePath.join('.'));
+    const controlSeries = baseSeries.get(baseControlPath.join('.'));
+    const diffSeries = await fetchUiSeriesEntry(uiHttpUrl, {
+      captureId: outputCaptureId,
+      metricPath: outputMetricPath,
+      preferCache: true,
+    });
+
+    if (!valueSeries || !controlSeries) {
+      failures.push({
+        type: 'derivation-base-series-missing',
+        message: 'Missing base series while validating derivation diff output.',
+      });
+    } else {
+      correctness = evaluateDerivedDiffSeries({
+        valueSeries,
+        controlSeries,
+        diffSeries,
+      });
+      failures.push(...correctness.failures);
+      warnings.push(...correctness.warnings);
+    }
+
+    const summary = derivedFlow?.summary ?? null;
+    if (!summary || !summary.hasValues) {
+      failures.push({
+        type: 'derivation-output-no-values',
+        outputCaptureId,
+      });
+    } else {
+      if (!summary.monotonicTick || !summary.monotonicNumeric) {
+        failures.push({
+          type: 'derivation-output-non-monotonic',
+          outputCaptureId,
+          monotonicTick: summary.monotonicTick,
+          monotonicNumeric: summary.monotonicNumeric,
+        });
+      }
+      if (summary.lastNumericCount <= 0) {
+        failures.push({
+          type: 'derivation-output-empty-series',
+          outputCaptureId,
+          lastNumericCount: summary.lastNumericCount,
+        });
+      }
+      if (!summary.completed) {
+        warnings.push({
+          type: 'derivation-output-incomplete',
+          outputCaptureId,
+          expectedFrames: frames,
+          lastNumericCount: summary.lastNumericCount,
+          lastTick: summary.lastTick,
+        });
+      }
+    }
+  } catch (error) {
+    failures.push({
+      type: 'derivation-regression-error',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    try {
+      await sendCommand('remove_capture', { captureId: outputCaptureId });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await sendCommand('delete_derivation_group', { groupId });
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+
+  const normalizedFailures = dedupeIssueList(failures);
+  const normalizedWarnings = dedupeIssueList(warnings);
+  return {
+    status: normalizedFailures.length > 0 ? 'failed' : (normalizedWarnings.length > 0 ? 'warning' : 'ok'),
+    groupId,
+    outputCaptureId,
+    completionType: completion?.type ?? null,
+    completionPayload: completion?.payload ?? null,
+    groupState,
+    flow: derivedFlow,
+    correctness,
+    failures: normalizedFailures,
+    warnings: normalizedWarnings,
+  };
+}
+
+function evaluateUiRegressionFlows({
+  firstFlow,
+  secondFlow,
+  expectedFrames,
+  requireSelected = true,
+}) {
+  const failures = [];
+  const warnings = [];
+  const a = firstFlow?.summary ?? null;
+  const b = secondFlow?.summary ?? null;
+  if (!a || !b) {
+    failures.push({
+      type: 'missing-flow-summary',
+      message: 'Missing flow summary for regression verification.',
+    });
+  } else {
+    if (!a.monotonicTick || !a.monotonicNumeric) {
+      failures.push({
+        type: 'flow-non-monotonic',
+        flow: firstFlow.name,
+        monotonicTick: a.monotonicTick,
+        monotonicNumeric: a.monotonicNumeric,
+      });
+    }
+    if (!b.monotonicTick || !b.monotonicNumeric) {
+      failures.push({
+        type: 'flow-non-monotonic',
+        flow: secondFlow.name,
+        monotonicTick: b.monotonicTick,
+        monotonicNumeric: b.monotonicNumeric,
+      });
+    }
+    if (!a.hasValues || !b.hasValues) {
+      failures.push({
+        type: 'missing-values',
+        firstFlowHasValues: a.hasValues,
+        secondFlowHasValues: b.hasValues,
+      });
+    }
+    if (requireSelected && (!firstFlow.selectedMetricAtStart || !secondFlow.selectedMetricAtStart)) {
+      failures.push({
+        type: 'metric-not-selected',
+        firstFlowSelected: Boolean(firstFlow.selectedMetricAtStart),
+        secondFlowSelected: Boolean(secondFlow.selectedMetricAtStart),
+      });
+    }
+    if (a.progressionType === 'jump' && b.progressionType === 'jump') {
+      warnings.push({
+        type: 'both-flows-jump',
+        message: 'Both flows populated in a jump pattern; this may still look abrupt in UI.',
+      });
+    }
+    if (a.completed && b.completed && a.lastNumericCount !== b.lastNumericCount) {
+      failures.push({
+        type: 'final-count-mismatch',
+        first: a.lastNumericCount,
+        second: b.lastNumericCount,
+      });
+    }
+    if (!a.completed || !b.completed) {
+      warnings.push({
+        type: 'incomplete-observation',
+        expectedFrames,
+        firstCompleted: a.completed,
+        secondCompleted: b.completed,
+      });
+    }
+  }
+
+  const normalizedFailures = dedupeIssueList(failures);
+  const normalizedWarnings = dedupeIssueList(warnings);
+  return {
+    status: normalizedFailures.length > 0 ? 'failed' : (normalizedWarnings.length > 0 ? 'warning' : 'ok'),
+    failures: normalizedFailures,
+    warnings: normalizedWarnings,
+  };
+}
+
+async function runUiRegressionVerify({
+  uiHttpUrl,
+  uiWsUrl,
+  observeMs,
+  intervalMs,
+  pollMs,
+  frames,
+  requireSelected,
+  captureId = null,
+}) {
+  const idBase = captureId || `verify-regression-${Date.now().toString(36)}`;
+  const regressionCaptureId = captureId || `${idBase}-capture`;
+  const metricPath = ['0', 'regression_signal', 'value'];
+  const fullPath = metricPath.join('.');
+  const generated = await createGeneratedRegressionCaptureFile({
+    frames,
+    prefix: idBase,
+  });
+
+  const socket = await connectWebSocket(uiWsUrl);
+  const registeredRequest = { type: 'register', role: 'agent' };
+  sendWsMessage(socket, registeredRequest);
+  const registered = await waitForWsAck(socket);
+  if (!registered) {
+    socket.close();
+    throw new Error('Failed to register with UI websocket for verify-regression.');
+  }
+
+  let commandCount = 0;
+  const sendCommand = async (type, payload = {}) => {
+    commandCount += 1;
+    const requestId = buildMessageId(
+      null,
+      `ui-verify-regression-${String(type)}-${String(commandCount)}`,
+    );
+    sendWsMessage(socket, {
+      type,
+      ...payload,
+      request_id: requestId,
+    });
+    await waitForUiAckOrThrow(socket, {
+      requestId,
+      timeoutMs: 7000,
+      errorMessage: `Timed out waiting for UI ack (${String(type)}).`,
+    });
+  };
+
+  const cleanup = async () => {
+    try {
+      await requestJson(buildUrl(uiHttpUrl, '/api/live/stop'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ captureId: regressionCaptureId }),
+      });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await sendCommand('remove_capture', { captureId: regressionCaptureId });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await sendCommand('clear_selection');
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      socket.close();
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await fs.promises.unlink(generated.filePath);
+    } catch {
+      // ignore cleanup errors
+    }
+  };
+
+  try {
+    await sendCommand('clear_selection');
+    await sendCommand('remove_capture', { captureId: regressionCaptureId });
+
+    await sendCommand('select_metric', {
+      captureId: regressionCaptureId,
+      path: metricPath,
+    });
+    const firstSelected = await isMetricSelectedOnServer(uiHttpUrl, regressionCaptureId, fullPath);
+    await startUiRegressionLiveCapture(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      source: generated.filePath,
+      filename: path.basename(generated.filePath),
+      pollIntervalMs: pollMs,
+    });
+    const firstFlow = await observeUiRegressionFlow(uiHttpUrl, {
+      flowName: 'select-on-new-stream',
+      captureId: regressionCaptureId,
+      metricPath,
+      fullPath,
+      observeMs,
+      intervalMs,
+      expectedFrames: frames,
+    });
+    firstFlow.selectedMetricAtStart = firstSelected;
+
+    await sendCommand('remove_capture', { captureId: regressionCaptureId });
+    let secondSelected = await isMetricSelectedOnServer(uiHttpUrl, regressionCaptureId, fullPath);
+    if (!secondSelected) {
+      await sendCommand('select_metric', {
+        captureId: regressionCaptureId,
+        path: metricPath,
+      });
+      secondSelected = await isMetricSelectedOnServer(uiHttpUrl, regressionCaptureId, fullPath);
+    }
+    await startUiRegressionLiveCapture(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      source: generated.filePath,
+      filename: path.basename(generated.filePath),
+      pollIntervalMs: pollMs,
+    });
+    const secondFlow = await observeUiRegressionFlow(uiHttpUrl, {
+      flowName: 'refresh-with-selected-metric',
+      captureId: regressionCaptureId,
+      metricPath,
+      fullPath,
+      observeMs,
+      intervalMs,
+      expectedFrames: frames,
+    });
+    secondFlow.selectedMetricAtStart = secondSelected;
+
+    const evaluation = evaluateUiRegressionFlows({
+      firstFlow,
+      secondFlow,
+      expectedFrames: frames,
+      requireSelected,
+    });
+    const derivation = await runUiDerivationRegressionChecks({
+      uiHttpUrl,
+      socket,
+      sendCommand,
+      baseCaptureId: regressionCaptureId,
+      idBase,
+      frames,
+      observeMs,
+      intervalMs,
+    });
+    const failures = dedupeIssueList([
+      ...evaluation.failures,
+      ...(Array.isArray(derivation?.failures) ? derivation.failures : []),
+    ]);
+    const warnings = dedupeIssueList([
+      ...evaluation.warnings,
+      ...(Array.isArray(derivation?.warnings) ? derivation.warnings : []),
+    ]);
+    const status = failures.length > 0 ? 'failed' : (warnings.length > 0 ? 'warning' : 'ok');
+
+    return {
+      report: {
+        status,
+        checkedAt: new Date().toISOString(),
+        mode: 'server-regression',
+        frontendRequired: false,
+        captureId: regressionCaptureId,
+        metric: {
+          path: metricPath,
+          fullPath,
+        },
+        generated: {
+          filePath: generated.filePath,
+          frames,
+        },
+        flows: [
+          firstFlow,
+          secondFlow,
+        ],
+        derivation,
+        failures,
+        warnings,
+      },
+    };
+  } finally {
+    await cleanup();
+  }
+}
+
+function normalizeLoadingProbe(debug) {
+  const probe = debug?.state?.loadingProbe ?? {};
+  return {
+    pendingSeries: Number(probe.pendingSeries) || 0,
+    pendingAppends: Number(probe.pendingAppends) || 0,
+    pendingComponentUpdates: Number(probe.pendingComponentUpdates) || 0,
+    pendingTicks: Number(probe.pendingTicks) || 0,
+  };
+}
+
+function isLoadingActive(probe) {
+  return (
+    (Number(probe?.pendingSeries) || 0) > 0
+    || (Number(probe?.pendingAppends) || 0) > 0
+    || (Number(probe?.pendingComponentUpdates) || 0) > 0
+    || (Number(probe?.pendingTicks) || 0) > 0
+  );
+}
+
+function toLiveStatusMap(debug) {
+  const streams = Array.isArray(debug?.state?.liveStreams) ? debug.state.liveStreams : [];
+  return new Map(
+    streams
+      .filter((entry) => entry && typeof entry.id === 'string')
+      .map((entry) => [entry.id, String(entry.status || 'idle')]),
+  );
+}
+
+function isLiveStatusLoading(status) {
+  const normalized = String(status || 'idle');
+  return (
+    normalized === 'connecting'
+    || normalized === 'retrying'
+    || normalized === 'loading'
+    || normalized === 'connected'
+  );
+}
+
+function isLiveStatusStable(status) {
+  const normalized = String(status || 'idle');
+  return normalized === 'completed' || normalized === 'idle' || normalized === 'error';
+}
+
+function dedupeIssueList(issues) {
+  const seen = new Set();
+  const deduped = [];
+  const list = Array.isArray(issues) ? issues : [];
+  list.forEach((issue) => {
+    if (!issue || typeof issue !== 'object') {
+      return;
+    }
+    const key = JSON.stringify({
+      type: issue.type ?? null,
+      issueType: issue.issueType ?? null,
+      captureId: issue.captureId ?? null,
+      fullPath: issue.fullPath ?? null,
+      message: issue.message ?? null,
+      from: issue.from ?? null,
+      to: issue.to ?? null,
+      error: issue.error ?? null,
+    });
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    deduped.push(issue);
+  });
+  return deduped;
+}
+
+function evaluateUiVerifySnapshots({
+  snapshots,
+  captureId = null,
+  requireSelected = false,
+  allowResetsForCaptures = [],
+}) {
+  const failures = [];
+  const transientIssues = [];
+  const captureTraces = new Map();
+  const metricTraces = new Map();
+  const allowResets = new Set(
+    Array.isArray(allowResetsForCaptures)
+      ? allowResetsForCaptures.map((value) => String(value)).filter(Boolean)
+      : [],
+  );
+
+  snapshots.forEach((snapshot) => {
+    const check = snapshot.check?.report ?? null;
+    const debug = snapshot.debug ?? null;
+    if (!check || !Array.isArray(check.captures)) {
+      failures.push({
+        type: 'missing-check-report',
+        message: 'Missing capture check report in snapshot.',
+      });
+      return;
+    }
+    const loadingProbe = normalizeLoadingProbe(debug);
+    const loading = isLoadingActive(loadingProbe);
+    const liveStatusMap = toLiveStatusMap(debug);
+    const captureStateById = new Map(
+      check.captures
+        .filter((entry) => entry && typeof entry.captureId === 'string')
+        .map((entry) => [entry.captureId, entry]),
+    );
+    const selectedMetrics = Array.isArray(snapshot.check?.selectedMetrics)
+      ? snapshot.check.selectedMetrics
+      : [];
+    const coverageMetrics = Array.isArray(snapshot.coverage?.metrics) ? snapshot.coverage.metrics : [];
+    const coverageByKey = new Map(
+      coverageMetrics
+        .filter((entry) => entry && typeof entry.captureId === 'string' && typeof entry.fullPath === 'string')
+        .map((entry) => [`${entry.captureId}::${entry.fullPath}`, entry]),
+    );
+
+    if (Array.isArray(check.issues) && check.issues.length > 0) {
+      check.issues.forEach((issue) => {
+        const issueCaptureId =
+          issue && typeof issue.captureId === 'string' && issue.captureId.length > 0
+            ? issue.captureId
+            : null;
+        const issueLiveStatus = issueCaptureId ? (liveStatusMap.get(issueCaptureId) ?? 'idle') : null;
+        const issueCaptureState = issueCaptureId ? captureStateById.get(issueCaptureId) : null;
+        const issueSelectedCount = Number(issueCaptureState?.selectedMetricCount) || 0;
+        const issueTickCount = Number(issueCaptureState?.tickCount) || 0;
+        const issueRecordCount = Number(issueCaptureState?.recordCount) || 0;
+        const issueType = issue?.type ?? 'unknown';
+        const stableWithoutRecords =
+          issueType === 'no-records-for-selected-metrics'
+          && issueSelectedCount > 0
+          && issueTickCount > 0
+          && issueRecordCount === 0
+          && isLiveStatusStable(issueLiveStatus || 'idle');
+        const treatAsTransient =
+          !stableWithoutRecords
+          && loading
+          && (issueCaptureId ? isLiveStatusLoading(issueLiveStatus) : true);
+
+        const normalizedIssue = {
+          type: 'check-issue',
+          issueType: issueType,
+          captureId: issueCaptureId,
+          liveStatus: issueLiveStatus,
+          detail: issue,
+        };
+        if (treatAsTransient) {
+          transientIssues.push(normalizedIssue);
+        } else {
+          failures.push(normalizedIssue);
+        }
+      });
+    }
+
+    check.captures.forEach((capture) => {
+      const id = String(capture.captureId || '');
+      if (!id) {
+        return;
+      }
+      if (captureId && id !== captureId) {
+        return;
+      }
+      const entry = {
+        checkedAt: check.checkedAt ?? null,
+        tickCount: Number(capture.tickCount) || 0,
+        recordCount: Number(capture.recordCount) || 0,
+        selectedMetricCount: Number(capture.selectedMetricCount) || 0,
+        loading,
+        loadingProbe,
+        liveStatus: liveStatusMap.get(id) ?? 'idle',
+      };
+      if (!captureTraces.has(id)) {
+        captureTraces.set(id, []);
+      }
+      captureTraces.get(id).push(entry);
+    });
+
+    selectedMetrics.forEach((metric) => {
+      if (!metric || typeof metric.captureId !== 'string' || typeof metric.fullPath !== 'string') {
+        return;
+      }
+      const id = metric.captureId;
+      if (captureId && id !== captureId) {
+        return;
+      }
+      const key = `${id}::${metric.fullPath}`;
+      const coverage = coverageByKey.get(key);
+      const sample = {
+        checkedAt: check.checkedAt ?? null,
+        numericCount: Number(coverage?.numericCount) || 0,
+        total: Number(coverage?.total) || 0,
+        lastTick: Number(coverage?.lastTick) || 0,
+        loading,
+        liveStatus: liveStatusMap.get(id) ?? 'idle',
+      };
+      const existing = metricTraces.get(key);
+      if (existing) {
+        existing.samples.push(sample);
+      } else {
+        metricTraces.set(key, {
+          key,
+          captureId: id,
+          fullPath: metric.fullPath,
+          label: typeof metric.label === 'string' ? metric.label : metric.fullPath,
+          samples: [sample],
+        });
+      }
+    });
+  });
+
+  if (captureTraces.size === 0) {
+    failures.push({
+      type: 'no-captures',
+      message: captureId
+        ? `Capture ${captureId} not found in verification snapshots.`
+        : 'No captures found in verification snapshots.',
+    });
+  }
+
+  const captureSummaries = [];
+  captureTraces.forEach((trace, id) => {
+    const first = trace[0];
+    const last = trace[trace.length - 1];
+    if (!first || !last) {
+      return;
+    }
+
+    if (requireSelected && last.selectedMetricCount <= 0) {
+      failures.push({
+        type: 'no-selected-metrics',
+        captureId: id,
+        message: `Capture ${id} has no selected metrics.`,
+      });
+    }
+
+    if (last.tickCount < 0 || last.recordCount < 0) {
+      failures.push({
+        type: 'negative-count',
+        captureId: id,
+        tickCount: last.tickCount,
+        recordCount: last.recordCount,
+      });
+    }
+
+    if (last.recordCount > last.tickCount && !isLiveStatusLoading(last.liveStatus)) {
+      failures.push({
+        type: 'record-count-exceeds-tick-count',
+        captureId: id,
+        tickCount: last.tickCount,
+        recordCount: last.recordCount,
+      });
+    }
+
+    for (let index = 1; index < trace.length; index += 1) {
+      const prev = trace[index - 1];
+      const next = trace[index];
+      if (next.tickCount < prev.tickCount) {
+        const isAllowedTickReset = (
+          allowResets.has(id)
+          && prev.tickCount > 0
+          && next.tickCount >= 0
+          && next.tickCount <= 2
+        );
+        if (isAllowedTickReset) {
+          continue;
+        }
+        failures.push({
+          type: 'tick-count-decreased',
+          captureId: id,
+          from: prev.tickCount,
+          to: next.tickCount,
+          at: next.checkedAt ?? null,
+        });
+      }
+      if (next.recordCount < prev.recordCount) {
+        const isAllowedRecordReset = (
+          allowResets.has(id)
+          && prev.recordCount > 0
+          && next.recordCount >= 0
+          && next.recordCount <= 2
+        );
+        if (isAllowedRecordReset) {
+          continue;
+        }
+        failures.push({
+          type: 'record-count-decreased',
+          captureId: id,
+          from: prev.recordCount,
+          to: next.recordCount,
+          at: next.checkedAt ?? null,
+        });
+      }
+    }
+
+    const tickDelta = last.tickCount - first.tickCount;
+    const recordDelta = last.recordCount - first.recordCount;
+    if (
+      last.selectedMetricCount > 0
+      && tickDelta > 0
+      && recordDelta <= 0
+      && !isLiveStatusLoading(last.liveStatus)
+    ) {
+      failures.push({
+        type: 'no-record-growth-while-ticks-grew',
+        captureId: id,
+        tickDelta,
+        recordDelta,
+      });
+    }
+
+    if (
+      last.selectedMetricCount > 0
+      && isLiveStatusStable(last.liveStatus)
+      && last.tickCount > 0
+      && last.recordCount === 0
+    ) {
+      failures.push({
+        type: 'completed-without-records',
+        captureId: id,
+        tickCount: last.tickCount,
+      });
+    }
+
+    captureSummaries.push({
+      captureId: id,
+      firstTickCount: first.tickCount,
+      lastTickCount: last.tickCount,
+      firstRecordCount: first.recordCount,
+      lastRecordCount: last.recordCount,
+      tickDelta,
+      recordDelta,
+      selectedMetricCount: last.selectedMetricCount,
+      liveStatus: last.liveStatus,
+      loadingAtEnd: last.loading,
+      sampleCount: trace.length,
+    });
+  });
+
+  const metricSummaries = [];
+  metricTraces.forEach((trace, key) => {
+    const samples = Array.isArray(trace.samples) ? trace.samples : [];
+    if (samples.length === 0) {
+      return;
+    }
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    if (!first || !last) {
+      return;
+    }
+    let increments = 0;
+    for (let index = 1; index < samples.length; index += 1) {
+      const prev = samples[index - 1];
+      const next = samples[index];
+      if (next.numericCount < prev.numericCount) {
+        failures.push({
+          type: 'metric-numeric-count-decreased',
+          captureId: trace.captureId,
+          fullPath: trace.fullPath,
+          from: prev.numericCount,
+          to: next.numericCount,
+          at: next.checkedAt ?? null,
+        });
+      }
+      if (next.numericCount > next.total && next.total > 0) {
+        failures.push({
+          type: 'metric-numeric-count-exceeds-total',
+          captureId: trace.captureId,
+          fullPath: trace.fullPath,
+          numericCount: next.numericCount,
+          total: next.total,
+          at: next.checkedAt ?? null,
+        });
+      }
+      if (next.numericCount > prev.numericCount) {
+        increments += 1;
+      }
+    }
+    const hadLoadingWindow = samples.some(
+      (sample) => sample.loading || sample.liveStatus === 'connecting' || sample.liveStatus === 'retrying',
+    );
+    const delta = last.numericCount - first.numericCount;
+    if (
+      hadLoadingWindow
+      && first.numericCount === 0
+      && last.numericCount > 0
+      && last.total > 0
+    ) {
+      const requiredSteps = last.numericCount >= 50 ? 2 : 1;
+      if (increments < requiredSteps) {
+        failures.push({
+          type: 'non-progressive-metric-population',
+          captureId: trace.captureId,
+          fullPath: trace.fullPath,
+          increments,
+          requiredSteps,
+          firstNumericCount: first.numericCount,
+          lastNumericCount: last.numericCount,
+          total: last.total,
+        });
+      }
+    }
+    if (last.liveStatus === 'completed' && last.total > 0 && last.numericCount === 0) {
+      failures.push({
+        type: 'completed-metric-without-values',
+        captureId: trace.captureId,
+        fullPath: trace.fullPath,
+        total: last.total,
+      });
+    }
+    metricSummaries.push({
+      key,
+      captureId: trace.captureId,
+      fullPath: trace.fullPath,
+      label: trace.label,
+      firstNumericCount: first.numericCount,
+      lastNumericCount: last.numericCount,
+      total: last.total,
+      delta,
+      increments,
+      liveStatus: last.liveStatus,
+      loadingAtEnd: last.loading,
+      sampleCount: samples.length,
+    });
+  });
+
+  const normalizedFailures = dedupeIssueList(failures);
+  const normalizedTransientIssues = dedupeIssueList(transientIssues);
+  const report = {
+    status: normalizedFailures.length > 0 ? 'failed' : (normalizedTransientIssues.length > 0 ? 'warning' : 'ok'),
+    checkedAt: new Date().toISOString(),
+    captureId: captureId ? String(captureId) : 'all',
+    captures: captureSummaries,
+    metrics: metricSummaries,
+    failures: normalizedFailures,
+    transientIssues: normalizedTransientIssues,
+  };
+  return report;
+}
+
+async function collectUiVerifyReport(
+  socket,
+  {
+    captureId = null,
+    windowSize = undefined,
+    windowStart = undefined,
+    windowEnd = undefined,
+    timeoutMs = 5000,
+    requestIdBase = null,
+    observeMs = 5000,
+    intervalMs = 1000,
+    requireSelected = false,
+    allowResetsForCaptures = [],
+  } = {},
+) {
+  const start = Date.now();
+  const snapshots = [];
+  let index = 0;
+  while (true) {
+    const sampleRequestBase = `${requestIdBase || buildMessageId(null, 'ui-verify')}-sample-${index + 1}`;
+    const check = await collectUiCheckReport(socket, {
+      captureId,
+      windowSize,
+      windowStart,
+      windowEnd,
+      timeoutMs,
+      requestIdBase: sampleRequestBase,
+    });
+    const debug = await collectUiDebugSnapshot(socket, {
+      timeoutMs,
+      requestIdBase: sampleRequestBase,
+    });
+    const coverage = await collectUiMetricCoverageSnapshot(socket, {
+      captureId,
+      timeoutMs,
+      requestIdBase: sampleRequestBase,
+    });
+    snapshots.push({
+      sampledAt: new Date().toISOString(),
+      check,
+      debug,
+      coverage,
+    });
+
+    index += 1;
+    const elapsed = Date.now() - start;
+    const shouldContinue = elapsed < observeMs;
+    if (!shouldContinue) {
+      break;
+    }
+    await delay(Math.min(intervalMs, Math.max(1, observeMs - elapsed)));
+  }
+
+  const report = evaluateUiVerifySnapshots({
+    snapshots,
+    captureId,
+    requireSelected,
+    allowResetsForCaptures,
+  });
+
+  report.observeMs = observeMs;
+  report.intervalMs = intervalMs;
+  report.samples = snapshots.map((snapshot) => {
+    const checkReport = snapshot.check?.report ?? {};
+    const loadingProbe = normalizeLoadingProbe(snapshot.debug);
+    return {
+      sampledAt: snapshot.sampledAt,
+      checkStatus: checkReport.status ?? 'unknown',
+      issueCount: Array.isArray(checkReport.issues) ? checkReport.issues.length : 0,
+      loadingProbe,
+      captures: Array.isArray(checkReport.captures)
+        ? checkReport.captures.map((entry) => ({
+          captureId: entry.captureId,
+          tickCount: entry.tickCount,
+          recordCount: entry.recordCount,
+          selectedMetricCount: entry.selectedMetricCount,
+        }))
+        : [],
+      metricCoverageCount: Array.isArray(snapshot.coverage?.metrics) ? snapshot.coverage.metrics.length : 0,
+    };
+  });
+
+  return { report };
+}
+
 function printUiSuccess(action, uiUrl, requestId, details = {}) {
   printJson({
     status: 'success',
@@ -6857,6 +9450,7 @@ function printUsage(command) {
   console.log('  --skip-install Skip npm install for ui serve');
   console.log('  --path         Metric path (JSON array recommended for dotted keys)');
   console.log('  --full-path    Full metric path for ui deselect');
+  console.log('  --axis         Axis assignment for ui metric-axis (y1|y2)');
   console.log('  --group-id     Derivation group id (ui derivation-group-*)');
   console.log('  --new-group-id New derivation group id (ui derivation-group-update)');
   console.log('  --file         Plugin file path (ui derivation-plugin-upload)');
@@ -6881,6 +9475,8 @@ function printUsage(command) {
   console.log('  --window-size  Window size for ui display/series/table');
   console.log('  --window-start Window start tick for ui window range');
   console.log('  --window-end   Window end tick for ui window range');
+  console.log('  --min          Numeric minimum for ui y-range / y2-range');
+  console.log('  --max          Numeric maximum for ui y-range / y2-range');
   console.log('  --enabled      Enable/disable ui auto-scroll/fullscreen (true|false)');
   console.log('  --annotation-id Annotation id for ui annotation commands');
   console.log('  --subtitle-id  Subtitle id for ui subtitle commands');
@@ -6892,6 +9488,11 @@ function printUsage(command) {
   console.log('  --direction    Annotation jump direction (next|previous)');
   console.log('  --poll-ms      Live poll interval in milliseconds');
   console.log('  --poll-seconds Live poll interval in seconds');
+  console.log('  --frames       Generated frame count for ui verify-regression');
+  console.log('  --observe-ms   Verification observation window in ms (ui verify / ui verify-regression / ui verify-flow)');
+  console.log('  --require-selected Require selected metrics in verification (ui verify / ui verify-regression / ui verify-flow)');
+  console.log('  --auto-serve   Auto-start Metrics UI if not running (ui verify / ui verify-regression)');
+  console.log('  --shutdown-on-exit Shutdown auto-started Metrics UI after verify (ui verify / ui verify-regression)');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
   console.log('UI serve options:');
   console.log('  --ui-dir       Metrics UI project directory (default: ./Stream-Metrics-UI)');
@@ -6901,15 +9502,18 @@ function printUsage(command) {
   console.log('  --skip-install Skip npm install if node_modules missing\n');
   console.log('UI subcommands:');
   console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop | live-status');
-  console.log('  select | deselect | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
+  console.log('  select | deselect | metric-axis | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
   console.log('  derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update | derivation-group-display | derivation-group-reorder');
   console.log('  derivation-run | derivation-plugins | derivation-plugin-run');
   console.log('  derivation-plugin-upload | derivation-plugin-source | derivation-plugin-delete');
   console.log('  trace');
-  console.log('  window-size | window-start | window-end | window-range | auto-scroll | fullscreen');
+  console.log('  window-size | window-start | window-end | window-range | y-range | y2-range | auto-scroll | fullscreen');
   console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  display-snapshot | series-window | render-table | render-debug | debug | memory-stats | metric-coverage | check | doctor\n');
+  console.log('  display-snapshot | series-window | render-table | render-debug | debug | memory-stats | metric-coverage | check | verify | verify-regression | verify-flow | doctor\n');
+  console.log('  note: ui verify is server-driven (HTTP) and does not require a connected frontend session.');
+  console.log('        ui verify-regression is a one-command regression exercise with generated stream + derivation checks.');
+  console.log('        ui verify-flow is active/ws-driven and mutates capture state to exercise load paths.\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
   console.log('  --notes        Run notes (create)');
@@ -7006,6 +9610,9 @@ function printUsage(command) {
   console.log('  simeval ui serve --ui-dir Stream-Metrics-UI');
   console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui metric-axis --capture-id live-a --full-path 1.highmix.metrics.shift_capacity_pressure.overall --axis y2 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui y-range --min 0 --max 120 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui y2-range --min 0.8 --max 1.0 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui analysis-select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui derivation-group-display --group-id compare_pending_jobs --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui derivation-group-reorder --group-id compare_pending_jobs --from-index 0 --to-index 1 --ui ws://localhost:5050/ws/control');
@@ -7019,6 +9626,9 @@ function printUsage(command) {
   console.log('  simeval ui derivation-plugin-delete --plugin-id diff --ui http://localhost:5050');
   console.log('  simeval ui debug --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui check --capture-id live-a --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui verify --observe-ms 5000 --interval 1000 --require-selected true --ui http://localhost:5050');
+  console.log('  simeval ui verify-regression --frames 24000 --observe-ms 8000 --interval 400 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
+  console.log('  simeval ui verify-flow --observe-ms 12000 --interval 1000 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui doctor --fix --ui ws://localhost:5050/ws/control');
   console.log('  ');
   console.log('  # Runs + logs');
