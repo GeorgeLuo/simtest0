@@ -1094,6 +1094,18 @@ async function handleUi(argvRest) {
     return;
   }
 
+  if (subcommand === 'regress' || subcommand === 'verify-suite') {
+    const suite = await runUiRegressSuite({
+      options,
+      uiInput,
+    });
+    printJson(suite.report);
+    if (suite.report.status !== 'ok') {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   if (subcommand === 'verify') {
     const observeMs = parseOptionalNumber(options['observe-ms'], 'observe-ms') ?? 5000;
     const intervalMs = parseOptionalNumber(options.interval, 'interval') ?? 1000;
@@ -1206,6 +1218,80 @@ async function handleUi(argvRest) {
     } finally {
       cleanupResult = await finalizeUiServerForVerification(lifecycle);
     }
+    if (verifyError) {
+      throw verifyError;
+    }
+    verify.report.server = {
+      url: lifecycle.uiHttpUrl,
+      autoServed: lifecycle.startedByVerifier,
+      shutdownOnExit: lifecycle.shutdownOnExit,
+      shutdownAttempted: cleanupResult?.attempted === true,
+      shutdownResult: cleanupResult?.result || 'not-requested',
+      shutdownError: cleanupResult?.error || null,
+    };
+    printJson(verify.report);
+    if (verify.report.status !== 'ok') {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (subcommand === 'verify-live-remove') {
+    const observeMs = parseOptionalNumber(options['observe-ms'], 'observe-ms') ?? 2500;
+    const intervalMs = parseOptionalNumber(options.interval, 'interval') ?? 120;
+    const pollMs = parseOptionalNumber(options['poll-ms'], 'poll-ms') ?? 150;
+    const frames = parseOptionalNumber(options.frames, 'frames') ?? 120;
+    if (observeMs <= 0) {
+      throw new Error('Invalid --observe-ms value. Expected a positive number.');
+    }
+    if (intervalMs <= 0) {
+      throw new Error('Invalid --interval value. Expected a positive number.');
+    }
+    if (pollMs <= 0) {
+      throw new Error('Invalid --poll-ms value. Expected a positive number.');
+    }
+    if (frames <= 10) {
+      throw new Error('Invalid --frames value. Expected a number greater than 10.');
+    }
+
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+    const uiWsUrl = await resolveUiWsUrl(uiInput);
+    if (!uiWsUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+
+    const autoServe = parseBooleanOption(options['auto-serve'], true) !== false;
+    const shutdownOnExit = parseBooleanOption(options['shutdown-on-exit'], true) !== false;
+    const lifecycle = await ensureUiServerForVerification({
+      options,
+      uiHttpUrl,
+      requireWs: true,
+      autoServe,
+      shutdownOnExit,
+    });
+
+    let verify = null;
+    let verifyError = null;
+    let cleanupResult = null;
+    try {
+      verify = await runUiLiveRemoveNoReappearRegression({
+        uiHttpUrl: lifecycle.uiHttpUrl,
+        uiWsUrl: lifecycle.uiWsUrl,
+        observeMs,
+        intervalMs,
+        pollMs,
+        frames,
+        captureId: options['capture-id'] ? String(options['capture-id']) : null,
+      });
+    } catch (error) {
+      verifyError = error;
+    } finally {
+      cleanupResult = await finalizeUiServerForVerification(lifecycle);
+    }
+
     if (verifyError) {
       throw verifyError;
     }
@@ -8508,6 +8594,492 @@ async function runUiRegressionVerify({
   }
 }
 
+function parseCsvListOption(value) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  const raw = String(value).trim();
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
+}
+
+async function waitForUiLiveStreamPresence(
+  uiHttpUrl,
+  {
+    captureId,
+    shouldExist = true,
+    timeoutMs = 3000,
+    intervalMs = 120,
+  } = {},
+) {
+  const startedAt = Date.now();
+  let lastSnapshot = null;
+  while (Date.now() - startedAt <= timeoutMs) {
+    try {
+      const liveStatus = await requestJson(buildUrl(uiHttpUrl, '/api/live/status'), { method: 'GET' });
+      const streams = Array.isArray(liveStatus?.streams) ? liveStatus.streams : [];
+      const exists = streams.some((entry) => entry && entry.captureId === captureId);
+      lastSnapshot = {
+        running: Boolean(liveStatus?.running),
+        streamCount: streams.length,
+        exists,
+      };
+      if ((shouldExist && exists) || (!shouldExist && !exists)) {
+        return lastSnapshot;
+      }
+    } catch (error) {
+      lastSnapshot = {
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    await delay(intervalMs);
+  }
+  throw new Error(
+    `${shouldExist ? 'Timed out waiting for live stream to appear' : 'Timed out waiting for live stream to disappear'} `
+      + `for ${captureId}. Last snapshot: ${JSON.stringify(lastSnapshot)}`,
+  );
+}
+
+async function waitForUiDebugCapturePresence(
+  uiHttpUrl,
+  {
+    captureId,
+    shouldExist = true,
+    timeoutMs = 3000,
+    intervalMs = 120,
+  } = {},
+) {
+  const startedAt = Date.now();
+  let lastSnapshot = null;
+  while (Date.now() - startedAt <= timeoutMs) {
+    try {
+      const debugCaptures = await requestJson(buildUrl(uiHttpUrl, '/api/debug/captures'), { method: 'GET' });
+      const captures = Array.isArray(debugCaptures?.captures) ? debugCaptures.captures : [];
+      const exists = captures.some((entry) => entry && entry.captureId === captureId);
+      lastSnapshot = {
+        captureCount: captures.length,
+        exists,
+      };
+      if ((shouldExist && exists) || (!shouldExist && !exists)) {
+        return lastSnapshot;
+      }
+    } catch (error) {
+      lastSnapshot = {
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    await delay(intervalMs);
+  }
+  throw new Error(
+    `${shouldExist ? 'Timed out waiting for debug capture to appear' : 'Timed out waiting for debug capture to disappear'} `
+      + `for ${captureId}. Last snapshot: ${JSON.stringify(lastSnapshot)}`,
+  );
+}
+
+async function runUiLiveRemoveNoReappearRegression({
+  uiHttpUrl,
+  uiWsUrl,
+  frames = 120,
+  pollMs = 150,
+  observeMs = 2500,
+  intervalMs = 120,
+  captureId = null,
+}) {
+  const idBase = captureId || `verify-live-remove-${Date.now().toString(36)}`;
+  const regressionCaptureId = captureId || `${idBase}-capture`;
+  const generated = await createGeneratedRegressionCaptureFile({
+    frames,
+    prefix: idBase,
+  });
+
+  const socket = await connectWebSocket(uiWsUrl);
+  sendWsMessage(socket, { type: 'register', role: 'agent' });
+  const registered = await waitForWsAck(socket);
+  if (!registered) {
+    socket.close();
+    throw new Error('Failed to register with UI websocket for verify-live-remove.');
+  }
+
+  let commandCount = 0;
+  const sendCommand = async (type, payload = {}, timeoutMs = 7000) => {
+    commandCount += 1;
+    const requestId = buildMessageId(
+      null,
+      `ui-verify-live-remove-${String(type)}-${String(commandCount)}`,
+    );
+    sendWsMessage(socket, {
+      type,
+      ...payload,
+      request_id: requestId,
+    });
+    await waitForUiAckOrThrow(socket, {
+      requestId,
+      timeoutMs,
+      errorMessage: `Timed out waiting for UI ack (${String(type)}).`,
+    });
+  };
+
+  const cleanup = async () => {
+    try {
+      await requestJson(buildUrl(uiHttpUrl, '/api/live/stop'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ captureId: regressionCaptureId }),
+      });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await sendCommand('remove_capture', { captureId: regressionCaptureId });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      socket.close();
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await fs.promises.unlink(generated.filePath);
+    } catch {
+      // ignore cleanup errors
+    }
+  };
+
+  try {
+    const evidence = {
+      captureId: regressionCaptureId,
+      source: generated.filePath,
+      removedFromLiveStatus: false,
+      removedFromDebugRegistry: false,
+      reappearedAfterStaleSourceSync: false,
+      reappearedInDebugRegistry: false,
+    };
+
+    try {
+      await requestJson(buildUrl(uiHttpUrl, '/api/live/stop'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ captureId: regressionCaptureId }),
+      });
+    } catch {
+      // ignore pre-cleanup errors
+    }
+    await sendCommand('remove_capture', { captureId: regressionCaptureId });
+
+    await startUiRegressionLiveCapture(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      source: generated.filePath,
+      filename: path.basename(generated.filePath),
+      pollIntervalMs: pollMs,
+    });
+    await waitForUiLiveStreamPresence(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      shouldExist: true,
+      timeoutMs: Math.max(5000, observeMs),
+      intervalMs,
+    });
+    await waitForUiDebugCapturePresence(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      shouldExist: true,
+      timeoutMs: Math.max(5000, observeMs),
+      intervalMs,
+    });
+
+    await sendCommand('remove_capture', { captureId: regressionCaptureId });
+    await waitForUiLiveStreamPresence(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      shouldExist: false,
+      timeoutMs: Math.max(5000, observeMs),
+      intervalMs,
+    });
+    evidence.removedFromLiveStatus = true;
+    await waitForUiDebugCapturePresence(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      shouldExist: false,
+      timeoutMs: Math.max(5000, observeMs),
+      intervalMs,
+    });
+    evidence.removedFromDebugRegistry = true;
+
+    await sendCommand('sync_capture_sources', {
+      replace: false,
+      sources: [{
+        captureId: regressionCaptureId,
+        source: generated.filePath,
+        filename: path.basename(generated.filePath),
+        pollIntervalMs: pollMs,
+      }],
+    });
+
+    try {
+      await waitForUiLiveStreamPresence(uiHttpUrl, {
+        captureId: regressionCaptureId,
+        shouldExist: true,
+        timeoutMs: observeMs,
+        intervalMs,
+      });
+      evidence.reappearedAfterStaleSourceSync = true;
+    } catch {
+      evidence.reappearedAfterStaleSourceSync = false;
+    }
+
+    try {
+      await waitForUiDebugCapturePresence(uiHttpUrl, {
+        captureId: regressionCaptureId,
+        shouldExist: true,
+        timeoutMs: observeMs,
+        intervalMs,
+      });
+      evidence.reappearedInDebugRegistry = true;
+    } catch {
+      evidence.reappearedInDebugRegistry = false;
+    }
+
+    const failures = [];
+    if (!evidence.removedFromLiveStatus || !evidence.removedFromDebugRegistry) {
+      failures.push({
+        type: 'remove-did-not-clear-capture',
+        captureId: regressionCaptureId,
+      });
+    }
+    if (evidence.reappearedAfterStaleSourceSync || evidence.reappearedInDebugRegistry) {
+      failures.push({
+        type: 'capture-reappeared-after-stale-sync',
+        captureId: regressionCaptureId,
+      });
+    }
+
+    const status = failures.length > 0 ? 'failed' : 'ok';
+    return {
+      report: {
+        status,
+        checkedAt: new Date().toISOString(),
+        mode: 'verify-live-remove',
+        frontendRequired: false,
+        expected: 'After remove_capture, stale sync_capture_sources should not recreate the stream.',
+        generated: {
+          filePath: generated.filePath,
+          frames,
+          pollMs,
+        },
+        evidence,
+        failures,
+        warnings: [],
+      },
+    };
+  } finally {
+    await cleanup();
+  }
+}
+
+function buildUiRegressCaseDefinitions() {
+  return [
+    {
+      id: 'verify',
+      command: 'verify',
+      aliases: ['server'],
+      description: 'server snapshot verification',
+      defaultInAll: false,
+    },
+    {
+      id: 'verify-regression',
+      command: 'verify-regression',
+      aliases: ['generated', 'stream'],
+      description: 'generated stream + derivation regression',
+      defaultInAll: true,
+    },
+    {
+      id: 'verify-flow',
+      command: 'verify-flow',
+      aliases: ['flow'],
+      description: 'ws-driven remove/restart/reselect flow verification',
+      defaultInAll: false,
+    },
+    {
+      id: 'verify-live-remove',
+      command: 'verify-live-remove',
+      aliases: ['live-remove', 'no-reappear'],
+      description: 'removed capture must not reappear on stale source sync',
+      defaultInAll: true,
+    },
+  ];
+}
+
+function resolveUiRegressCases(rawSelection) {
+  const definitions = buildUiRegressCaseDefinitions();
+  const selection = parseCsvListOption(rawSelection);
+  if (selection.length === 0 || selection.includes('all')) {
+    return {
+      selected: definitions.filter((entry) => entry.defaultInAll !== false),
+      invalid: [],
+    };
+  }
+  const selected = [];
+  const invalid = [];
+  const seen = new Set();
+  selection.forEach((token) => {
+    const match = definitions.find((entry) => (
+      entry.id === token
+      || entry.command === token
+      || (Array.isArray(entry.aliases) && entry.aliases.includes(token))
+    ));
+    if (!match) {
+      invalid.push(token);
+      return;
+    }
+    if (seen.has(match.id)) {
+      return;
+    }
+    seen.add(match.id);
+    selected.push(match);
+  });
+  return { selected, invalid };
+}
+
+function pushCliOptionArg(args, name, value) {
+  if (value === undefined || value === null || value === '') {
+    return;
+  }
+  args.push(`--${String(name)}`);
+  if (value === true) {
+    args.push('true');
+    return;
+  }
+  if (value === false) {
+    args.push('false');
+    return;
+  }
+  args.push(String(value));
+}
+
+async function runCliSubprocess(args) {
+  return new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      [path.resolve(__filename), ...args],
+      {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: 'inherit',
+      },
+    );
+    child.on('exit', (code, signal) => {
+      resolve({
+        ok: code === 0,
+        code: Number.isFinite(Number(code)) ? Number(code) : null,
+        signal: signal ? String(signal) : null,
+      });
+    });
+  });
+}
+
+async function runUiRegressSuite({
+  options,
+  uiInput,
+}) {
+  const { selected, invalid } = resolveUiRegressCases(
+    options.test ?? options.tests ?? options.case ?? options.only,
+  );
+  if (invalid.length > 0) {
+    throw new Error(
+      `Unknown ui regress test(s): ${invalid.join(', ')}. Use --test all|verify|verify-regression|verify-flow|verify-live-remove.`,
+    );
+  }
+  if (!Array.isArray(selected) || selected.length === 0) {
+    throw new Error('No ui regress tests selected.');
+  }
+
+  const continueOnError = parseBooleanOption(options['continue-on-error'], false) === true;
+  const explicitShutdownOption = options['shutdown-on-exit'];
+  const explicitAutoServeOption = options['auto-serve'];
+  const startedAt = Date.now();
+  const results = [];
+
+  for (let index = 0; index < selected.length; index += 1) {
+    const test = selected[index];
+    const commandArgs = ['ui', test.command];
+    pushCliOptionArg(commandArgs, 'ui', uiInput);
+    [
+      'ui-dir',
+      'ui-host',
+      'ui-port',
+      'ui-mode',
+      'capture-id',
+      'observe-ms',
+      'interval',
+      'require-selected',
+      'frames',
+      'poll-ms',
+      'window-size',
+      'window-start',
+      'window-end',
+      'timeout',
+    ].forEach((optionName) => {
+      pushCliOptionArg(commandArgs, optionName, options[optionName]);
+    });
+    if (explicitAutoServeOption !== undefined) {
+      pushCliOptionArg(commandArgs, 'auto-serve', explicitAutoServeOption);
+    } else {
+      pushCliOptionArg(commandArgs, 'auto-serve', true);
+    }
+    if (explicitShutdownOption !== undefined) {
+      const explicitShutdown = parseBooleanOption(explicitShutdownOption, true) !== false;
+      // In suite mode, shutdown is applied at the end so we do not flap server lifecycle between cases.
+      pushCliOptionArg(
+        commandArgs,
+        'shutdown-on-exit',
+        explicitShutdown ? index === selected.length - 1 : false,
+      );
+    } else {
+      pushCliOptionArg(
+        commandArgs,
+        'shutdown-on-exit',
+        index === selected.length - 1,
+      );
+    }
+
+    const testStartedAt = Date.now();
+    console.log(`[ui-regress] start ${test.id} (${test.description})`);
+    const result = await runCliSubprocess(commandArgs);
+    const durationMs = Date.now() - testStartedAt;
+    results.push({
+      id: test.id,
+      command: test.command,
+      description: test.description,
+      ok: result.ok,
+      exitCode: result.code,
+      signal: result.signal,
+      durationMs,
+    });
+    console.log(`[ui-regress] ${result.ok ? 'pass' : 'fail'} ${test.id} (${durationMs}ms)`);
+    if (!result.ok && !continueOnError) {
+      break;
+    }
+  }
+
+  const failed = results.filter((entry) => !entry.ok);
+  return {
+    report: {
+      status: failed.length > 0 ? 'failed' : 'ok',
+      checkedAt: new Date().toISOString(),
+      mode: 'regress-suite',
+      selected: selected.map((entry) => entry.id),
+      continueOnError,
+      ran: results.length,
+      requested: selected.length,
+      failed: failed.length,
+      durationMs: Date.now() - startedAt,
+      results,
+    },
+  };
+}
+
 function normalizeLoadingProbe(debug) {
   const probe = debug?.state?.loadingProbe ?? {};
   return {
@@ -9488,11 +10060,13 @@ function printUsage(command) {
   console.log('  --direction    Annotation jump direction (next|previous)');
   console.log('  --poll-ms      Live poll interval in milliseconds');
   console.log('  --poll-seconds Live poll interval in seconds');
-  console.log('  --frames       Generated frame count for ui verify-regression');
-  console.log('  --observe-ms   Verification observation window in ms (ui verify / ui verify-regression / ui verify-flow)');
+  console.log('  --frames       Generated frame count for ui verify-regression / verify-live-remove');
+  console.log('  --observe-ms   Verification observation window in ms (ui verify / ui verify-regression / ui verify-flow / ui verify-live-remove)');
   console.log('  --require-selected Require selected metrics in verification (ui verify / ui verify-regression / ui verify-flow)');
-  console.log('  --auto-serve   Auto-start Metrics UI if not running (ui verify / ui verify-regression)');
-  console.log('  --shutdown-on-exit Shutdown auto-started Metrics UI after verify (ui verify / ui verify-regression)');
+  console.log('  --test         Regression case for ui regress (all|verify|verify-regression|verify-flow|verify-live-remove)');
+  console.log('  --continue-on-error Continue ui regress execution after a failed case');
+  console.log('  --auto-serve   Auto-start Metrics UI if not running (ui verify / ui verify-regression / ui verify-live-remove / ui regress)');
+  console.log('  --shutdown-on-exit Shutdown auto-started Metrics UI after verify (ui verify / ui verify-regression / ui verify-live-remove / ui regress)');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
   console.log('UI serve options:');
   console.log('  --ui-dir       Metrics UI project directory (default: ./Stream-Metrics-UI)');
@@ -9510,10 +10084,12 @@ function printUsage(command) {
   console.log('  window-size | window-start | window-end | window-range | y-range | y2-range | auto-scroll | fullscreen');
   console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  display-snapshot | series-window | render-table | render-debug | debug | memory-stats | metric-coverage | check | verify | verify-regression | verify-flow | doctor\n');
+  console.log('  display-snapshot | series-window | render-table | render-debug | debug | memory-stats | metric-coverage | check | verify | verify-regression | verify-flow | verify-live-remove | regress | verify-suite | doctor\n');
   console.log('  note: ui verify is server-driven (HTTP) and does not require a connected frontend session.');
   console.log('        ui verify-regression is a one-command regression exercise with generated stream + derivation checks.');
-  console.log('        ui verify-flow is active/ws-driven and mutates capture state to exercise load paths.\n');
+  console.log('        ui verify-flow is active/ws-driven and mutates capture state to exercise load paths.');
+  console.log('        ui verify-live-remove fails if a removed stream reappears due to stale source sync.');
+  console.log('        ui regress runs one or more regression cases in sequence (all = verify-regression + verify-live-remove).\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
   console.log('  --notes        Run notes (create)');
@@ -9629,6 +10205,9 @@ function printUsage(command) {
   console.log('  simeval ui verify --observe-ms 5000 --interval 1000 --require-selected true --ui http://localhost:5050');
   console.log('  simeval ui verify-regression --frames 24000 --observe-ms 8000 --interval 400 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
   console.log('  simeval ui verify-flow --observe-ms 12000 --interval 1000 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui verify-live-remove --frames 120 --observe-ms 2500 --poll-ms 150 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
+  console.log('  simeval ui regress --test all --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
+  console.log('  simeval ui regress --test verify-flow,verify-live-remove --continue-on-error true --ui http://localhost:5050');
   console.log('  simeval ui doctor --fix --ui ws://localhost:5050/ws/control');
   console.log('  ');
   console.log('  # Runs + logs');
