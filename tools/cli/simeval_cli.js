@@ -7923,6 +7923,7 @@ async function observeUiRegressionFlow(uiHttpUrl, {
   observeMs,
   intervalMs,
   expectedFrames,
+  requireRecordCountComplete = false,
 }) {
   const samples = [];
   const start = Date.now();
@@ -7951,6 +7952,7 @@ async function observeUiRegressionFlow(uiHttpUrl, {
       captureId,
       fullPath,
       captureLastTick: Number(captureEntry?.lastTick) || 0,
+      recordCount: Number(captureEntry?.recordCount) || 0,
       numericCount: Number(series?.numericCount) || 0,
       tickCount: Number(series?.tickCount) || 0,
       seriesLastTick: Number(series?.lastTick) || 0,
@@ -7960,7 +7962,10 @@ async function observeUiRegressionFlow(uiHttpUrl, {
     samples.push(sample);
 
     const elapsed = Date.now() - start;
-    const isComplete = sample.captureLastTick >= expectedFrames && sample.numericCount >= expectedFrames;
+    const isComplete =
+      sample.captureLastTick >= expectedFrames
+      && sample.numericCount >= expectedFrames
+      && (!requireRecordCountComplete || sample.recordCount >= expectedFrames);
     if (elapsed >= observeMs || isComplete) {
       break;
     }
@@ -7973,6 +7978,164 @@ async function observeUiRegressionFlow(uiHttpUrl, {
     fullPath,
     samples,
     summary: summarizeUiRegressionFlowSamples(samples, expectedFrames),
+  };
+}
+
+async function waitForUiRegressionCaptureRead(uiHttpUrl, {
+  captureId,
+  expectedFrames,
+  timeoutMs = 12000,
+  intervalMs = 150,
+}) {
+  const startedAt = Date.now();
+  let lastSample = null;
+  while (Date.now() - startedAt <= timeoutMs) {
+    const [debugCaptures, liveStatus] = await Promise.all([
+      requestJson(buildUrl(uiHttpUrl, '/api/debug/captures'), { method: 'GET' }),
+      requestJson(buildUrl(uiHttpUrl, '/api/live/status'), { method: 'GET' }),
+    ]);
+    const captures = Array.isArray(debugCaptures?.captures) ? debugCaptures.captures : [];
+    const captureEntry = captures.find((entry) => entry && entry.captureId === captureId) ?? null;
+    const captureLastTick = Number(captureEntry?.lastTick) || 0;
+    const sample = {
+      sampledAt: new Date().toISOString(),
+      captureId,
+      captureLastTick,
+      ended: Boolean(captureEntry?.ended),
+      endReason: typeof captureEntry?.endReason === 'string' ? captureEntry.endReason : null,
+      liveStatus: getRegressionLiveStatus(liveStatus, captureId, captureEntry),
+    };
+    lastSample = sample;
+    if (captureLastTick >= expectedFrames) {
+      return {
+        reachedExpectedFrames: true,
+        timedOut: false,
+        elapsedMs: Date.now() - startedAt,
+        sample,
+      };
+    }
+    await delay(intervalMs);
+  }
+  return {
+    reachedExpectedFrames: false,
+    timedOut: true,
+    elapsedMs: Date.now() - startedAt,
+    sample: lastSample,
+  };
+}
+
+function evaluateLateSelectRegressionFlow({
+  flow,
+  expectedFrames,
+}) {
+  const failures = [];
+  const warnings = [];
+  const summary = flow?.summary ?? null;
+  const samples = Array.isArray(flow?.samples) ? flow.samples : [];
+  if (!summary) {
+    failures.push({
+      type: 'late-select-missing-summary',
+      message: 'Late-select flow summary is missing.',
+    });
+    return {
+      status: 'failed',
+      failures,
+      warnings,
+      details: {
+        reachedExpectedTick: false,
+        observedAfterExpectedTick: 0,
+        maxNumericAfterExpectedTick: 0,
+        lastNumericAfterExpectedTick: 0,
+        stayedConnectedAfterExpectedTick: false,
+        remainedPartialAfterExpectedTick: false,
+        resolvedToFullAfterExpectedTick: false,
+      },
+    };
+  }
+
+  if (!flow.selectedMetricAtStart) {
+    failures.push({
+      type: 'late-select-metric-not-selected',
+      flow: flow.name,
+      selectedMetricAtStart: Boolean(flow.selectedMetricAtStart),
+    });
+  }
+  if (!summary.hasValues) {
+    failures.push({
+      type: 'late-select-missing-values',
+      flow: flow.name,
+      lastNumericCount: summary.lastNumericCount,
+    });
+  }
+
+  const afterExpectedTick = samples.filter((sample) => (
+    (Number(sample?.captureLastTick) || 0) >= expectedFrames
+  ));
+  const maxRecordAfterExpectedTick = afterExpectedTick.reduce((max, sample) => {
+    const count = Number(sample?.recordCount) || 0;
+    return count > max ? count : max;
+  }, 0);
+  const lastRecordAfterExpectedTick = afterExpectedTick.length > 0
+    ? (Number(afterExpectedTick[afterExpectedTick.length - 1]?.recordCount) || 0)
+    : 0;
+  const maxNumericAfterExpectedTick = afterExpectedTick.reduce((max, sample) => {
+    const count = Number(sample?.numericCount) || 0;
+    return count > max ? count : max;
+  }, 0);
+  const lastNumericAfterExpectedTick = afterExpectedTick.length > 0
+    ? (Number(afterExpectedTick[afterExpectedTick.length - 1]?.numericCount) || 0)
+    : 0;
+  const stayedConnectedAfterExpectedTick = afterExpectedTick.some((sample) => sample?.liveStatus === 'connected');
+  const remainedPartialAfterExpectedTick = afterExpectedTick.some((sample) => Boolean(sample?.partial));
+  const hasRecordSignalAfterExpectedTick = afterExpectedTick.some((sample) => (Number(sample?.recordCount) || 0) > 0);
+  const resolvedToFullAfterExpectedTick = afterExpectedTick.some((sample) => {
+    const recordCount = Number(sample?.recordCount) || 0;
+    return recordCount >= expectedFrames;
+  });
+  const reachedExpectedTick = afterExpectedTick.length > 0;
+
+  if (reachedExpectedTick
+    && hasRecordSignalAfterExpectedTick
+    && stayedConnectedAfterExpectedTick
+    && !resolvedToFullAfterExpectedTick) {
+    failures.push({
+      type: 'late-select-backfill-stalled-while-connected',
+      expectedFrames,
+      maxRecordAfterExpectedTick,
+      lastRecordAfterExpectedTick,
+      maxNumericAfterExpectedTick,
+      lastNumericAfterExpectedTick,
+      sampleCountAfterExpectedTick: afterExpectedTick.length,
+      finalLiveStatus: summary.finalLiveStatus,
+      finalPartial: Boolean(samples[samples.length - 1]?.partial),
+    });
+  }
+
+  if (reachedExpectedTick && maxNumericAfterExpectedTick < expectedFrames && summary.finalLiveStatus === 'idle') {
+    warnings.push({
+      type: 'late-select-incomplete-after-idle',
+      expectedFrames,
+      maxNumericAfterExpectedTick,
+      finalLiveStatus: summary.finalLiveStatus,
+    });
+  }
+
+  return {
+    status: failures.length > 0 ? 'failed' : (warnings.length > 0 ? 'warning' : 'ok'),
+    failures,
+    warnings,
+    details: {
+      reachedExpectedTick,
+      observedAfterExpectedTick: afterExpectedTick.length,
+      hasRecordSignalAfterExpectedTick,
+      maxRecordAfterExpectedTick,
+      lastRecordAfterExpectedTick,
+      maxNumericAfterExpectedTick,
+      lastNumericAfterExpectedTick,
+      stayedConnectedAfterExpectedTick,
+      remainedPartialAfterExpectedTick,
+      resolvedToFullAfterExpectedTick,
+    },
   };
 }
 
@@ -8147,6 +8310,274 @@ function evaluateDerivedDiffSeries({
   };
 }
 
+function summarizeSeriesNumericRange(seriesEntry) {
+  const points = Array.isArray(seriesEntry?.points) ? seriesEntry.points : [];
+  let min = Infinity;
+  let max = -Infinity;
+  let numericCount = 0;
+  points.forEach((point) => {
+    const value = point?.value;
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return;
+    }
+    numericCount += 1;
+    if (value < min) {
+      min = value;
+    }
+    if (value > max) {
+      max = value;
+    }
+  });
+  return {
+    numericCount,
+    min: Number.isFinite(min) ? min : null,
+    max: Number.isFinite(max) ? max : null,
+  };
+}
+
+function isValidDomainTuple(domain) {
+  return Array.isArray(domain)
+    && domain.length === 2
+    && Number.isFinite(Number(domain[0]))
+    && Number.isFinite(Number(domain[1]))
+    && Number(domain[1]) > Number(domain[0]);
+}
+
+function computeAutoAxisDomainFromRange(range) {
+  const minValue = Number(range?.min);
+  const maxValue = Number(range?.max);
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    return [0, 100];
+  }
+  const yPadding = (maxValue - minValue) * 0.1 || 10;
+  return [minValue - yPadding, maxValue + yPadding];
+}
+
+function foldMetricRanges(metricRanges = []) {
+  let min = Infinity;
+  let max = -Infinity;
+  let numericCount = 0;
+  metricRanges.forEach((entry) => {
+    const range = entry?.range;
+    const entryMin = Number(range?.min);
+    const entryMax = Number(range?.max);
+    const entryNumericCount = Number(range?.numericCount) || 0;
+    if (!Number.isFinite(entryMin) || !Number.isFinite(entryMax) || entryNumericCount <= 0) {
+      return;
+    }
+    numericCount += entryNumericCount;
+    if (entryMin < min) {
+      min = entryMin;
+    }
+    if (entryMax > max) {
+      max = entryMax;
+    }
+  });
+  return {
+    numericCount,
+    min: Number.isFinite(min) ? min : null,
+    max: Number.isFinite(max) ? max : null,
+  };
+}
+
+async function collectUiAxisDomainSnapshot(uiHttpUrl, { preferCache = true } = {}) {
+  const debugState = await requestJson(buildUrl(uiHttpUrl, '/api/debug/state'), { method: 'GET' });
+  const state = debugState?.state && typeof debugState.state === 'object'
+    ? debugState.state
+    : {};
+  const rawSelectedMetrics = Array.isArray(state.selectedMetrics) ? state.selectedMetrics : [];
+  const selectedMetrics = rawSelectedMetrics
+    .map((metric) => {
+      const captureId = typeof metric?.captureId === 'string' ? metric.captureId : '';
+      if (!captureId) {
+        return null;
+      }
+      let path = [];
+      if (Array.isArray(metric?.path) && metric.path.length > 0) {
+        path = metric.path.map((part) => String(part));
+      } else if (typeof metric?.fullPath === 'string' && metric.fullPath.trim().length > 0) {
+        path = metric.fullPath.split('.').map((part) => String(part));
+      }
+      if (path.length === 0) {
+        return null;
+      }
+      const fullPath = typeof metric?.fullPath === 'string' && metric.fullPath.trim().length > 0
+        ? metric.fullPath
+        : path.join('.');
+      const axis = metric?.axis === 'y2' ? 'y2' : 'y1';
+      return {
+        captureId,
+        path,
+        fullPath,
+        axis,
+      };
+    })
+    .filter(Boolean);
+
+  const metricsByCapture = new Map();
+  selectedMetrics.forEach((metric) => {
+    const list = metricsByCapture.get(metric.captureId);
+    if (list) {
+      list.push(metric);
+    } else {
+      metricsByCapture.set(metric.captureId, [metric]);
+    }
+  });
+
+  const metricRanges = new Map();
+  for (const [captureId, metrics] of metricsByCapture.entries()) {
+    const paths = metrics.map((metric) => metric.path);
+    if (paths.length === 0) {
+      continue;
+    }
+    const response = await requestJson(buildUrl(uiHttpUrl, '/api/series/batch'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        captureId,
+        paths,
+        preferCache,
+      }),
+    });
+    const seriesList = Array.isArray(response?.series) ? response.series : [];
+    seriesList.forEach((seriesEntry) => {
+      const entryPath = Array.isArray(seriesEntry?.path)
+        ? seriesEntry.path.map((part) => String(part))
+        : [];
+      if (entryPath.length === 0) {
+        return;
+      }
+      const fullPath = entryPath.join('.');
+      metricRanges.set(
+        `${captureId}::${fullPath}`,
+        summarizeSeriesNumericRange(seriesEntry),
+      );
+    });
+  }
+
+  const metricsWithRanges = selectedMetrics.map((metric) => ({
+    ...metric,
+    range: metricRanges.get(`${metric.captureId}::${metric.fullPath}`) ?? {
+      numericCount: 0,
+      min: null,
+      max: null,
+    },
+  }));
+  const primaryMetrics = metricsWithRanges.filter((metric) => metric.axis !== 'y2');
+  const secondaryMetrics = metricsWithRanges.filter((metric) => metric.axis === 'y2');
+  const primaryRange = foldMetricRanges(primaryMetrics);
+  const secondaryRange = foldMetricRanges(secondaryMetrics);
+  const hasSecondaryAxis = secondaryMetrics.length > 0;
+  const yPrimaryAuto = computeAutoAxisDomainFromRange(primaryRange);
+  const ySecondaryAuto = hasSecondaryAxis
+    ? computeAutoAxisDomainFromRange(secondaryRange)
+    : yPrimaryAuto;
+
+  const rawPrimaryDomain = isValidDomainTuple(state.yPrimaryDomain)
+    ? [Number(state.yPrimaryDomain[0]), Number(state.yPrimaryDomain[1])]
+    : null;
+  const rawSecondaryDomain = isValidDomainTuple(state.ySecondaryDomain)
+    ? [Number(state.ySecondaryDomain[0]), Number(state.ySecondaryDomain[1])]
+    : null;
+
+  return {
+    stateSource: typeof debugState?.stateSource === 'string' ? debugState.stateSource : 'unknown',
+    selectedMetricCount: metricsWithRanges.length,
+    metrics: metricsWithRanges,
+    domains: {
+      hasSecondaryAxis,
+      yPrimaryAuto,
+      ySecondaryAuto,
+      yPrimaryManual: rawPrimaryDomain,
+      ySecondaryManual: rawSecondaryDomain,
+      yPrimaryEffective: rawPrimaryDomain ?? yPrimaryAuto,
+      ySecondaryEffective: hasSecondaryAxis
+        ? (rawSecondaryDomain ?? ySecondaryAuto)
+        : (rawPrimaryDomain ?? yPrimaryAuto),
+    },
+  };
+}
+
+function evaluateAxisCoverageFromDomainSnapshot({
+  captureId,
+  fullPath,
+  axis = 'y1',
+  seriesRange,
+  domainSnapshot,
+  tolerance = 1e-9,
+}) {
+  const failures = [];
+  const warnings = [];
+  const domains = domainSnapshot?.domains ?? null;
+  const effectivePrimary = Array.isArray(domains?.yPrimaryEffective) ? domains.yPrimaryEffective : null;
+  const effectiveSecondary = Array.isArray(domains?.ySecondaryEffective) ? domains.ySecondaryEffective : null;
+  const effectiveDomain = axis === 'y2' ? effectiveSecondary : effectivePrimary;
+  if (!effectiveDomain || effectiveDomain.length !== 2) {
+    failures.push({
+      type: 'domain-snapshot-missing-domain',
+      captureId,
+      fullPath,
+      axis,
+      message: 'Domain snapshot did not include effective axis domain.',
+    });
+    return {
+      status: 'failed',
+      failures,
+      warnings,
+      expectedRange: seriesRange,
+      effectiveDomain: null,
+      domainSource: domains ?? null,
+    };
+  }
+
+  const metricMin = Number(seriesRange?.min);
+  const metricMax = Number(seriesRange?.max);
+  const hasMin = Number.isFinite(metricMin);
+  const hasMax = Number.isFinite(metricMax);
+  if (!hasMin || !hasMax) {
+    warnings.push({
+      type: 'axis-coverage-no-numeric-series',
+      captureId,
+      fullPath,
+      axis,
+      numericCount: Number(seriesRange?.numericCount) || 0,
+    });
+    return {
+      status: warnings.length > 0 ? 'warning' : 'ok',
+      failures,
+      warnings,
+      expectedRange: seriesRange,
+      effectiveDomain,
+      domainSource: domains ?? null,
+    };
+  }
+
+  const [domainMin, domainMax] = effectiveDomain;
+  if (metricMin < domainMin - tolerance || metricMax > domainMax + tolerance) {
+    failures.push({
+      type: 'axis-domain-excludes-series-range',
+      captureId,
+      fullPath,
+      axis,
+      metricMin,
+      metricMax,
+      domainMin,
+      domainMax,
+      tolerance,
+    });
+  }
+
+  return {
+    status: failures.length > 0 ? 'failed' : (warnings.length > 0 ? 'warning' : 'ok'),
+    failures,
+    warnings,
+    expectedRange: seriesRange,
+    effectiveDomain,
+    domainSource: domains ?? null,
+    snapshotSource: domainSnapshot?.stateSource ?? null,
+  };
+}
+
 async function runUiDerivationRegressionChecks({
   uiHttpUrl,
   socket,
@@ -8164,13 +8595,22 @@ async function runUiDerivationRegressionChecks({
   const outputMetricPath = ['0', 'derivations', 'diff'];
   const groupId = `${idBase}-derive-group`;
   const outputCaptureId = `${idBase}-derive-diff`;
+  const negativeOutputCaptureId = `${idBase}-derive-negative`;
   let completion = null;
+  let negativeCompletion = null;
   let derivedFlow = null;
+  let negativeDerivedFlow = null;
   let correctness = null;
+  let axisCoverage = null;
   let groupState = null;
 
   try {
     await sendCommand('remove_capture', { captureId: outputCaptureId });
+  } catch {
+    // ignore: may not exist
+  }
+  try {
+    await sendCommand('remove_capture', { captureId: negativeOutputCaptureId });
   } catch {
     // ignore: may not exist
   }
@@ -8296,6 +8736,84 @@ async function runUiDerivationRegressionChecks({
         });
       }
     }
+
+    const negativeRunRequestId = await sendCommand('run_derivation', {
+      kind: 'diff',
+      groupId,
+      leftIndex: 1,
+      rightIndex: 0,
+      outputCaptureId: negativeOutputCaptureId,
+    });
+    negativeCompletion = await waitForDerivationCompletionOrThrow(socket, {
+      requestId: negativeRunRequestId,
+      timeoutMs: Math.max(30000, observeMs + 8000),
+      actionLabel: 'verify-regression negative derivation',
+    });
+    negativeDerivedFlow = await observeUiRegressionFlow(uiHttpUrl, {
+      flowName: 'derivation-negative-diff',
+      captureId: negativeOutputCaptureId,
+      metricPath: outputMetricPath,
+      fullPath: outputMetricPath.join('.'),
+      observeMs,
+      intervalMs,
+      expectedFrames: frames,
+    });
+    await sendCommand('select_metric', {
+      captureId: negativeOutputCaptureId,
+      path: outputMetricPath,
+    });
+    const negativeDiffSeries = await fetchUiSeriesEntry(uiHttpUrl, {
+      captureId: negativeOutputCaptureId,
+      metricPath: outputMetricPath,
+      preferCache: true,
+    });
+    const negativeRange = summarizeSeriesNumericRange(negativeDiffSeries);
+    if (typeof negativeRange.min !== 'number') {
+      failures.push({
+        type: 'negative-derivation-no-numeric-values',
+        outputCaptureId: negativeOutputCaptureId,
+      });
+    } else if (negativeRange.min >= 0) {
+      failures.push({
+        type: 'negative-derivation-not-negative',
+        outputCaptureId: negativeOutputCaptureId,
+        minValue: negativeRange.min,
+      });
+    }
+    const domainSnapshot = await collectUiAxisDomainSnapshot(uiHttpUrl, {
+      preferCache: true,
+    });
+    const selectedNegativeMetric = Array.isArray(domainSnapshot?.metrics)
+      ? domainSnapshot.metrics.find((entry) => (
+        entry
+        && entry.captureId === negativeOutputCaptureId
+        && entry.fullPath === outputMetricPath.join('.')
+      ))
+      : null;
+    const selectedNegativeAxis = selectedNegativeMetric?.axis === 'y2' ? 'y2' : 'y1';
+    axisCoverage = evaluateAxisCoverageFromDomainSnapshot({
+      captureId: negativeOutputCaptureId,
+      fullPath: outputMetricPath.join('.'),
+      axis: selectedNegativeAxis,
+      seriesRange: negativeRange,
+      domainSnapshot,
+    });
+    failures.push(...(Array.isArray(axisCoverage?.failures) ? axisCoverage.failures : []));
+    warnings.push(...(Array.isArray(axisCoverage?.warnings) ? axisCoverage.warnings : []));
+
+    const negativeSummary = negativeDerivedFlow?.summary ?? null;
+    if (!negativeSummary || !negativeSummary.hasValues) {
+      failures.push({
+        type: 'negative-derivation-output-no-values',
+        outputCaptureId: negativeOutputCaptureId,
+      });
+    } else if (negativeSummary.lastNumericCount <= 0) {
+      failures.push({
+        type: 'negative-derivation-output-empty-series',
+        outputCaptureId: negativeOutputCaptureId,
+        lastNumericCount: negativeSummary.lastNumericCount,
+      });
+    }
   } catch (error) {
     failures.push({
       type: 'derivation-regression-error',
@@ -8304,6 +8822,11 @@ async function runUiDerivationRegressionChecks({
   } finally {
     try {
       await sendCommand('remove_capture', { captureId: outputCaptureId });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await sendCommand('remove_capture', { captureId: negativeOutputCaptureId });
     } catch {
       // ignore cleanup errors
     }
@@ -8320,10 +8843,15 @@ async function runUiDerivationRegressionChecks({
     status: normalizedFailures.length > 0 ? 'failed' : (normalizedWarnings.length > 0 ? 'warning' : 'ok'),
     groupId,
     outputCaptureId,
+    negativeOutputCaptureId,
     completionType: completion?.type ?? null,
     completionPayload: completion?.payload ?? null,
+    negativeCompletionType: negativeCompletion?.type ?? null,
+    negativeCompletionPayload: negativeCompletion?.payload ?? null,
     groupState,
     flow: derivedFlow,
+    negativeFlow: negativeDerivedFlow,
+    axisCoverage,
     correctness,
     failures: normalizedFailures,
     warnings: normalizedWarnings,
@@ -8333,6 +8861,7 @@ async function runUiDerivationRegressionChecks({
 function evaluateUiRegressionFlows({
   firstFlow,
   secondFlow,
+  lateSelectFlow = null,
   expectedFrames,
   requireSelected = true,
 }) {
@@ -8399,12 +8928,27 @@ function evaluateUiRegressionFlows({
     }
   }
 
+  let lateSelect = null;
+  if (lateSelectFlow) {
+    lateSelect = evaluateLateSelectRegressionFlow({
+      flow: lateSelectFlow,
+      expectedFrames,
+    });
+    if (Array.isArray(lateSelect.failures) && lateSelect.failures.length > 0) {
+      failures.push(...lateSelect.failures);
+    }
+    if (Array.isArray(lateSelect.warnings) && lateSelect.warnings.length > 0) {
+      warnings.push(...lateSelect.warnings);
+    }
+  }
+
   const normalizedFailures = dedupeIssueList(failures);
   const normalizedWarnings = dedupeIssueList(warnings);
   return {
     status: normalizedFailures.length > 0 ? 'failed' : (normalizedWarnings.length > 0 ? 'warning' : 'ok'),
     failures: normalizedFailures,
     warnings: normalizedWarnings,
+    lateSelect,
   };
 }
 
@@ -8453,6 +8997,7 @@ async function runUiRegressionVerify({
       timeoutMs: 7000,
       errorMessage: `Timed out waiting for UI ack (${String(type)}).`,
     });
+    return requestId;
   };
 
   const cleanup = async () => {
@@ -8539,9 +9084,42 @@ async function runUiRegressionVerify({
     });
     secondFlow.selectedMetricAtStart = secondSelected;
 
+    await sendCommand('remove_capture', { captureId: regressionCaptureId });
+    await sendCommand('clear_selection');
+    await startUiRegressionLiveCapture(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      source: generated.filePath,
+      filename: path.basename(generated.filePath),
+      pollIntervalMs: pollMs,
+    });
+    const lateSelectReadState = await waitForUiRegressionCaptureRead(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      expectedFrames: frames,
+      timeoutMs: Math.max(3000, Math.min(20000, observeMs + 5000)),
+      intervalMs: Math.max(80, Math.min(500, intervalMs)),
+    });
+    await sendCommand('select_metric', {
+      captureId: regressionCaptureId,
+      path: metricPath,
+    });
+    const lateSelected = await isMetricSelectedOnServer(uiHttpUrl, regressionCaptureId, fullPath);
+    const lateSelectFlow = await observeUiRegressionFlow(uiHttpUrl, {
+      flowName: 'late-select-after-stream-read',
+      captureId: regressionCaptureId,
+      metricPath,
+      fullPath,
+      observeMs,
+      intervalMs,
+      expectedFrames: frames,
+      requireRecordCountComplete: true,
+    });
+    lateSelectFlow.selectedMetricAtStart = lateSelected;
+    lateSelectFlow.readState = lateSelectReadState;
+
     const evaluation = evaluateUiRegressionFlows({
       firstFlow,
       secondFlow,
+      lateSelectFlow,
       expectedFrames: frames,
       requireSelected,
     });
@@ -8583,7 +9161,9 @@ async function runUiRegressionVerify({
         flows: [
           firstFlow,
           secondFlow,
+          lateSelectFlow,
         ],
+        lateSelect: evaluation.lateSelect,
         derivation,
         failures,
         warnings,
