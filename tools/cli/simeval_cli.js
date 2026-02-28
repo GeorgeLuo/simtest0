@@ -21,6 +21,62 @@ const DEFAULT_CLI_CONFIG_PATH = path.join(os.homedir(), '.simeval', 'config.json
 const DEFAULT_UI_HOST = '127.0.0.1';
 const DEFAULT_UI_PORT = 5050;
 const DEFAULT_UI_DIRNAME = 'Stream-Metrics-UI';
+const UI_STORAGE_CONFIG = [
+  {
+    optionKey: 'ui-data-root',
+    configKey: 'uiDataRoot',
+    storageKey: 'dataRoot',
+    envKey: 'METRICS_UI_DATA_ROOT',
+  },
+  {
+    optionKey: 'ui-upload-root',
+    configKey: 'uiUploadRoot',
+    storageKey: 'uploadRoot',
+    envKey: 'METRICS_UI_UPLOAD_ROOT',
+  },
+  {
+    optionKey: 'ui-upload-index-file',
+    configKey: 'uiUploadIndexFile',
+    storageKey: 'uploadIndexFile',
+    envKey: 'METRICS_UI_UPLOAD_INDEX_FILE',
+  },
+  {
+    optionKey: 'ui-derivation-plugin-root',
+    configKey: 'uiDerivationPluginRoot',
+    storageKey: 'derivationPluginRoot',
+    envKey: 'METRICS_UI_DERIVATION_PLUGIN_ROOT',
+  },
+  {
+    optionKey: 'ui-derivation-plugin-index-file',
+    configKey: 'uiDerivationPluginIndexFile',
+    storageKey: 'derivationPluginIndexFile',
+    envKey: 'METRICS_UI_DERIVATION_PLUGIN_INDEX_FILE',
+  },
+  {
+    optionKey: 'ui-visualization-plugin-root',
+    configKey: 'uiVisualizationPluginRoot',
+    storageKey: 'visualizationPluginRoot',
+    envKey: 'METRICS_UI_VISUALIZATION_PLUGIN_ROOT',
+  },
+  {
+    optionKey: 'ui-visualization-plugin-index-file',
+    configKey: 'uiVisualizationPluginIndexFile',
+    storageKey: 'visualizationPluginIndexFile',
+    envKey: 'METRICS_UI_VISUALIZATION_PLUGIN_INDEX_FILE',
+  },
+  {
+    optionKey: 'ui-capture-sources-file',
+    configKey: 'uiCaptureSourcesFile',
+    storageKey: 'captureSourcesFile',
+    envKey: 'METRICS_UI_CAPTURE_SOURCES_FILE',
+  },
+  {
+    optionKey: 'ui-dashboard-state-file',
+    configKey: 'uiDashboardStateFile',
+    storageKey: 'dashboardStateFile',
+    envKey: 'METRICS_UI_DASHBOARD_STATE_FILE',
+  },
+];
 const DEFAULT_FLEET_LABELS = {
   instance: [
     'simeval.run=${runId}',
@@ -997,9 +1053,16 @@ async function handleStream(argvRest) {
 }
 
 async function handleUi(argvRest) {
-  const [subcommand, ...rest] = argvRest;
+  const [subcommandRaw, ...rest] = argvRest;
+  const subcommand = typeof subcommandRaw === 'string' ? subcommandRaw.trim() : '';
   const { options } = parseArgs(rest);
-  if (options.help || !subcommand) {
+  if (
+    options.help
+    || !subcommand
+    || subcommand === 'help'
+    || subcommand === '--help'
+    || subcommand === '-h'
+  ) {
     printUsage('ui');
     return;
   }
@@ -1090,6 +1153,81 @@ async function handleUi(argvRest) {
       `/api/derivations/plugins/${encodeURIComponent(String(pluginId))}`,
     );
     const response = await requestJson(endpoint, { method: 'DELETE' });
+    printJson(response);
+    return;
+  }
+
+  if (subcommand === 'visualization-plugin-upload') {
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a http(s):// or ws:// URL for visualization-plugin-upload.');
+    }
+    const sourcePath = options.file || options.source;
+    if (!sourcePath) {
+      throw new Error('Provide --file (or --source) for ui visualization-plugin-upload.');
+    }
+    const resolvedSource = path.resolve(process.cwd(), String(sourcePath));
+    if (!fs.existsSync(resolvedSource) || !fs.statSync(resolvedSource).isFile()) {
+      throw new Error(`Plugin file not found: ${resolvedSource}`);
+    }
+    const uploadName = options.name ? String(options.name) : path.basename(resolvedSource);
+    const fileBuffer = fs.readFileSync(resolvedSource);
+    const form = new FormData();
+    form.append('file', new Blob([fileBuffer]), uploadName);
+    const endpoint = buildUrl(uiHttpUrl, '/api/visualization/plugins/upload');
+    const response = await fetch(endpoint, { method: 'POST', body: form });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = payload && payload.error ? payload.error : `Plugin upload failed (${response.status}).`;
+      throw new Error(message);
+    }
+    printJson(payload ?? { status: 'success' });
+    return;
+  }
+
+  if (subcommand === 'visualization-plugin-source') {
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a http(s):// or ws:// URL for visualization-plugin-source.');
+    }
+    const pluginId = options['plugin-id'] ?? options.pluginId;
+    if (!pluginId) {
+      throw new Error('Provide --plugin-id for ui visualization-plugin-source.');
+    }
+    const endpoint = buildUrl(
+      uiHttpUrl,
+      `/api/visualization/plugins/${encodeURIComponent(String(pluginId))}/source`,
+    );
+    const response = await requestJson(endpoint, { method: 'GET' });
+    printJson(response);
+    return;
+  }
+
+  if (subcommand === 'visualization-plugin-delete') {
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a http(s):// or ws:// URL for visualization-plugin-delete.');
+    }
+    const pluginId = options['plugin-id'] ?? options.pluginId;
+    if (!pluginId) {
+      throw new Error('Provide --plugin-id for ui visualization-plugin-delete.');
+    }
+    const endpoint = buildUrl(
+      uiHttpUrl,
+      `/api/visualization/plugins/${encodeURIComponent(String(pluginId))}`,
+    );
+    const response = await requestJson(endpoint, { method: 'DELETE' });
+    printJson(response);
+    return;
+  }
+
+  if (subcommand === 'visualization-plugins') {
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a http(s):// or ws:// URL for visualization-plugins.');
+    }
+    const endpoint = buildUrl(uiHttpUrl, '/api/visualization/plugins');
+    const response = await requestJson(endpoint, { method: 'GET' });
     printJson(response);
     return;
   }
@@ -1292,6 +1430,63 @@ async function handleUi(argvRest) {
       cleanupResult = await finalizeUiServerForVerification(lifecycle);
     }
 
+    if (verifyError) {
+      throw verifyError;
+    }
+    verify.report.server = {
+      url: lifecycle.uiHttpUrl,
+      autoServed: lifecycle.startedByVerifier,
+      shutdownOnExit: lifecycle.shutdownOnExit,
+      shutdownAttempted: cleanupResult?.attempted === true,
+      shutdownResult: cleanupResult?.result || 'not-requested',
+      shutdownError: cleanupResult?.error || null,
+    };
+    printJson(verify.report);
+    if (verify.report.status !== 'ok') {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (subcommand === 'verify-session-detect') {
+    const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 5000;
+    if (timeoutMs <= 0) {
+      throw new Error('Invalid --timeout value. Expected a positive number.');
+    }
+
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+    const uiWsUrl = await resolveUiWsUrl(uiInput);
+    if (!uiWsUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+
+    const autoServe = parseBooleanOption(options['auto-serve'], true) !== false;
+    const shutdownOnExit = parseBooleanOption(options['shutdown-on-exit'], true) !== false;
+    const lifecycle = await ensureUiServerForVerification({
+      options,
+      uiHttpUrl,
+      requireWs: true,
+      autoServe,
+      shutdownOnExit,
+    });
+
+    let verify = null;
+    let verifyError = null;
+    let cleanupResult = null;
+    try {
+      verify = await runUiSessionDetectionRegression({
+        uiHttpUrl: lifecycle.uiHttpUrl,
+        uiWsUrl: lifecycle.uiWsUrl,
+        timeoutMs,
+      });
+    } catch (error) {
+      verifyError = error;
+    } finally {
+      cleanupResult = await finalizeUiServerForVerification(lifecycle);
+    }
     if (verifyError) {
       throw verifyError;
     }
@@ -2092,6 +2287,52 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (
+      subcommand === 'visualization-use'
+      || subcommand === 'visualization-set'
+      || subcommand === 'visualization-reset'
+    ) {
+      const captureId = options['capture-id'] ? String(options['capture-id']) : undefined;
+      let mode = 'builtin';
+      let pluginId = undefined;
+      let name = options.name ? String(options.name) : undefined;
+
+      if (subcommand === 'visualization-use' || subcommand === 'visualization-set') {
+        mode = 'plugin';
+        pluginId =
+          options['plugin-id']
+          || options.pluginId
+          || options.id
+          || options.plugin;
+        if (!pluginId) {
+          throw new Error('Provide --plugin-id for ui visualization-use.');
+        }
+      } else {
+        mode = 'builtin';
+      }
+
+      sendWsMessage(socket, {
+        type: 'set_visualization_frame',
+        mode,
+        pluginId: mode === 'plugin' ? String(pluginId) : undefined,
+        name,
+        captureId,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, {
+        mode,
+        pluginId: mode === 'plugin' ? String(pluginId) : undefined,
+        name,
+        captureId,
+      });
+      return;
+    }
+
     if (subcommand === 'add-annotation') {
       const tick = parseOptionalNumber(options.tick, 'tick');
       if (!Number.isFinite(tick) || tick <= 0) {
@@ -2360,6 +2601,36 @@ async function handleUi(argvRest) {
         throw new Error('Timed out waiting for UI debug.');
       }
       printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'visualization-check') {
+      let report;
+      try {
+        const debug = await collectUiDebugSnapshot(socket, {
+          timeoutMs,
+          requestIdBase: requestId,
+          scope: 'visualization',
+        });
+        report = buildUiVisualizationCheckReport(debug);
+      } catch (error) {
+        report = {
+          status: 'failed',
+          checkedAt: new Date().toISOString(),
+          visualization: null,
+          failures: [
+            {
+              type: 'frontend-debug-unavailable',
+              message: error instanceof Error ? error.message : 'Unable to fetch visualization debug payload.',
+            },
+          ],
+          warnings: [],
+        };
+      }
+      printJson(report);
+      if (report.status !== 'ok') {
+        process.exitCode = 1;
+      }
       return;
     }
 
@@ -2925,6 +3196,7 @@ async function handleUiServe(options) {
       mode: existing?.mode ?? uiOptions.mode ?? null,
       logFile: existing?.logFile ?? null,
       startedAt: existing?.startedAt ?? null,
+      storage: existing?.storage ?? uiOptions.storage ?? {},
       discoveredAt: new Date().toISOString(),
     };
     saveUiState(uiStateFile, uiState);
@@ -2932,6 +3204,7 @@ async function handleUiServe(options) {
       status: 'running',
       url: probe.url,
       pid,
+      storage: uiOptions.storage,
       stateFile: uiStateFile,
     });
     return;
@@ -2943,11 +3216,7 @@ async function handleUiServe(options) {
   const url = `http://${uiOptions.host}:${uiOptions.port}`;
   console.log(`[ui] starting Metrics UI (${uiOptions.mode}) at ${url}`);
 
-  const env = {
-    ...process.env,
-    HOST: uiOptions.host,
-    PORT: String(uiOptions.port),
-  };
+  const env = buildUiServeEnv(uiOptions);
   const script = uiOptions.mode === 'start' ? 'start' : 'dev';
   const pid = spawnDetachedProcess({
     command: 'npm',
@@ -2967,6 +3236,7 @@ async function handleUiServe(options) {
     pid,
     uiDir: uiOptions.uiDir,
     mode: uiOptions.mode,
+    storage: uiOptions.storage,
     logFile,
     startedAt: new Date().toISOString(),
   };
@@ -2976,6 +3246,7 @@ async function handleUiServe(options) {
     url,
     pid,
     logFile,
+    storage: uiOptions.storage,
     stateFile: uiStateFile,
   });
 }
@@ -3043,11 +3314,7 @@ async function startUiServerForVerification({ options, uiHttpUrl }) {
   await ensureUiDependencies(serveOptions.uiDir, serveOptions.skipInstall);
 
   const logFile = resolveCliLogFile(options, 'ui_verify');
-  const env = {
-    ...process.env,
-    HOST: serveOptions.host,
-    PORT: String(serveOptions.port),
-  };
+  const env = buildUiServeEnv(serveOptions);
   const script = serveOptions.mode === 'start' ? 'start' : 'dev';
   const pid = spawnDetachedProcess({
     command: 'npm',
@@ -3068,6 +3335,7 @@ async function startUiServerForVerification({ options, uiHttpUrl }) {
     pid,
     uiDir: serveOptions.uiDir,
     mode: serveOptions.mode,
+    storage: serveOptions.storage,
     logFile,
     startedAt: new Date().toISOString(),
   };
@@ -3275,10 +3543,96 @@ async function handleConfig(argvRest) {
       changed = true;
     }
 
+    const uiDataRoot = readConfigOption(options, 'ui-data-root', '--ui-data-root');
+    if (uiDataRoot !== null) {
+      updated.uiDataRoot = uiDataRoot;
+      changed = true;
+    }
+
+    const uiUploadRoot = readConfigOption(options, 'ui-upload-root', '--ui-upload-root');
+    if (uiUploadRoot !== null) {
+      updated.uiUploadRoot = uiUploadRoot;
+      changed = true;
+    }
+
+    const uiUploadIndexFile = readConfigOption(
+      options,
+      'ui-upload-index-file',
+      '--ui-upload-index-file',
+    );
+    if (uiUploadIndexFile !== null) {
+      updated.uiUploadIndexFile = uiUploadIndexFile;
+      changed = true;
+    }
+
+    const uiDerivationPluginRoot = readConfigOption(
+      options,
+      'ui-derivation-plugin-root',
+      '--ui-derivation-plugin-root',
+    );
+    if (uiDerivationPluginRoot !== null) {
+      updated.uiDerivationPluginRoot = uiDerivationPluginRoot;
+      changed = true;
+    }
+
+    const uiDerivationPluginIndexFile = readConfigOption(
+      options,
+      'ui-derivation-plugin-index-file',
+      '--ui-derivation-plugin-index-file',
+    );
+    if (uiDerivationPluginIndexFile !== null) {
+      updated.uiDerivationPluginIndexFile = uiDerivationPluginIndexFile;
+      changed = true;
+    }
+
+    const uiVisualizationPluginRoot = readConfigOption(
+      options,
+      'ui-visualization-plugin-root',
+      '--ui-visualization-plugin-root',
+    );
+    if (uiVisualizationPluginRoot !== null) {
+      updated.uiVisualizationPluginRoot = uiVisualizationPluginRoot;
+      changed = true;
+    }
+
+    const uiVisualizationPluginIndexFile = readConfigOption(
+      options,
+      'ui-visualization-plugin-index-file',
+      '--ui-visualization-plugin-index-file',
+    );
+    if (uiVisualizationPluginIndexFile !== null) {
+      updated.uiVisualizationPluginIndexFile = uiVisualizationPluginIndexFile;
+      changed = true;
+    }
+
+    const uiCaptureSourcesFile = readConfigOption(
+      options,
+      'ui-capture-sources-file',
+      '--ui-capture-sources-file',
+    );
+    if (uiCaptureSourcesFile !== null) {
+      updated.uiCaptureSourcesFile = uiCaptureSourcesFile;
+      changed = true;
+    }
+
+    const uiDashboardStateFile = readConfigOption(
+      options,
+      'ui-dashboard-state-file',
+      '--ui-dashboard-state-file',
+    );
+    if (uiDashboardStateFile !== null) {
+      updated.uiDashboardStateFile = uiDashboardStateFile;
+      changed = true;
+    }
+
     if (!changed) {
       throw new Error(
         'No config fields provided. Use --token, --morph-api-key, --server, --snapshot, ' +
-          '--fleet-config, --workspace, --ui, --ui-dir, --ui-host, --ui-port, or --ui-mode.',
+          '--fleet-config, --workspace, --ui, --ui-dir, --ui-host, --ui-port, --ui-mode, ' +
+          '--ui-data-root, --ui-upload-root, --ui-upload-index-file, ' +
+          '--ui-derivation-plugin-root, --ui-derivation-plugin-index-file, ' +
+          '--ui-visualization-plugin-root, --ui-visualization-plugin-index-file, ' +
+          '--ui-capture-sources-file, or --ui-dashboard-state-file.',
       );
     }
 
@@ -5805,6 +6159,7 @@ function resolveUiServeOptions(options) {
   const uiDir = resolveUiDirectory(options['ui-dir'], CLI_CONFIG?.data?.uiDir);
   const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 5000;
   const skipInstall = Boolean(options['skip-install'] ?? options['no-install']);
+  const storage = resolveUiStorageOptions(options);
 
   return {
     host,
@@ -5813,7 +6168,63 @@ function resolveUiServeOptions(options) {
     uiDir,
     timeoutMs,
     skipInstall,
+    storage,
   };
+}
+
+function resolveUiStorageOptions(options) {
+  const storage = {};
+  UI_STORAGE_CONFIG.forEach((entry) => {
+    const explicit = Object.prototype.hasOwnProperty.call(options, entry.optionKey)
+      ? options[entry.optionKey]
+      : undefined;
+    const configured = CLI_CONFIG?.data?.[entry.configKey];
+    const resolved = resolveUiStoragePath({
+      explicit,
+      configured,
+      label: entry.optionKey,
+    });
+    if (resolved) {
+      storage[entry.storageKey] = resolved;
+    }
+  });
+  return storage;
+}
+
+function resolveUiStoragePath({ explicit, configured, label }) {
+  if (typeof explicit !== 'undefined') {
+    if (explicit === true) {
+      throw new Error(`Missing value for --${label}.`);
+    }
+    const trimmedExplicit = String(explicit).trim();
+    if (!trimmedExplicit) {
+      throw new Error(`Missing value for --${label}.`);
+    }
+    return path.resolve(process.cwd(), trimmedExplicit);
+  }
+  if (configured === null || typeof configured === 'undefined') {
+    return null;
+  }
+  const trimmedConfigured = String(configured).trim();
+  if (!trimmedConfigured) {
+    return null;
+  }
+  return path.resolve(process.cwd(), trimmedConfigured);
+}
+
+function buildUiServeEnv(uiOptions) {
+  const env = {
+    ...process.env,
+    HOST: uiOptions.host,
+    PORT: String(uiOptions.port),
+  };
+  UI_STORAGE_CONFIG.forEach((entry) => {
+    const value = uiOptions.storage?.[entry.storageKey];
+    if (value) {
+      env[entry.envKey] = String(value);
+    }
+  });
+  return env;
 }
 
 function resolveUiShutdownUrl(options) {
@@ -7194,10 +7605,15 @@ async function collectUiDebugSnapshot(
   {
     timeoutMs = 5000,
     requestIdBase = null,
+    scope = null,
   } = {},
 ) {
   const requestId = `${requestIdBase || buildMessageId(null, 'ui-verify')}-debug`;
-  sendWsMessage(socket, { type: 'get_ui_debug', request_id: requestId });
+  const message = { type: 'get_ui_debug', request_id: requestId };
+  if (typeof scope === 'string' && scope.trim().length > 0) {
+    message.scope = scope.trim();
+  }
+  sendWsMessage(socket, message);
   const response = await waitForWsResponse(socket, {
     requestId,
     types: ['ui_debug'],
@@ -7207,6 +7623,139 @@ async function collectUiDebugSnapshot(
     throw new Error('Timed out waiting for UI debug.');
   }
   return response.payload ?? response;
+}
+
+function buildUiVisualizationCheckReport(debug) {
+  const failures = [];
+  const warnings = [];
+  const visualization =
+    debug
+    && debug.refs
+    && typeof debug.refs === 'object'
+    && debug.refs.visualization
+    && typeof debug.refs.visualization === 'object'
+      ? debug.refs.visualization
+      : null;
+
+  if (!visualization) {
+    failures.push({
+      type: 'missing-visualization-debug',
+      message: 'Visualization debug payload is missing.',
+    });
+  }
+
+  const mode = visualization && typeof visualization.mode === 'string'
+    ? visualization.mode
+    : null;
+  const runtimeLoaded = Boolean(visualization && visualization.runtimeLoaded);
+  const iframeReady = Boolean(visualization && visualization.iframeReady);
+  const runtimeError =
+    visualization && typeof visualization.error === 'string' && visualization.error.trim().length > 0
+      ? visualization.error
+      : null;
+  const pluginReportError =
+    visualization
+    && typeof visualization.pluginReportError === 'string'
+    && visualization.pluginReportError.trim().length > 0
+      ? visualization.pluginReportError
+      : null;
+  const canvasCount = Number.isFinite(Number(visualization?.canvasCount))
+    ? Number(visualization.canvasCount)
+    : null;
+  const svgCount = Number.isFinite(Number(visualization?.svgCount))
+    ? Number(visualization.svgCount)
+    : null;
+  const rootChildCount = Number.isFinite(Number(visualization?.rootChildCount))
+    ? Number(visualization.rootChildCount)
+    : null;
+  const textLength = Number.isFinite(Number(visualization?.textLength))
+    ? Number(visualization.textLength)
+    : null;
+  const visualSignal =
+    visualization
+    && typeof visualization.visualSignal === 'string'
+    && visualization.visualSignal.length > 0
+      ? visualization.visualSignal
+      : null;
+  const hasVisualSignal =
+    visualization && typeof visualization.hasVisualSignal === 'boolean'
+      ? visualization.hasVisualSignal
+      : null;
+  const reportCount = Number.isFinite(Number(visualization?.reportCount))
+    ? Number(visualization.reportCount)
+    : null;
+
+  if (mode !== 'plugin') {
+    failures.push({
+      type: 'visualization-mode-not-plugin',
+      mode,
+      message: 'Visualization frame is not in plugin mode.',
+    });
+  }
+
+  if (mode === 'plugin') {
+    if (!runtimeLoaded) {
+      failures.push({
+        type: 'plugin-runtime-not-loaded',
+        message: 'Plugin mode is active but runtime is not loaded.',
+      });
+    }
+    if (!iframeReady) {
+      failures.push({
+        type: 'plugin-iframe-not-ready',
+        message: 'Plugin iframe is not ready.',
+      });
+    }
+    if (runtimeError) {
+      failures.push({
+        type: 'plugin-runtime-error',
+        error: runtimeError,
+      });
+    }
+    if (pluginReportError) {
+      failures.push({
+        type: 'plugin-report-error',
+        error: pluginReportError,
+      });
+    }
+    if (reportCount !== null && reportCount <= 0) {
+      warnings.push({
+        type: 'missing-plugin-reports',
+        message: 'No plugin render reports were observed.',
+      });
+    }
+    const hasGraphicsSurface = (canvasCount || 0) > 0 || (svgCount || 0) > 0;
+    const hasAnyDom = (rootChildCount || 0) > 0 || (textLength || 0) > 0;
+    if (hasVisualSignal === false || visualSignal === 'none' || !hasAnyDom) {
+      failures.push({
+        type: 'visualization-not-visible',
+        visualSignal,
+        rootChildCount,
+        canvasCount,
+        svgCount,
+        textLength,
+        message: 'Visualization plugin loaded but no visible output signal was detected.',
+      });
+    } else if (!hasGraphicsSurface && hasAnyDom) {
+      failures.push({
+        type: 'visualization-dom-only',
+        visualSignal,
+        rootChildCount,
+        canvasCount,
+        svgCount,
+        textLength,
+        message: 'Visualization appears to be text/DOM only (no canvas/svg surface detected).',
+      });
+    }
+  }
+
+  return {
+    status: failures.length > 0 ? 'failed' : (warnings.length > 0 ? 'warning' : 'ok'),
+    checkedAt: new Date().toISOString(),
+    visualization: visualization || null,
+    failures,
+    warnings,
+  };
 }
 
 async function collectUiMetricCoverageSnapshot(
@@ -9458,6 +10007,172 @@ async function runUiLiveRemoveNoReappearRegression({
   }
 }
 
+async function runUiSessionDetectionRegression({
+  uiHttpUrl,
+  uiWsUrl,
+  timeoutMs = 5000,
+}) {
+  const requestPrefix = `verify-session-detect-${Date.now().toString(36)}`;
+  const evidence = {
+    frontendConnectedBefore: false,
+    frontendConnectedAfter: false,
+    frontendConnectedFinal: false,
+    createdFrontendSession: false,
+    frontendRegistered: false,
+    agentRegistered: false,
+    stateResponseReceived: false,
+    debugResponseReceived: false,
+    stateAckReceived: false,
+    debugAckReceived: false,
+  };
+  const warnings = [];
+  const failures = [];
+  let frontendSocket = null;
+  let agentSocket = null;
+
+  const closeSocket = async (socket) => {
+    if (!socket) {
+      return;
+    }
+    try {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close();
+      }
+    } catch {
+      // ignore close errors
+    }
+  };
+
+  try {
+    const before = await requestJson(buildUrl(uiHttpUrl, '/api/debug/state'), { method: 'GET' });
+    evidence.frontendConnectedBefore = Boolean(before?.frontendConnected);
+
+    if (!evidence.frontendConnectedBefore) {
+      frontendSocket = await connectWebSocket(uiWsUrl);
+      evidence.createdFrontendSession = true;
+      sendWsMessage(frontendSocket, {
+        type: 'register',
+        role: 'frontend',
+        instanceId: `${requestPrefix}-frontend`,
+        takeover: true,
+      });
+      evidence.frontendRegistered = await waitForWsAck(frontendSocket, Math.max(3000, timeoutMs));
+      if (!evidence.frontendRegistered) {
+        failures.push({
+          type: 'frontend-register-failed',
+          message: 'Failed to create frontend websocket session for regression.',
+        });
+      } else {
+        await delay(120);
+      }
+    } else {
+      warnings.push({
+        type: 'frontend-already-connected',
+        message: 'Using existing frontend session; verifier did not create a dedicated frontend socket.',
+      });
+    }
+
+    const after = await requestJson(buildUrl(uiHttpUrl, '/api/debug/state'), { method: 'GET' });
+    evidence.frontendConnectedAfter = Boolean(after?.frontendConnected);
+    if (!evidence.frontendConnectedAfter) {
+      failures.push({
+        type: 'frontend-not-detected',
+        message: 'Frontend is not connected before agent request.',
+      });
+    }
+
+    agentSocket = await connectWebSocket(uiWsUrl);
+    sendWsMessage(agentSocket, { type: 'register', role: 'agent' });
+    evidence.agentRegistered = await waitForWsAck(agentSocket, Math.max(3000, timeoutMs));
+    if (!evidence.agentRegistered) {
+      failures.push({
+        type: 'agent-register-failed',
+        message: 'Failed to register agent websocket session.',
+      });
+    } else {
+      const stateRequestId = `${requestPrefix}-state`;
+      sendWsMessage(agentSocket, { type: 'get_state', request_id: stateRequestId });
+      const stateResponse = await waitForWsResponse(agentSocket, {
+        requestId: stateRequestId,
+        types: ['state_update'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      evidence.stateResponseReceived = Boolean(stateResponse);
+      if (!stateResponse) {
+        failures.push({
+          type: 'missing-state-response',
+          message: 'Agent request get_state did not receive state_update while frontend was connected.',
+        });
+      }
+      try {
+        const stateAck = await waitForWsResponse(agentSocket, {
+          requestId: stateRequestId,
+          types: ['ack'],
+          timeoutMs: 1000,
+        });
+        evidence.stateAckReceived = Boolean(stateAck);
+      } catch {
+        evidence.stateAckReceived = false;
+      }
+
+      const shouldRequireUiDebug = evidence.frontendConnectedBefore;
+      if (shouldRequireUiDebug) {
+        const debugRequestId = `${requestPrefix}-debug`;
+        sendWsMessage(agentSocket, { type: 'get_ui_debug', request_id: debugRequestId });
+        const debugResponse = await waitForWsResponse(agentSocket, {
+          requestId: debugRequestId,
+          types: ['ui_debug'],
+          timeoutMs: timeoutMs + 2000,
+        });
+        evidence.debugResponseReceived = Boolean(debugResponse);
+        if (!debugResponse) {
+          failures.push({
+            type: 'missing-debug-response',
+            message: 'Agent request get_ui_debug did not receive ui_debug while frontend was connected.',
+          });
+        }
+        try {
+          const debugAck = await waitForWsResponse(agentSocket, {
+            requestId: debugRequestId,
+            types: ['ack'],
+            timeoutMs: 1000,
+          });
+          evidence.debugAckReceived = Boolean(debugAck);
+        } catch {
+          evidence.debugAckReceived = false;
+        }
+      }
+    }
+  } finally {
+    await closeSocket(agentSocket);
+    await closeSocket(frontendSocket);
+    await delay(120);
+    try {
+      const finalState = await requestJson(buildUrl(uiHttpUrl, '/api/debug/state'), { method: 'GET' });
+      evidence.frontendConnectedFinal = Boolean(finalState?.frontendConnected);
+    } catch (error) {
+      warnings.push({
+        type: 'final-state-probe-failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const status = failures.length > 0 ? 'failed' : (warnings.length > 0 ? 'warning' : 'ok');
+  return {
+    report: {
+      status,
+      checkedAt: new Date().toISOString(),
+      mode: 'verify-session-detect',
+      frontendRequired: false,
+      expected: 'When a frontend session is connected, agent get_state requests must return state_update (no timeout).',
+      evidence,
+      failures,
+      warnings,
+    },
+  };
+}
+
 function buildUiRegressCaseDefinitions() {
   return [
     {
@@ -9486,6 +10201,13 @@ function buildUiRegressCaseDefinitions() {
       command: 'verify-live-remove',
       aliases: ['live-remove', 'no-reappear'],
       description: 'removed capture must not reappear on stale source sync',
+      defaultInAll: true,
+    },
+    {
+      id: 'verify-session-detect',
+      command: 'verify-session-detect',
+      aliases: ['session-detect', 'frontend-session'],
+      description: 'agent state/debug queries must respond when frontend session is connected',
       defaultInAll: true,
     },
   ];
@@ -9568,7 +10290,7 @@ async function runUiRegressSuite({
   );
   if (invalid.length > 0) {
     throw new Error(
-      `Unknown ui regress test(s): ${invalid.join(', ')}. Use --test all|verify|verify-regression|verify-flow|verify-live-remove.`,
+      `Unknown ui regress test(s): ${invalid.join(', ')}. Use --test all|verify|verify-regression|verify-flow|verify-live-remove|verify-session-detect.`,
     );
   }
   if (!Array.isArray(selected) || selected.length === 0) {
@@ -9590,6 +10312,13 @@ async function runUiRegressSuite({
       'ui-host',
       'ui-port',
       'ui-mode',
+      'ui-data-root',
+      'ui-upload-root',
+      'ui-upload-index-file',
+      'ui-derivation-plugin-root',
+      'ui-derivation-plugin-index-file',
+      'ui-capture-sources-file',
+      'ui-dashboard-state-file',
       'capture-id',
       'observe-ms',
       'interval',
@@ -10542,7 +11271,7 @@ function printUsage(command) {
   console.log('  component inject|eject         Inject or eject a component type');
   console.log('  plugin upload                 Upload plugin source to the server');
   console.log('  stream capture|forward|upload  Capture, forward, or upload stream data');
-  console.log('  ui <command>                   Control the Metrics UI over WebSocket');
+  console.log('  ui <command>                   Control the Metrics UI (WebSocket + HTTP)');
   console.log('  config show|set             Manage CLI defaults');
   console.log('  run create|show|record         Manage and record run metadata');
   console.log('  deploy start|stop|list         Start/stop/list local SimEval deployments');
@@ -10599,14 +11328,23 @@ function printUsage(command) {
   console.log('  --ui-host      Metrics UI host for ui serve');
   console.log('  --ui-port      Metrics UI port for ui serve');
   console.log('  --ui-mode      Metrics UI mode for ui serve (dev|start)');
+  console.log('  --ui-data-root Base storage directory for Metrics UI server state');
+  console.log('  --ui-upload-root Storage directory for uploaded captures');
+  console.log('  --ui-upload-index-file Upload dedupe index JSON path');
+  console.log('  --ui-derivation-plugin-root Storage directory for derivation plugins');
+  console.log('  --ui-derivation-plugin-index-file Derivation plugin index JSON path');
+  console.log('  --ui-visualization-plugin-root Storage directory for visualization plugins');
+  console.log('  --ui-visualization-plugin-index-file Visualization plugin index JSON path');
+  console.log('  --ui-capture-sources-file Capture source persistence JSON path');
+  console.log('  --ui-dashboard-state-file Dashboard restore state JSON path');
   console.log('  --skip-install Skip npm install for ui serve');
   console.log('  --path         Metric path (JSON array recommended for dotted keys)');
   console.log('  --full-path    Full metric path for ui deselect');
   console.log('  --axis         Axis assignment for ui metric-axis (y1|y2)');
   console.log('  --group-id     Derivation group id (ui derivation-group-*)');
   console.log('  --new-group-id New derivation group id (ui derivation-group-update)');
-  console.log('  --file         Plugin file path (ui derivation-plugin-upload)');
-  console.log('  --plugin-id    Derivation plugin id (ui derivation-plugin-run)');
+  console.log('  --file         Plugin file path (ui derivation-plugin-upload / visualization-plugin-upload)');
+  console.log('  --plugin-id    Plugin id (ui derivation-plugin-run / visualization-use / *-plugin-source / *-plugin-delete)');
   console.log('  --params       Derivation plugin params as JSON (ui derivation-plugin-run)');
   console.log('  --kind         Derivation kind for ui derivation-run (diff|moving_average)');
   console.log('  --window       Derivation window size (ui derivation-run)');
@@ -10643,33 +11381,48 @@ function printUsage(command) {
   console.log('  --frames       Generated frame count for ui verify-regression / verify-live-remove');
   console.log('  --observe-ms   Verification observation window in ms (ui verify / ui verify-regression / ui verify-flow / ui verify-live-remove)');
   console.log('  --require-selected Require selected metrics in verification (ui verify / ui verify-regression / ui verify-flow)');
-  console.log('  --test         Regression case for ui regress (all|verify|verify-regression|verify-flow|verify-live-remove)');
+  console.log('  --test         Regression case for ui regress (all|verify|verify-regression|verify-flow|verify-live-remove|verify-session-detect)');
   console.log('  --continue-on-error Continue ui regress execution after a failed case');
-  console.log('  --auto-serve   Auto-start Metrics UI if not running (ui verify / ui verify-regression / ui verify-live-remove / ui regress)');
-  console.log('  --shutdown-on-exit Shutdown auto-started Metrics UI after verify (ui verify / ui verify-regression / ui verify-live-remove / ui regress)');
+  console.log('  --auto-serve   Auto-start Metrics UI if not running (ui verify / ui verify-regression / ui verify-live-remove / ui verify-session-detect / ui regress)');
+  console.log('  --shutdown-on-exit Shutdown auto-started Metrics UI after verify (ui verify / ui verify-regression / ui verify-live-remove / ui verify-session-detect / ui regress)');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
   console.log('UI serve options:');
   console.log('  --ui-dir       Metrics UI project directory (default: ./Stream-Metrics-UI)');
   console.log('  --ui-host      Metrics UI host (default: 127.0.0.1)');
   console.log('  --ui-port      Metrics UI port (default: 5050)');
   console.log('  --ui-mode      dev (default) or start');
+  console.log('  --ui-data-root Base storage directory for Metrics UI server state');
+  console.log('  --ui-upload-root Storage directory for uploaded captures');
+  console.log('  --ui-upload-index-file Upload dedupe index JSON path');
+  console.log('  --ui-derivation-plugin-root Storage directory for derivation plugins');
+  console.log('  --ui-derivation-plugin-index-file Derivation plugin index JSON path');
+  console.log('  --ui-visualization-plugin-root Storage directory for visualization plugins');
+  console.log('  --ui-visualization-plugin-index-file Visualization plugin index JSON path');
+  console.log('  --ui-capture-sources-file Capture source persistence JSON path');
+  console.log('  --ui-dashboard-state-file Dashboard restore state JSON path');
   console.log('  --skip-install Skip npm install if node_modules missing\n');
   console.log('UI subcommands:');
-  console.log('  serve | shutdown | capabilities | state | components | mode | live-source | live-start | live-stop | live-status');
-  console.log('  select | deselect | metric-axis | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures | play | pause | stop | seek | speed');
-  console.log('  derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update | derivation-group-display | derivation-group-reorder');
-  console.log('  derivation-run | derivation-plugins | derivation-plugin-run');
-  console.log('  derivation-plugin-upload | derivation-plugin-source | derivation-plugin-delete');
-  console.log('  trace');
-  console.log('  window-size | window-start | window-end | window-range | y-range | y2-range | auto-scroll | fullscreen');
-  console.log('  add-annotation | remove-annotation | clear-annotations | jump-annotation');
-  console.log('  add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  display-snapshot | series-window | render-table | render-debug | debug | memory-stats | metric-coverage | check | verify | verify-regression | verify-flow | verify-live-remove | regress | verify-suite | doctor\n');
+  console.log('  [local process] serve | shutdown');
+  console.log('  [HTTP, no frontend required] live-status');
+  console.log('  [HTTP, no frontend required] derivation-plugin-upload | derivation-plugin-source | derivation-plugin-delete');
+  console.log('  [HTTP, no frontend required] visualization-plugins | visualization-plugin-upload | visualization-plugin-source | visualization-plugin-delete');
+  console.log('  [HTTP verify suite, no frontend required] verify | verify-regression | verify-live-remove | verify-session-detect | regress | verify-suite');
+  console.log('  [WebSocket, frontend required] capabilities | state | components | mode | live-source | live-start | live-stop');
+  console.log('  [WebSocket, frontend required] select | deselect | metric-axis | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures');
+  console.log('  [WebSocket, frontend required] play | pause | stop | seek | speed | window-size | window-start | window-end | window-range | y-range | y2-range | auto-scroll | fullscreen');
+  console.log('  [WebSocket, frontend required] derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update | derivation-group-display | derivation-group-reorder');
+  console.log('  [WebSocket, frontend required] derivation-run | derivation-plugins | derivation-plugin-run');
+  console.log('  [WebSocket, frontend required] visualization-use | visualization-reset | visualization-set');
+  console.log('  [WebSocket, frontend required] add-annotation | remove-annotation | clear-annotations | jump-annotation');
+  console.log('  [WebSocket, frontend required] add-subtitle | remove-subtitle | clear-subtitles');
+  console.log('  [WebSocket, frontend required] display-snapshot | series-window | render-table | render-debug | debug | visualization-check | memory-stats | metric-coverage | check | verify-flow | trace | doctor\n');
+  console.log('  note: WS commands require an active frontend session connected to /ws/control.');
+  console.log('        If no frontend is connected, WS commands may time out or return "Frontend not connected".');
   console.log('  note: ui verify is server-driven (HTTP) and does not require a connected frontend session.');
   console.log('        ui verify-regression is a one-command regression exercise with generated stream + derivation checks.');
   console.log('        ui verify-flow is active/ws-driven and mutates capture state to exercise load paths.');
   console.log('        ui verify-live-remove fails if a removed stream reappears due to stale source sync.');
-  console.log('        ui regress runs one or more regression cases in sequence (all = verify-regression + verify-live-remove).\n');
+  console.log('        ui regress runs one or more regression cases in sequence (all = verify-regression + verify-live-remove + verify-session-detect).\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
   console.log('  --notes        Run notes (create)');
@@ -10729,6 +11482,15 @@ function printUsage(command) {
     console.log('  --ui-host      Default Metrics UI host');
     console.log('  --ui-port      Default Metrics UI port');
     console.log('  --ui-mode      Default Metrics UI mode (dev|start)');
+    console.log('  --ui-data-root Default Metrics UI data root');
+    console.log('  --ui-upload-root Default Metrics UI upload root');
+    console.log('  --ui-upload-index-file Default Metrics UI upload index path');
+    console.log('  --ui-derivation-plugin-root Default Metrics UI derivation plugin root');
+    console.log('  --ui-derivation-plugin-index-file Default Metrics UI derivation plugin index path');
+    console.log('  --ui-visualization-plugin-root Default Metrics UI visualization plugin root');
+    console.log('  --ui-visualization-plugin-index-file Default Metrics UI visualization plugin index path');
+    console.log('  --ui-capture-sources-file Default Metrics UI capture source state path');
+    console.log('  --ui-dashboard-state-file Default Metrics UI dashboard state path');
     console.log('');
   }
   if (!command || command === 'fleet') {
@@ -10764,6 +11526,7 @@ function printUsage(command) {
   console.log('  simeval stream forward --stream evaluation --frames 50 --ui ws://localhost:5050/ws/control');
   console.log('  simeval stream upload --file capture.jsonl --ui http://localhost:5050');
   console.log('  simeval ui serve --ui-dir Stream-Metrics-UI');
+  console.log('  simeval ui serve --ui-data-root /Volumes/samsung_usb/metrics-ui');
   console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui metric-axis --capture-id live-a --full-path 1.highmix.metrics.shift_capacity_pressure.overall --axis y2 --ui ws://localhost:5050/ws/control');
@@ -10776,6 +11539,12 @@ function printUsage(command) {
   console.log('  simeval ui derivation-plugins --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui derivation-plugin-source --plugin-id diff --ui http://localhost:5050');
   console.log('  simeval ui derivation-plugin-run --group-id compare_pending_jobs --plugin-id diff --output-capture-id pending_diff --wait-complete --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui visualization-plugin-upload --file ./examples/visualization-plugins/factory_view.mjs --ui http://localhost:5050');
+  console.log('  simeval ui visualization-plugins --ui http://localhost:5050');
+  console.log('  simeval ui visualization-use --plugin-id factory_view --capture-id live-a --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui visualization-plugin-source --plugin-id factory_view --ui http://localhost:5050');
+  console.log('  simeval ui visualization-reset --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui visualization-check --ui ws://localhost:5050/ws/control');
   console.log('  simeval --message-id trace-123 ui derivation-plugin-run --group-id compare_pending_jobs --plugin-id diff --output-capture-id pending_diff --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui trace --request-id trace-123 --timeout 30000 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui trace --request-id trace-123 --send \'{"type":"run_derivation_plugin","groupId":"compare_pending_jobs","pluginId":"diff","outputCaptureId":"pending_diff"}\' --timeout 30000 --ui ws://localhost:5050/ws/control');
@@ -10786,8 +11555,9 @@ function printUsage(command) {
   console.log('  simeval ui verify-regression --frames 24000 --observe-ms 8000 --interval 400 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
   console.log('  simeval ui verify-flow --observe-ms 12000 --interval 1000 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui verify-live-remove --frames 120 --observe-ms 2500 --poll-ms 150 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
+  console.log('  simeval ui verify-session-detect --timeout 5000 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
   console.log('  simeval ui regress --test all --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
-  console.log('  simeval ui regress --test verify-flow,verify-live-remove --continue-on-error true --ui http://localhost:5050');
+  console.log('  simeval ui regress --test verify-flow,verify-live-remove,verify-session-detect --continue-on-error true --ui http://localhost:5050');
   console.log('  simeval ui doctor --fix --ui ws://localhost:5050/ws/control');
   console.log('  ');
   console.log('  # Runs + logs');
