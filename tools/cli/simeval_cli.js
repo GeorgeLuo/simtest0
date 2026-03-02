@@ -7783,6 +7783,61 @@ function buildBootstrapMetricKey(captureId, pathValue) {
   return `${String(captureId ?? '')}::${fullPath}`;
 }
 
+function normalizeBootstrapAnnotationSpec(annotationsValue) {
+  if (!Array.isArray(annotationsValue)) {
+    return [];
+  }
+
+  const normalized = [];
+  for (const entry of annotationsValue) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const tickNumber = Number(entry.tick);
+    if (!Number.isFinite(tickNumber)) {
+      continue;
+    }
+    const tick = Math.max(1, Math.floor(tickNumber));
+    const id = typeof entry.id === 'string' && entry.id.trim().length > 0
+      ? entry.id.trim()
+      : undefined;
+    const label = typeof entry.label === 'string' && entry.label.trim().length > 0
+      ? entry.label.trim()
+      : undefined;
+    const color = typeof entry.color === 'string' && entry.color.trim().length > 0
+      ? entry.color.trim()
+      : undefined;
+    normalized.push({ tick, id, label, color });
+  }
+
+  normalized.sort((a, b) => a.tick - b.tick);
+  return normalized;
+}
+
+function bootstrapAnnotationMatches(expected, actual) {
+  if (!actual || typeof actual !== 'object') {
+    return false;
+  }
+  const actualTick = Number(actual.tick);
+  if (!Number.isFinite(actualTick) || Math.floor(actualTick) !== expected.tick) {
+    return false;
+  }
+  if (expected.id && String(actual.id ?? '').trim() !== expected.id) {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(expected, 'label')) {
+    if (String(actual.label ?? '').trim() !== String(expected.label ?? '').trim()) {
+      return false;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(expected, 'color')) {
+    if (String(actual.color ?? '').trim() !== String(expected.color ?? '').trim()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function resolveUiBootstrapSpecPath(options, specInput) {
   if (specInput) {
     return path.resolve(process.cwd(), String(specInput));
@@ -7832,6 +7887,9 @@ function loadUiBootstrapSpec(specPath) {
   }
   if (!parsed.visualization || typeof parsed.visualization !== 'object') {
     throw new Error(`Invalid bootstrap spec at ${specPath}: missing visualization object.`);
+  }
+  if (Object.prototype.hasOwnProperty.call(parsed, 'annotations') && !Array.isArray(parsed.annotations)) {
+    throw new Error(`Invalid bootstrap spec at ${specPath}: annotations must be an array when provided.`);
   }
   return parsed;
 }
@@ -7895,6 +7953,8 @@ function evaluateUiBootstrapSpecState(spec, snapshot, debug) {
 
   const captures = Array.isArray(snapshot?.captures) ? snapshot.captures : [];
   const selectedMetrics = Array.isArray(snapshot?.selectedMetrics) ? snapshot.selectedMetrics : [];
+  const snapshotAnnotations = Array.isArray(snapshot?.annotations) ? snapshot.annotations : [];
+  const expectedAnnotations = normalizeBootstrapAnnotationSpec(spec?.annotations);
   const selectedSet = new Set(
     selectedMetrics.map((metric) => (
       buildBootstrapMetricKey(
@@ -7954,6 +8014,20 @@ function evaluateUiBootstrapSpecState(spec, snapshot, debug) {
     }
   }
 
+  for (const expectedAnnotation of expectedAnnotations) {
+    const match = snapshotAnnotations.some((actualAnnotation) => (
+      bootstrapAnnotationMatches(expectedAnnotation, actualAnnotation)
+    ));
+    if (!match) {
+      failures.push({
+        type: 'annotation-missing',
+        tick: expectedAnnotation.tick,
+        id: expectedAnnotation.id ?? null,
+        label: expectedAnnotation.label ?? null,
+      });
+    }
+  }
+
   const visualization =
     debug
     && debug.refs
@@ -8009,6 +8083,10 @@ function evaluateUiBootstrapSpecState(spec, snapshot, debug) {
     summary: {
       captures: captures.length,
       selectedMetrics: selectedMetrics.length,
+      annotations: {
+        expected: expectedAnnotations.length,
+        actual: snapshotAnnotations.length,
+      },
       visualization: visualization
         ? {
             pluginId: visualization.pluginId ?? null,
@@ -8040,6 +8118,7 @@ async function runUiBootstrapVerify({
     loadUiBootstrapSpec(specPath),
     options,
   );
+  const specAnnotations = normalizeBootstrapAnnotationSpec(spec.annotations);
 
   const socket = await connectWebSocket(uiWsUrl);
   let socketClosed = false;
@@ -8144,6 +8223,15 @@ async function runUiBootstrapVerify({
         await sendCommand('select_metric', {
           captureId,
           path: metricPath,
+        }, 8000);
+      }
+
+      for (const annotationSpec of specAnnotations) {
+        await sendCommand('add_annotation', {
+          tick: annotationSpec.tick,
+          id: annotationSpec.id,
+          label: annotationSpec.label,
+          color: annotationSpec.color,
         }, 8000);
       }
 
