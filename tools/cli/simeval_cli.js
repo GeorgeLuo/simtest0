@@ -1448,6 +1448,79 @@ async function handleUi(argvRest) {
     return;
   }
 
+  if (subcommand === 'verify-annotations') {
+    const observeMs = parseOptionalNumber(options['observe-ms'], 'observe-ms') ?? 5000;
+    const intervalMs = parseOptionalNumber(options.interval, 'interval') ?? 150;
+    const pollMs = parseOptionalNumber(options['poll-ms'], 'poll-ms') ?? 120;
+    const frames = parseOptionalNumber(options.frames, 'frames') ?? 1200;
+    if (observeMs <= 0) {
+      throw new Error('Invalid --observe-ms value. Expected a positive number.');
+    }
+    if (intervalMs <= 0) {
+      throw new Error('Invalid --interval value. Expected a positive number.');
+    }
+    if (pollMs <= 0) {
+      throw new Error('Invalid --poll-ms value. Expected a positive number.');
+    }
+    if (frames <= 10) {
+      throw new Error('Invalid --frames value. Expected a number greater than 10.');
+    }
+
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+    const uiWsUrl = await resolveUiWsUrl(uiInput);
+    if (!uiWsUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+
+    const autoServe = parseBooleanOption(options['auto-serve'], true) !== false;
+    const shutdownOnExit = parseBooleanOption(options['shutdown-on-exit'], true) !== false;
+    const lifecycle = await ensureUiServerForVerification({
+      options,
+      uiHttpUrl,
+      requireWs: true,
+      autoServe,
+      shutdownOnExit,
+    });
+
+    let verify = null;
+    let verifyError = null;
+    let cleanupResult = null;
+    try {
+      verify = await runUiAnnotationVisibilityRegression({
+        uiHttpUrl: lifecycle.uiHttpUrl,
+        uiWsUrl: lifecycle.uiWsUrl,
+        observeMs,
+        intervalMs,
+        pollMs,
+        frames,
+        captureId: options['capture-id'] ? String(options['capture-id']) : null,
+      });
+    } catch (error) {
+      verifyError = error;
+    } finally {
+      cleanupResult = await finalizeUiServerForVerification(lifecycle);
+    }
+    if (verifyError) {
+      throw verifyError;
+    }
+    verify.report.server = {
+      url: lifecycle.uiHttpUrl,
+      autoServed: lifecycle.startedByVerifier,
+      shutdownOnExit: lifecycle.shutdownOnExit,
+      shutdownAttempted: cleanupResult?.attempted === true,
+      shutdownResult: cleanupResult?.result || 'not-requested',
+      shutdownError: cleanupResult?.error || null,
+    };
+    printJson(verify.report);
+    if (verify.report.status !== 'ok') {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   if (subcommand === 'verify-session-detect') {
     const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 5000;
     if (timeoutMs <= 0) {
@@ -10524,6 +10597,263 @@ async function runUiLiveRemoveNoReappearRegression({
   }
 }
 
+async function runUiAnnotationVisibilityRegression({
+  uiHttpUrl,
+  uiWsUrl,
+  observeMs = 5000,
+  intervalMs = 150,
+  pollMs = 120,
+  frames = 1200,
+  captureId = null,
+}) {
+  const idBase = captureId || `verify-annotations-${Date.now().toString(36)}`;
+  const regressionCaptureId = captureId || `${idBase}-capture`;
+  const metricPath = ['0', 'regression_signal', 'value'];
+  const fullPath = metricPath.join('.');
+  const annotationTick = Math.max(5, Math.floor(frames * 0.35));
+  const generated = await createGeneratedRegressionCaptureFile({
+    frames,
+    prefix: idBase,
+  });
+
+  const socket = await connectWebSocket(uiWsUrl);
+  sendWsMessage(socket, { type: 'register', role: 'agent' });
+  const registered = await waitForWsAck(socket);
+  if (!registered) {
+    socket.close();
+    throw new Error('Failed to register with UI websocket for verify-annotations.');
+  }
+
+  let commandCount = 0;
+  const sendCommand = async (type, payload = {}, timeoutMs = 7000) => {
+    commandCount += 1;
+    const requestId = buildMessageId(
+      null,
+      `ui-verify-annotations-${String(type)}-${String(commandCount)}`,
+    );
+    sendWsMessage(socket, {
+      type,
+      ...payload,
+      request_id: requestId,
+    });
+    await waitForUiAckOrThrow(socket, {
+      requestId,
+      timeoutMs,
+      errorMessage: `Timed out waiting for UI ack (${String(type)}).`,
+    });
+  };
+
+  const cleanup = async () => {
+    try {
+      await requestJson(buildUrl(uiHttpUrl, '/api/live/stop'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ captureId: regressionCaptureId }),
+      });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await sendCommand('remove_capture', { captureId: regressionCaptureId });
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await sendCommand('clear_selection');
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await sendCommand('clear_annotations');
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      socket.close();
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      await fs.promises.unlink(generated.filePath);
+    } catch {
+      // ignore cleanup errors
+    }
+  };
+
+  const samples = [];
+  try {
+    const stateProbe = await requestJson(buildUrl(uiHttpUrl, '/api/debug/state'), { method: 'GET' });
+    const frontendConnected = Boolean(stateProbe?.frontendConnected);
+    const failures = [];
+    const warnings = [];
+
+    if (!frontendConnected) {
+      failures.push({
+        type: 'frontend-not-connected',
+        message: 'No active frontend session. verify-annotations requires a connected browser tab.',
+      });
+      return {
+        report: {
+          status: 'failed',
+          checkedAt: new Date().toISOString(),
+          mode: 'verify-annotations',
+          frontendRequired: true,
+          captureId: regressionCaptureId,
+          metric: {
+            path: metricPath,
+            fullPath,
+          },
+          annotationTick,
+          generated: {
+            filePath: generated.filePath,
+            frames,
+          },
+          samples,
+          failures,
+          warnings,
+        },
+      };
+    }
+
+    await sendCommand('clear_annotations');
+    await sendCommand('clear_selection');
+    await sendCommand('remove_capture', { captureId: regressionCaptureId });
+    await sendCommand('select_metric', {
+      captureId: regressionCaptureId,
+      path: metricPath,
+    });
+    await startUiRegressionLiveCapture(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      source: generated.filePath,
+      filename: path.basename(generated.filePath),
+      pollIntervalMs: pollMs,
+    });
+    await waitForUiRegressionCaptureRead(uiHttpUrl, {
+      captureId: regressionCaptureId,
+      expectedFrames: frames,
+      timeoutMs: Math.max(5000, observeMs + 5000),
+      intervalMs: Math.max(80, Math.min(500, intervalMs)),
+    });
+    await sendCommand('set_window_range', {
+      windowStart: 1,
+      windowEnd: frames,
+    });
+    await sendCommand('add_annotation', {
+      tick: annotationTick,
+    });
+
+    const startedAt = Date.now();
+    let success = false;
+    let lastSample = null;
+    while (Date.now() - startedAt <= observeMs) {
+      let debug = null;
+      try {
+        debug = await collectUiDebugSnapshot(socket, {
+          timeoutMs: Math.max(2000, intervalMs * 2),
+          requestIdBase: `${idBase}-annotation`,
+        });
+      } catch (error) {
+        const failure = {
+          type: 'ui-debug-unavailable',
+          message: error instanceof Error ? error.message : String(error),
+        };
+        failures.push(failure);
+        break;
+      }
+
+      const state = debug?.state && typeof debug.state === 'object' ? debug.state : {};
+      const refs = debug?.refs && typeof debug.refs === 'object' ? debug.refs : {};
+      const annotations = Array.isArray(state.annotations) ? state.annotations : [];
+      const windowStart = Number(state.windowStart) || 1;
+      const windowEnd = Number(state.windowEnd) || windowStart;
+      const visibleAnnotationCount = annotations.filter((annotation) => {
+        const tick = Number(annotation?.tick);
+        return Number.isFinite(tick) && tick >= windowStart && tick <= windowEnd;
+      }).length;
+      const annotationExists = annotations.some((annotation) => Number(annotation?.tick) === annotationTick);
+      const overlayPresent = refs.annotationOverlayLayerPresent === true;
+      const renderedCount = Number(refs.annotationRenderedCount) || 0;
+      const sample = {
+        sampledAt: new Date().toISOString(),
+        annotationExists,
+        overlayPresent,
+        renderedCount,
+        visibleAnnotationCount,
+        totalAnnotations: annotations.length,
+        windowStart,
+        windowEnd,
+      };
+      samples.push(sample);
+      lastSample = sample;
+      if (samples.length > 20) {
+        samples.shift();
+      }
+
+      if (annotationExists && overlayPresent && renderedCount > 0 && renderedCount >= visibleAnnotationCount) {
+        success = true;
+        break;
+      }
+      await delay(intervalMs);
+    }
+
+    const finalSample = lastSample || null;
+    if (!success) {
+      if (!finalSample?.annotationExists) {
+        failures.push({
+          type: 'annotation-not-in-state',
+          annotationTick,
+          message: 'Annotation command acknowledged but annotation not present in UI state.',
+        });
+      }
+      if (!finalSample?.overlayPresent) {
+        failures.push({
+          type: 'annotation-overlay-missing',
+          message: 'Annotation overlay layer is missing in frontend debug state.',
+        });
+      }
+      if ((finalSample?.visibleAnnotationCount || 0) > 0 && (finalSample?.renderedCount || 0) <= 0) {
+        failures.push({
+          type: 'annotation-not-rendered',
+          renderedCount: finalSample?.renderedCount || 0,
+          visibleAnnotationCount: finalSample?.visibleAnnotationCount || 0,
+          message: 'Annotation exists in state but no rendered annotation lines are detected.',
+        });
+      }
+      if ((finalSample?.visibleAnnotationCount || 0) > (finalSample?.renderedCount || 0)) {
+        warnings.push({
+          type: 'annotation-render-count-mismatch',
+          renderedCount: finalSample?.renderedCount || 0,
+          visibleAnnotationCount: finalSample?.visibleAnnotationCount || 0,
+        });
+      }
+    }
+
+    return {
+      report: {
+        status: failures.length > 0 ? 'failed' : (warnings.length > 0 ? 'warning' : 'ok'),
+        checkedAt: new Date().toISOString(),
+        mode: 'verify-annotations',
+        frontendRequired: true,
+        captureId: regressionCaptureId,
+        metric: {
+          path: metricPath,
+          fullPath,
+        },
+        annotationTick,
+        generated: {
+          filePath: generated.filePath,
+          frames,
+        },
+        samples,
+        failures,
+        warnings,
+      },
+    };
+  } finally {
+    await cleanup();
+  }
+}
+
 async function runUiSessionDetectionRegression({
   uiHttpUrl,
   uiWsUrl,
@@ -10721,6 +11051,13 @@ function buildUiRegressCaseDefinitions() {
       defaultInAll: true,
     },
     {
+      id: 'verify-annotations',
+      command: 'verify-annotations',
+      aliases: ['annotations', 'annotation-visibility'],
+      description: 'annotation added via ws must render in annotation overlay',
+      defaultInAll: false,
+    },
+    {
       id: 'verify-session-detect',
       command: 'verify-session-detect',
       aliases: ['session-detect', 'frontend-session'],
@@ -10807,7 +11144,7 @@ async function runUiRegressSuite({
   );
   if (invalid.length > 0) {
     throw new Error(
-      `Unknown ui regress test(s): ${invalid.join(', ')}. Use --test all|verify|verify-regression|verify-flow|verify-live-remove|verify-session-detect.`,
+      `Unknown ui regress test(s): ${invalid.join(', ')}. Use --test all|verify|verify-regression|verify-flow|verify-live-remove|verify-annotations|verify-session-detect.`,
     );
   }
   if (!Array.isArray(selected) || selected.length === 0) {
@@ -11899,13 +12236,13 @@ function printUsage(command) {
   console.log('  --verify-only  Validate UI state against spec without applying bootstrap');
   console.log('  --legacy-source Override legacy capture source in bootstrap spec');
   console.log('  --causal-source Override causal capture source in bootstrap spec');
-  console.log('  --frames       Generated frame count for ui verify-regression / verify-live-remove');
-  console.log('  --observe-ms   Verification observation window in ms (ui verify / ui verify-regression / ui verify-flow / ui verify-live-remove)');
+  console.log('  --frames       Generated frame count for ui verify-regression / verify-live-remove / verify-annotations');
+  console.log('  --observe-ms   Verification observation window in ms (ui verify / ui verify-regression / ui verify-flow / ui verify-live-remove / verify-annotations)');
   console.log('  --require-selected Require selected metrics in verification (ui verify / ui verify-regression / ui verify-flow)');
-  console.log('  --test         Regression case for ui regress (all|verify|verify-regression|verify-flow|verify-live-remove|verify-session-detect)');
+  console.log('  --test         Regression case for ui regress (all|verify|verify-regression|verify-flow|verify-live-remove|verify-annotations|verify-session-detect)');
   console.log('  --continue-on-error Continue ui regress execution after a failed case');
-  console.log('  --auto-serve   Auto-start Metrics UI if not running (ui verify / ui verify-regression / ui verify-live-remove / ui verify-session-detect / ui regress)');
-  console.log('  --shutdown-on-exit Shutdown auto-started Metrics UI after verify (ui verify / ui verify-regression / ui verify-live-remove / ui verify-session-detect / ui regress)');
+  console.log('  --auto-serve   Auto-start Metrics UI if not running (ui verify / ui verify-regression / ui verify-live-remove / ui verify-annotations / ui verify-session-detect / ui regress)');
+  console.log('  --shutdown-on-exit Shutdown auto-started Metrics UI after verify (ui verify / ui verify-regression / ui verify-live-remove / ui verify-annotations / ui verify-session-detect / ui regress)');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
   console.log('UI serve options:');
   console.log('  --ui-dir       Metrics UI project directory (default: ./Stream-Metrics-UI)');
@@ -11928,6 +12265,7 @@ function printUsage(command) {
   console.log('  [HTTP, no frontend required] derivation-plugin-upload | derivation-plugin-source | derivation-plugin-delete');
   console.log('  [HTTP, no frontend required] visualization-plugins | visualization-plugin-upload | visualization-plugin-source | visualization-plugin-delete');
   console.log('  [HTTP verify suite, no frontend required] verify | verify-regression | verify-live-remove | verify-session-detect | regress | verify-suite');
+  console.log('  [Hybrid verify, frontend required] verify-annotations');
   console.log('  [Hybrid HTTP+WS, frontend required] bootstrap-verify');
   console.log('  [WebSocket, frontend required] capabilities | state | components | mode | live-source | live-start | live-stop');
   console.log('  [WebSocket, frontend required] select | deselect | metric-axis | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures');
@@ -11944,6 +12282,7 @@ function printUsage(command) {
   console.log('        ui verify-regression is a one-command regression exercise with generated stream + derivation checks.');
   console.log('        ui verify-flow is active/ws-driven and mutates capture state to exercise load paths.');
   console.log('        ui verify-live-remove fails if a removed stream reappears due to stale source sync.');
+  console.log('        ui verify-annotations fails if add_annotation succeeds in state but annotation lines are not rendered.');
   console.log('        ui regress runs one or more regression cases in sequence (all = verify-regression + verify-live-remove + verify-session-detect).\n');
   console.log('Run options:');
   console.log('  --name         Run name (create)');
@@ -12077,10 +12416,11 @@ function printUsage(command) {
   console.log('  simeval ui verify-regression --frames 24000 --observe-ms 8000 --interval 400 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
   console.log('  simeval ui verify-flow --observe-ms 12000 --interval 1000 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui verify-live-remove --frames 120 --observe-ms 2500 --poll-ms 150 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
+  console.log('  simeval ui verify-annotations --frames 1200 --observe-ms 5000 --interval 150 --poll-ms 120 --ui http://localhost:5050');
   console.log('  simeval ui verify-session-detect --timeout 5000 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
   console.log('  simeval ui bootstrap-verify --spec /path/to/Stream-Metrics-UI/examples/highmix/view-spec.json --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui regress --test all --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
-  console.log('  simeval ui regress --test verify-flow,verify-live-remove,verify-session-detect --continue-on-error true --ui http://localhost:5050');
+  console.log('  simeval ui regress --test verify-flow,verify-live-remove,verify-annotations,verify-session-detect --continue-on-error true --ui http://localhost:5050');
   console.log('  simeval ui doctor --fix --ui ws://localhost:5050/ws/control');
   console.log('  ');
   console.log('  # Runs + logs');
