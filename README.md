@@ -115,7 +115,14 @@ Example:
   "uiDir": "Stream-Metrics-UI",
   "uiHost": "127.0.0.1",
   "uiPort": 5050,
-  "uiMode": "dev"
+  "uiMode": "dev",
+  "uiDataRoot": "/Volumes/samsung_usb/metrics-ui",
+  "uiUploadRoot": "/Volumes/samsung_usb/metrics-ui/uploads",
+  "uiUploadIndexFile": "/Volumes/samsung_usb/metrics-ui/uploads/index.json",
+  "uiDerivationPluginRoot": "/Volumes/samsung_usb/metrics-ui/derivation-plugins",
+  "uiDerivationPluginIndexFile": "/Volumes/samsung_usb/metrics-ui/derivation-plugins/plugins.json",
+  "uiCaptureSourcesFile": "/Volumes/samsung_usb/metrics-ui/capture-sources.json",
+  "uiDashboardStateFile": "/Volumes/samsung_usb/metrics-ui/dashboard-state.json"
 }
 ```
 
@@ -124,12 +131,13 @@ Notes:
 - `snapshot` is used as the default for `simeval morphcloud provision`.
 - `workspace` is used as the default for `simeval deploy start` (relative paths resolve from the CLI config file).
 - `uiDir` and friends define defaults for `simeval ui serve`.
+- `uiDataRoot` / `uiUploadRoot` / `uiDerivationPluginRoot` and index/state file options define where the Metrics UI server persists data.
 - Use `--cli-config /path/to/config.json` to point at a different file.
 
 You can also manage the file via CLI:
 ```bash
 simeval config set --token "$SIMEVAL_API_TOKEN" --snapshot SNAPSHOT_ID --fleet-config verification/fleet_highmix.json \
-  --workspace /path/to/workspaces/Describing_Simulation_0
+  --workspace /path/to/workspaces/Describing_Simulation_0 --ui-data-root /Volumes/samsung_usb/metrics-ui
 simeval config show
 ```
 This writes to `~/.simeval/config.json` unless you pass `--cli-config`.
@@ -184,6 +192,7 @@ Notes:
 Start the Metrics UI (auto-starts if not already running):
 ```bash
 simeval ui serve --ui-dir Stream-Metrics-UI
+simeval ui serve --ui-data-root /Volumes/samsung_usb/metrics-ui
 ```
 
 Capture to file:
@@ -219,6 +228,7 @@ Notes:
 - `--path` accepts a JSON array so dotted keys are unambiguous.
 - `stream forward` runs in the background by default and writes a log file (use `--foreground` to block).
 - `ui serve` defaults to `127.0.0.1:5050` and runs `npm install` if needed (use `--skip-install` to disable). It runs in the background and writes a log file.
+- `ui serve` storage paths can be set from CLI flags/config (`--ui-data-root`, `--ui-upload-root`, `--ui-derivation-plugin-root`, and related index/state file options), so no manual env export is required.
 
 ## Run Metadata
 

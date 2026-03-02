@@ -1505,6 +1505,68 @@ async function handleUi(argvRest) {
     return;
   }
 
+  if (subcommand === 'bootstrap-verify' || subcommand === 'highmix-bootstrap-verify') {
+    const timeoutMs = parseOptionalNumber(options.timeout, 'timeout') ?? 45000;
+    const intervalMs = parseOptionalNumber(options.interval, 'interval') ?? 1000;
+    if (timeoutMs <= 0) {
+      throw new Error('Invalid --timeout value. Expected a positive number.');
+    }
+    if (intervalMs <= 0) {
+      throw new Error('Invalid --interval value. Expected a positive number.');
+    }
+
+    const uiHttpUrl = normalizeUiHttpUrl(uiInput);
+    if (!uiHttpUrl) {
+      throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
+    }
+    const autoServe = parseBooleanOption(options['auto-serve'], true) !== false;
+    const shutdownOnExit = parseBooleanOption(options['shutdown-on-exit'], true) !== false;
+    const verifyOnly = parseBooleanOption(options['verify-only'], false) === true;
+    const lifecycle = await ensureUiServerForVerification({
+      options,
+      uiHttpUrl,
+      requireWs: true,
+      autoServe,
+      shutdownOnExit,
+    });
+
+    let verify = null;
+    let verifyError = null;
+    let cleanupResult = null;
+    try {
+      verify = await runUiBootstrapVerify({
+        options,
+        uiHttpUrl: lifecycle.uiHttpUrl,
+        uiWsUrl: lifecycle.uiWsUrl,
+        specPathInput: options.spec || options['spec-file'] || null,
+        verifyOnly,
+        timeoutMs,
+        intervalMs,
+      });
+    } catch (error) {
+      verifyError = error;
+    } finally {
+      cleanupResult = await finalizeUiServerForVerification(lifecycle);
+    }
+    if (verifyError) {
+      throw verifyError;
+    }
+
+    verify.report.server = {
+      url: lifecycle.uiHttpUrl,
+      autoServed: lifecycle.startedByVerifier,
+      shutdownOnExit: lifecycle.shutdownOnExit,
+      shutdownAttempted: cleanupResult?.attempted === true,
+      shutdownResult: cleanupResult?.result || 'not-requested',
+      shutdownError: cleanupResult?.error || null,
+    };
+    printJson(verify.report);
+    if (verify.report.status !== 'ok') {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   const uiUrl = await resolveUiWsUrl(uiInput);
   if (!uiUrl) {
     throw new Error('Invalid --ui value. Provide a ws:// or http(s):// URL.');
@@ -7625,6 +7687,461 @@ async function collectUiDebugSnapshot(
   return response.payload ?? response;
 }
 
+function normalizeMetricPathParts(pathValue) {
+  if (Array.isArray(pathValue)) {
+    const parts = pathValue
+      .map((part) => String(part ?? '').trim())
+      .filter((part) => part.length > 0);
+    return parts.length > 0 ? parts : null;
+  }
+  if (typeof pathValue === 'string' && pathValue.trim().length > 0) {
+    const parts = pathValue
+      .split('.')
+      .map((part) => String(part ?? '').trim())
+      .filter((part) => part.length > 0);
+    return parts.length > 0 ? parts : null;
+  }
+  return null;
+}
+
+function buildBootstrapMetricKey(captureId, pathValue) {
+  const parts = normalizeMetricPathParts(pathValue);
+  const fullPath = parts ? parts.join('.') : '';
+  return `${String(captureId ?? '')}::${fullPath}`;
+}
+
+function resolveUiBootstrapSpecPath(options, specInput) {
+  if (specInput) {
+    return path.resolve(process.cwd(), String(specInput));
+  }
+
+  const candidates = [];
+  try {
+    const uiOptions = resolveUiServeOptions(options);
+    candidates.push(path.resolve(uiOptions.uiDir, 'examples', 'highmix', 'view-spec.json'));
+  } catch (_error) {
+    // ignore: fallback candidates below
+  }
+  candidates.push(path.resolve(process.cwd(), 'examples', 'highmix', 'view-spec.json'));
+  candidates.push(path.resolve(process.cwd(), 'Stream-Metrics-UI', 'examples', 'highmix', 'view-spec.json'));
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    'Unable to locate HighMix view spec. Pass --spec /path/to/view-spec.json.',
+  );
+}
+
+function loadUiBootstrapSpec(specPath) {
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(specPath, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `Failed to parse bootstrap spec at ${specPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error(`Invalid bootstrap spec at ${specPath}: expected JSON object.`);
+  }
+  if (!Array.isArray(parsed.captures) || parsed.captures.length === 0) {
+    throw new Error(`Invalid bootstrap spec at ${specPath}: missing captures array.`);
+  }
+  if (!Array.isArray(parsed.selectedMetrics) || parsed.selectedMetrics.length === 0) {
+    throw new Error(`Invalid bootstrap spec at ${specPath}: missing selectedMetrics array.`);
+  }
+  if (!parsed.visualization || typeof parsed.visualization !== 'object') {
+    throw new Error(`Invalid bootstrap spec at ${specPath}: missing visualization object.`);
+  }
+  return parsed;
+}
+
+function applyUiBootstrapSpecOverrides(spec, options) {
+  const next = JSON.parse(JSON.stringify(spec));
+  const legacySource = options['legacy-source'] ?? options.legacySource;
+  const causalSource = options['causal-source'] ?? options.causalSource;
+
+  if (legacySource) {
+    const legacy = Array.isArray(next.captures)
+      ? next.captures.find((entry) => entry && entry.id === 'legacy')
+      : null;
+    if (legacy && typeof legacy === 'object') {
+      legacy.source = String(legacySource);
+    }
+  }
+
+  if (causalSource) {
+    const causal = Array.isArray(next.captures)
+      ? next.captures.find((entry) => entry && entry.id === 'causal')
+      : null;
+    if (causal && typeof causal === 'object') {
+      causal.source = String(causalSource);
+    }
+  }
+
+  return next;
+}
+
+async function collectUiDisplaySnapshot(
+  socket,
+  {
+    captureId = null,
+    windowSize = undefined,
+    timeoutMs = 5000,
+    requestIdBase = null,
+  } = {},
+) {
+  const requestId = `${requestIdBase || buildMessageId(null, 'ui-verify')}-snapshot`;
+  sendWsMessage(socket, {
+    type: 'get_display_snapshot',
+    captureId: captureId ? String(captureId) : undefined,
+    windowSize: windowSize ?? undefined,
+    request_id: requestId,
+  });
+  const response = await waitForWsResponse(socket, {
+    requestId,
+    types: ['display_snapshot'],
+    timeoutMs: timeoutMs + 2000,
+  });
+  if (!response) {
+    throw new Error('Timed out waiting for UI display snapshot.');
+  }
+  return response.payload ?? response;
+}
+
+function evaluateUiBootstrapSpecState(spec, snapshot, debug) {
+  const failures = [];
+  const warnings = [];
+
+  const captures = Array.isArray(snapshot?.captures) ? snapshot.captures : [];
+  const selectedMetrics = Array.isArray(snapshot?.selectedMetrics) ? snapshot.selectedMetrics : [];
+  const selectedSet = new Set(
+    selectedMetrics.map((metric) => (
+      buildBootstrapMetricKey(
+        metric?.captureId,
+        metric?.fullPath ?? metric?.path,
+      )
+    )),
+  );
+
+  for (const captureSpec of spec.captures) {
+    if (!captureSpec || typeof captureSpec !== 'object') {
+      continue;
+    }
+    const captureId = String(captureSpec.id ?? '').trim();
+    if (!captureId) {
+      continue;
+    }
+    const found = captures.find((entry) => entry && String(entry.id) === captureId);
+    if (!found) {
+      failures.push({
+        type: 'capture-missing',
+        captureId,
+      });
+      continue;
+    }
+    const tickCount = Number.isFinite(Number(found.tickCount)) ? Number(found.tickCount) : -1;
+    const minTickCount = Number.isFinite(Number(captureSpec.minTickCount))
+      ? Number(captureSpec.minTickCount)
+      : 1;
+    if (tickCount < minTickCount) {
+      failures.push({
+        type: 'capture-underflow',
+        captureId,
+        tickCount,
+        minTickCount,
+      });
+    }
+  }
+
+  for (const metricSpec of spec.selectedMetrics) {
+    if (!metricSpec || typeof metricSpec !== 'object') {
+      continue;
+    }
+    const captureId = String(metricSpec.captureId ?? '').trim();
+    const pathParts = normalizeMetricPathParts(metricSpec.path);
+    if (!captureId || !pathParts) {
+      continue;
+    }
+    const fullPath = pathParts.join('.');
+    const key = buildBootstrapMetricKey(captureId, pathParts);
+    if (!selectedSet.has(key)) {
+      failures.push({
+        type: 'metric-missing',
+        captureId,
+        fullPath,
+      });
+    }
+  }
+
+  const visualization =
+    debug
+    && debug.refs
+    && typeof debug.refs === 'object'
+    && debug.refs.visualization
+    && typeof debug.refs.visualization === 'object'
+      ? debug.refs.visualization
+      : null;
+
+  if (!visualization) {
+    failures.push({ type: 'visualization-missing' });
+  } else {
+    const expectedPluginId = spec.visualization?.pluginId
+      ? String(spec.visualization.pluginId)
+      : '';
+    const expectedCaptureId = spec.visualization?.captureId
+      ? String(spec.visualization.captureId)
+      : '';
+    const requireVisualSignal = Boolean(spec.visualization?.requireVisualSignal);
+
+    if (expectedPluginId && visualization.pluginId !== expectedPluginId) {
+      failures.push({
+        type: 'visualization-plugin-mismatch',
+        expected: expectedPluginId,
+        actual: visualization.pluginId ?? null,
+      });
+    }
+    if (expectedCaptureId && visualization.captureId !== expectedCaptureId) {
+      failures.push({
+        type: 'visualization-capture-mismatch',
+        expected: expectedCaptureId,
+        actual: visualization.captureId ?? null,
+      });
+    }
+    if (requireVisualSignal && visualization.hasVisualSignal !== true) {
+      failures.push({
+        type: 'visualization-not-visible',
+        visualSignal: visualization.visualSignal ?? 'none',
+      });
+    }
+    if (typeof visualization.pluginReportError === 'string' && visualization.pluginReportError.trim().length > 0) {
+      warnings.push({
+        type: 'visualization-plugin-warning',
+        message: visualization.pluginReportError,
+      });
+    }
+  }
+
+  return {
+    ok: failures.length === 0,
+    failures,
+    warnings,
+    summary: {
+      captures: captures.length,
+      selectedMetrics: selectedMetrics.length,
+      visualization: visualization
+        ? {
+            pluginId: visualization.pluginId ?? null,
+            captureId: visualization.captureId ?? null,
+            hasVisualSignal: Boolean(visualization.hasVisualSignal),
+            visualSignal: visualization.visualSignal ?? 'none',
+          }
+        : null,
+    },
+  };
+}
+
+async function runUiBootstrapVerify({
+  options,
+  uiHttpUrl,
+  uiWsUrl,
+  specPathInput = null,
+  verifyOnly = false,
+  timeoutMs = 45000,
+  intervalMs = 1000,
+}) {
+  const stateProbe = await requestJson(buildUrl(uiHttpUrl, '/api/debug/state'), { method: 'GET' });
+  if (!stateProbe || stateProbe.frontendConnected !== true) {
+    throw new Error('Frontend not connected. Open the Metrics UI page before running ui bootstrap-verify.');
+  }
+
+  const specPath = resolveUiBootstrapSpecPath(options, specPathInput);
+  const spec = applyUiBootstrapSpecOverrides(
+    loadUiBootstrapSpec(specPath),
+    options,
+  );
+
+  const socket = await connectWebSocket(uiWsUrl);
+  let socketClosed = false;
+  socket.addEventListener('close', () => {
+    socketClosed = true;
+  });
+
+  sendWsMessage(socket, { type: 'register', role: 'agent' });
+  const registered = await waitForWsAck(socket);
+  if (!registered) {
+    socket.close();
+    throw new Error('Failed to register with the UI WebSocket.');
+  }
+
+  const sendCommand = async (type, payload = {}, commandTimeoutMs = 10000) => {
+    const requestId = buildMessageId(null, `ui-bootstrap-${type}`);
+    sendWsMessage(socket, {
+      type,
+      ...payload,
+      request_id: requestId,
+    });
+    await waitForUiAckOrThrow(socket, {
+      requestId,
+      timeoutMs: commandTimeoutMs,
+      errorMessage: `Timed out waiting for UI ack (${type}).`,
+    });
+  };
+
+  try {
+    if (!verifyOnly) {
+      await sendCommand('live_stop');
+      await sendCommand('clear_captures');
+      await sendCommand('clear_selection');
+      await sendCommand('clear_analysis_metrics');
+      await sendCommand('clear_annotations');
+      await sendCommand('clear_subtitles');
+      await sendCommand('set_visualization_frame', { mode: 'builtin' });
+
+      const pluginPathInput = spec.visualization?.pluginFile;
+      if (!pluginPathInput) {
+        throw new Error(`Bootstrap spec ${specPath} is missing visualization.pluginFile.`);
+      }
+      const pluginCandidates = [];
+      if (path.isAbsolute(String(pluginPathInput))) {
+        pluginCandidates.push(String(pluginPathInput));
+      } else {
+        pluginCandidates.push(path.resolve(path.dirname(specPath), String(pluginPathInput)));
+        try {
+          const uiOptions = resolveUiServeOptions(options);
+          pluginCandidates.push(path.resolve(uiOptions.uiDir, String(pluginPathInput)));
+        } catch (_error) {
+          // ignore missing uiDir fallback
+        }
+        pluginCandidates.push(path.resolve(process.cwd(), String(pluginPathInput)));
+      }
+      const pluginPath = pluginCandidates.find(
+        (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
+      );
+      if (!pluginPath) {
+        throw new Error(
+          `Visualization plugin file not found. Checked: ${pluginCandidates.join(', ')}`,
+        );
+      }
+      const fileBuffer = fs.readFileSync(pluginPath);
+      const uploadName = path.basename(pluginPath);
+      const form = new FormData();
+      form.append('file', new Blob([fileBuffer]), uploadName);
+      const uploadResponse = await fetch(
+        buildUrl(uiHttpUrl, '/api/visualization/plugins/upload'),
+        { method: 'POST', body: form },
+      );
+      const uploadPayload = await uploadResponse.json().catch(() => null);
+      if (!uploadResponse.ok) {
+        const message = uploadPayload && uploadPayload.error
+          ? uploadPayload.error
+          : `Visualization plugin upload failed (${uploadResponse.status}).`;
+        throw new Error(message);
+      }
+
+      for (const captureSpec of spec.captures) {
+        if (!captureSpec || typeof captureSpec !== 'object') {
+          continue;
+        }
+        if (!captureSpec.id || !captureSpec.source) {
+          continue;
+        }
+        await sendCommand('live_start', {
+          captureId: String(captureSpec.id),
+          source: String(captureSpec.source),
+        }, 15000);
+      }
+
+      for (const metricSpec of spec.selectedMetrics) {
+        if (!metricSpec || typeof metricSpec !== 'object') {
+          continue;
+        }
+        const captureId = String(metricSpec.captureId ?? '').trim();
+        const metricPath = normalizeMetricPathParts(metricSpec.path);
+        if (!captureId || !metricPath) {
+          continue;
+        }
+        await sendCommand('select_metric', {
+          captureId,
+          path: metricPath,
+        }, 8000);
+      }
+
+      await sendCommand('set_visualization_frame', {
+        mode: 'plugin',
+        pluginId: String(spec.visualization?.pluginId ?? ''),
+        captureId: String(spec.visualization?.captureId ?? ''),
+      });
+    }
+
+    const startedAt = Date.now();
+    let evaluation = {
+      ok: false,
+      failures: [{ type: 'bootstrap-timeout' }],
+      warnings: [],
+      summary: null,
+    };
+
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const requestIdBase = buildMessageId(null, 'ui-bootstrap-check');
+        const snapshot = await collectUiDisplaySnapshot(socket, {
+          timeoutMs: Math.min(timeoutMs, 5000),
+          requestIdBase,
+        });
+        const debug = await collectUiDebugSnapshot(socket, {
+          timeoutMs: Math.min(timeoutMs, 5000),
+          requestIdBase,
+        });
+        evaluation = evaluateUiBootstrapSpecState(spec, snapshot, debug);
+      } catch (error) {
+        evaluation = {
+          ok: false,
+          failures: [
+            {
+              type: 'probe-failed',
+              error: error instanceof Error ? error.message : String(error),
+            },
+          ],
+          warnings: [],
+          summary: null,
+        };
+      }
+      if (evaluation.ok) {
+        break;
+      }
+      await delay(intervalMs);
+    }
+
+    return {
+      report: {
+        status: evaluation.ok ? 'ok' : 'failed',
+        checkedAt: new Date().toISOString(),
+        specPath,
+        ui: {
+          http: uiHttpUrl,
+          ws: uiWsUrl,
+        },
+        bootstrapApplied: !verifyOnly,
+        summary: evaluation.summary,
+        failures: evaluation.failures,
+        warnings: evaluation.warnings,
+      },
+    };
+  } finally {
+    if (!socketClosed && socket.readyState === WebSocket.OPEN) {
+      socket.close();
+    }
+  }
+}
+
 function buildUiVisualizationCheckReport(debug) {
   const failures = [];
   const warnings = [];
@@ -11378,6 +11895,10 @@ function printUsage(command) {
   console.log('  --direction    Annotation jump direction (next|previous)');
   console.log('  --poll-ms      Live poll interval in milliseconds');
   console.log('  --poll-seconds Live poll interval in seconds');
+  console.log('  --spec         UI bootstrap/verify spec JSON file path');
+  console.log('  --verify-only  Validate UI state against spec without applying bootstrap');
+  console.log('  --legacy-source Override legacy capture source in bootstrap spec');
+  console.log('  --causal-source Override causal capture source in bootstrap spec');
   console.log('  --frames       Generated frame count for ui verify-regression / verify-live-remove');
   console.log('  --observe-ms   Verification observation window in ms (ui verify / ui verify-regression / ui verify-flow / ui verify-live-remove)');
   console.log('  --require-selected Require selected metrics in verification (ui verify / ui verify-regression / ui verify-flow)');
@@ -11407,6 +11928,7 @@ function printUsage(command) {
   console.log('  [HTTP, no frontend required] derivation-plugin-upload | derivation-plugin-source | derivation-plugin-delete');
   console.log('  [HTTP, no frontend required] visualization-plugins | visualization-plugin-upload | visualization-plugin-source | visualization-plugin-delete');
   console.log('  [HTTP verify suite, no frontend required] verify | verify-regression | verify-live-remove | verify-session-detect | regress | verify-suite');
+  console.log('  [Hybrid HTTP+WS, frontend required] bootstrap-verify');
   console.log('  [WebSocket, frontend required] capabilities | state | components | mode | live-source | live-start | live-stop');
   console.log('  [WebSocket, frontend required] select | deselect | metric-axis | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures');
   console.log('  [WebSocket, frontend required] play | pause | stop | seek | speed | window-size | window-start | window-end | window-range | y-range | y2-range | auto-scroll | fullscreen');
@@ -11556,6 +12078,7 @@ function printUsage(command) {
   console.log('  simeval ui verify-flow --observe-ms 12000 --interval 1000 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui verify-live-remove --frames 120 --observe-ms 2500 --poll-ms 150 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
   console.log('  simeval ui verify-session-detect --timeout 5000 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
+  console.log('  simeval ui bootstrap-verify --spec /path/to/Stream-Metrics-UI/examples/highmix/view-spec.json --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui regress --test all --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
   console.log('  simeval ui regress --test verify-flow,verify-live-remove,verify-session-detect --continue-on-error true --ui http://localhost:5050');
   console.log('  simeval ui doctor --fix --ui ws://localhost:5050/ws/control');

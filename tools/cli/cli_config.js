@@ -116,6 +116,37 @@ function normalizeCliConfig(raw) {
     uiHost: normalizeString(raw.uiHost ?? raw.ui?.host),
     uiPort: normalizeString(raw.uiPort ?? raw.ui?.port),
     uiMode: normalizeString(raw.uiMode ?? raw.ui?.mode),
+    uiDataRoot: normalizeString(raw.uiDataRoot ?? raw.ui?.dataRoot ?? raw.ui?.data_root),
+    uiUploadRoot: normalizeString(raw.uiUploadRoot ?? raw.ui?.uploadRoot ?? raw.ui?.upload_root),
+    uiUploadIndexFile: normalizeString(
+      raw.uiUploadIndexFile ?? raw.ui?.uploadIndexFile ?? raw.ui?.upload_index_file,
+    ),
+    uiDerivationPluginRoot: normalizeString(
+      raw.uiDerivationPluginRoot ??
+        raw.ui?.derivationPluginRoot ??
+        raw.ui?.derivation_plugin_root,
+    ),
+    uiDerivationPluginIndexFile: normalizeString(
+      raw.uiDerivationPluginIndexFile ??
+        raw.ui?.derivationPluginIndexFile ??
+        raw.ui?.derivation_plugin_index_file,
+    ),
+    uiVisualizationPluginRoot: normalizeString(
+      raw.uiVisualizationPluginRoot ??
+        raw.ui?.visualizationPluginRoot ??
+        raw.ui?.visualization_plugin_root,
+    ),
+    uiVisualizationPluginIndexFile: normalizeString(
+      raw.uiVisualizationPluginIndexFile ??
+        raw.ui?.visualizationPluginIndexFile ??
+        raw.ui?.visualization_plugin_index_file,
+    ),
+    uiCaptureSourcesFile: normalizeString(
+      raw.uiCaptureSourcesFile ?? raw.ui?.captureSourcesFile ?? raw.ui?.capture_sources_file,
+    ),
+    uiDashboardStateFile: normalizeString(
+      raw.uiDashboardStateFile ?? raw.ui?.dashboardStateFile ?? raw.ui?.dashboard_state_file,
+    ),
   };
 }
 
