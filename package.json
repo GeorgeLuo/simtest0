@@ -1,12 +1,42 @@
 {
-  "name": "simtest0-cli",
+  "name": "@georgeluo/simeval-cli",
   "version": "0.1.0",
-  "private": true,
-  "description": "SimEval CLI tools.",
+  "description": "SimEval CLI for ECS deployments, stream capture, UI control, and Morphcloud orchestration.",
+  "license": "MIT",
+  "homepage": "https://github.com/GeorgeLuo/simtest0#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GeorgeLuo/simtest0.git"
+  },
+  "bugs": {
+    "url": "https://github.com/GeorgeLuo/simtest0/issues"
+  },
+  "keywords": [
+    "simeval",
+    "ecs",
+    "simulation",
+    "cli",
+    "morphcloud"
+  ],
   "bin": {
     "simeval": "tools/cli/simeval_cli.js",
     "simeval-morphcloud": "tools/cli/morphcloud_distributor.js",
     "morphcloud-distributor": "tools/cli/morphcloud_distributor.js"
+  },
+  "files": [
+    "README.md",
+    "tools/cli/simeval_cli.js",
+    "tools/cli/morphcloud_distributor.js",
+    "tools/cli/cli_config.js",
+    "tools/cli/morphcloud_validator.js",
+    "tools/cli/morphcloud_clone_snapshot.js",
+    "tools/cli/morphcloud_build_instance.sh"
+  ],
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=18"

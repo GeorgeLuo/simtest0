@@ -52,10 +52,10 @@ npm publish
 
 ## CLI Install
 
-Install the CLIs globally with npm (Node 18+ required):
+Install the published CLIs globally with npm (Node 18+ required):
 
 ```bash
-npm install -g .
+npm install -g @georgeluo/simeval-cli
 ```
 
 Then use:
@@ -67,8 +67,14 @@ simeval-morphcloud list
 simeval fleet --config fleet.json --ui ws://localhost:5050/ws/control
 ```
 
+Or run without a global install:
+
+```bash
+npx @georgeluo/simeval-cli health --server http://127.0.0.1:3000/api
+```
+
 Notes:
-- The global install bundles the workspace so `deploy start` can use the default path.
+- The npm package ships only CLI tooling. `deploy start` needs a SimEval workspace path (`--workspace` or `SIMEVAL_WORKSPACE`) unless you are running from a checkout that contains `workspaces/Describing_Simulation_0`.
 - To keep the CLIs tied to a working copy during development, use `npm link` or a symlink.
 - If you want to point at a different workspace, pass `--workspace <path>` or set `SIMEVAL_WORKSPACE`.
 - The Morphcloud distributor is also available under `simeval morphcloud ...`.

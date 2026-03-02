@@ -15,6 +15,8 @@ if (typeof fetch !== 'function') {
   process.exit(1);
 }
 
+const WebSocketImpl = typeof WebSocket === 'function' ? WebSocket : require('ws');
+
 const argv = process.argv.slice(2);
 let CLI_CONFIG = null;
 const DEFAULT_CLI_CONFIG_PATH = path.join(os.homedir(), '.simeval', 'config.json');
@@ -7137,7 +7139,7 @@ async function resolveUiWsUrl(value) {
 
 async function connectWebSocket(url) {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url);
+    const socket = new WebSocketImpl(url);
     const onOpen = () => {
       cleanup();
       resolve(socket);
@@ -7156,7 +7158,7 @@ async function connectWebSocket(url) {
 }
 
 function sendWsMessage(socket, payload) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
+  if (!socket || socket.readyState !== WebSocketImpl.OPEN) {
     return false;
   }
   socket.send(JSON.stringify(payload));
@@ -8297,7 +8299,7 @@ async function runUiBootstrapVerify({
       },
     };
   } finally {
-    if (!socketClosed && socket.readyState === WebSocket.OPEN) {
+    if (!socketClosed && socket.readyState === WebSocketImpl.OPEN) {
       socket.close();
     }
   }
@@ -10970,7 +10972,7 @@ async function runUiSessionDetectionRegression({
       return;
     }
     try {
-      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+      if (socket.readyState === WebSocketImpl.OPEN || socket.readyState === WebSocketImpl.CONNECTING) {
         socket.close();
       }
     } catch {
