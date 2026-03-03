@@ -187,83 +187,84 @@ The following sections serve as guidelines for code layout and principles for im
 
 ### Code Structure
 
-project/  
-├── src/  
-│   ├── core/  
-│   │   ├── Player.ts  
-│   │   ├── IOPlayer.ts  
-│   │   ├── simplayer/  
-│   │   │   ├── SimulationPlayer.ts  
-│   │   │   └── operations/  
-│   │   │       ├── Start.ts  
-│   │   │       ├── Pause.ts  
-│   │   │       ├── Stop.ts  
-│   │   │       ├── EjectSystem.ts  
-│   │   │       └── InjectSystem.ts  
-│   │   │  
-│   │   ├── evalplayer/  
-│   │   │   ├── EvaluationPlayer.ts  
-│   │   │   └── operations/  
-│   │   │       └── InjectFrame.ts  
-│   │   │  
-│   │   ├── entity/  
-│   │   │   ├── EntityManager.ts  
-│   │   │   └── Entity.ts  
-│   │   │  
-│   │   ├── components/  
-│   │   │   ├── ComponentType.ts  
-│   │   │   ├── ComponentManager.ts  
-│   │   │   └── TimeComponent.ts  
-│   │   │  
-│   │   ├── systems/  
-│   │   │   ├── System.ts  
-│   │   │   ├── SystemManager.ts  
-│   │   │   └── TimeSystem.ts  
-│   │   │  
-│   │   └── messaging/  
-│   │       ├── Bus.ts  
-│   │       ├── outbound/  
-│   │       │   ├── Frame.ts  
-│   │       │   ├── FrameFilter.ts  
-│   │       │   └── Acknowledgement.ts  
-│   │       │  
-│   │       └── inbound/  
-│   │           ├── Operation.ts  
-│   │           ├── MessageHandler.ts  
-│   │           └── InboundHandlerRegistry.ts  
-│   │  
-│   │  
-│   ├── routes/  
-│   │   ├── router.ts  
-│   │   ├── simulation.ts  
-│   │   ├── evaluation.ts  
-│   │   ├── codebase.ts  
-│   │   └── information/  
-│   │           ├── Describing\_Simulation.md  
-│   │           └── api.md  
-│   │  
-│   ├── server.ts  
-│   └── main.ts  
-│  
-├── plugins/  
-│   ├── simulation/  
-│   │   ├── components/  
-│   │   │   └── (agent-defined components)  
-│   │   ├── systems/  
-│   │   │   └── (agent-defined systems)  
-│   │   └── operations/  
-│   │       └── (agent-defined handlers)  
-│   │  
-│   └── evaluation/  
-│       ├── components/  
-│       │   └── (agent-defined evaluation components)  
-│       ├── systems/  
-│       │   └── (agent-defined evaluation systems)  
-│       └── operations/  
-│           └── (agent-defined evaluation handlers)  
-│  
-├── package.json  
+```text
+project/
+├── src/
+│   ├── core/
+│   │   ├── Player.ts
+│   │   ├── IOPlayer.ts
+│   │   ├── simplayer/
+│   │   │   ├── SimulationPlayer.ts
+│   │   │   └── operations/
+│   │   │       ├── Start.ts
+│   │   │       ├── Pause.ts
+│   │   │       ├── Stop.ts
+│   │   │       ├── EjectSystem.ts
+│   │   │       └── InjectSystem.ts
+│   │   │
+│   │   ├── evalplayer/
+│   │   │   ├── EvaluationPlayer.ts
+│   │   │   └── operations/
+│   │   │       └── InjectFrame.ts
+│   │   │
+│   │   ├── entity/
+│   │   │   ├── EntityManager.ts
+│   │   │   └── Entity.ts
+│   │   │
+│   │   ├── components/
+│   │   │   ├── ComponentType.ts
+│   │   │   ├── ComponentManager.ts
+│   │   │   └── TimeComponent.ts
+│   │   │
+│   │   ├── systems/
+│   │   │   ├── System.ts
+│   │   │   ├── SystemManager.ts
+│   │   │   └── TimeSystem.ts
+│   │   │
+│   │   └── messaging/
+│   │       ├── Bus.ts
+│   │       ├── outbound/
+│   │       │   ├── Frame.ts
+│   │       │   ├── FrameFilter.ts
+│   │       │   └── Acknowledgement.ts
+│   │       │
+│   │       └── inbound/
+│   │           ├── Operation.ts
+│   │           ├── MessageHandler.ts
+│   │           └── InboundHandlerRegistry.ts
+│   │
+│   ├── routes/
+│   │   ├── router.ts
+│   │   ├── simulation.ts
+│   │   ├── evaluation.ts
+│   │   ├── codebase.ts
+│   │   └── information/
+│   │           ├── Describing_Simulation.md
+│   │           └── api.md
+│   │
+│   ├── server.ts
+│   └── main.ts
+│
+├── plugins/
+│   ├── simulation/
+│   │   ├── components/
+│   │   │   └── (agent-defined components)
+│   │   ├── systems/
+│   │   │   └── (agent-defined systems)
+│   │   └── operations/
+│   │       └── (agent-defined handlers)
+│   │
+│   └── evaluation/
+│       ├── components/
+│       │   └── (agent-defined evaluation components)
+│       ├── systems/
+│       │   └── (agent-defined evaluation systems)
+│       └── operations/
+│           └── (agent-defined evaluation handlers)
+│
+├── package.json
 └── README.md
+```
 
 ### Summary of Scope
 
@@ -661,43 +662,45 @@ Instructions for future visitors to review the index for instruction\_documents 
 
 The following maps the structure of the repository following bootstrapping.
 
-/  
-├── \<this document’s file name\>.md  
-├── AGENTS.md  
-├── checks.sh  
-├── instruction\_documents/  
-│   ├── mindset\_prompts/  
-│   │   ├── \<this document’s file name\>\_simeval\_tasker\_prompt.md  
-│   │   ├── \<this document’s file name\>\_simeval\_implementer\_prompt.md  
-│   │   ├── \<this document’s file name\>\_simeval\_packager\_prompt.md  
-│   │   ├── \<this document’s file name\>\_simeval\_outsider\_prompt.md  
-│   │   ├── \<this document’s file name\>\_simeval\_aligner\_prompt.md  
-│   │   ├── \<this document’s file name\>\_simeval\_optimizer\_prompt.md  
-│   │   └── index.md  
-│   ├── \<this document’s file name\>\_simeval\_master\_prompt\_important.md  
-│   ├── \<this document’s file name\>\_simeval\_bootstraps.md  
-│   ├── \<this document’s file name\>\_simeval\_repository\_structure.md  
-│   ├── \<this document’s file name\>\_simeval\_code\_structure.md  
-│   ├── \<this document’s file name\>\_simeval\_API\_map.md  
-│   ├── \<this document’s file name\>\_simeval\_codifying\_simulations.md  
-│   ├── \<this document’s file name\>\_simeval\_theory.md  
-│   ├── \<this document’s file name\>\_simeval\_implementation\_guidelines.md  
-│   ├── \<this document’s file name\>\_simeval\_outsider\_integration.md  
-│   ├── \<this document’s file name\>\_simeval\_schedule\_of\_work.md  
-│   ├── \<this document’s file name\>\_simeval\_table\_of\_contents.md  
-│   ├── \<this file in original form copied\>.md  
-│   └── index.md  
-├── tools/  
-│   ├── index.md  
-│   ├── start.sh  
-│   └── run\_integration.sh  
-├── workspaces/  
-│   └── \<this document’s file name\>/  
-├── verifications/  
-└── memory/  
-    ├── exceptions/  
-    ├── ways/  
+```text
+/
+├── <this document’s file name>.md
+├── AGENTS.md
+├── checks.sh
+├── instruction_documents/
+│   ├── mindset_prompts/
+│   │   ├── <this document’s file name>_simeval_tasker_prompt.md
+│   │   ├── <this document’s file name>_simeval_implementer_prompt.md
+│   │   ├── <this document’s file name>_simeval_packager_prompt.md
+│   │   ├── <this document’s file name>_simeval_outsider_prompt.md
+│   │   ├── <this document’s file name>_simeval_aligner_prompt.md
+│   │   ├── <this document’s file name>_simeval_optimizer_prompt.md
+│   │   └── index.md
+│   ├── <this document’s file name>_simeval_master_prompt_important.md
+│   ├── <this document’s file name>_simeval_bootstraps.md
+│   ├── <this document’s file name>_simeval_repository_structure.md
+│   ├── <this document’s file name>_simeval_code_structure.md
+│   ├── <this document’s file name>_simeval_API_map.md
+│   ├── <this document’s file name>_simeval_codifying_simulations.md
+│   ├── <this document’s file name>_simeval_theory.md
+│   ├── <this document’s file name>_simeval_implementation_guidelines.md
+│   ├── <this document’s file name>_simeval_outsider_integration.md
+│   ├── <this document’s file name>_simeval_schedule_of_work.md
+│   ├── <this document’s file name>_simeval_table_of_contents.md
+│   ├── <this file in original form copied>.md
+│   └── index.md
+├── tools/
+│   ├── index.md
+│   ├── start.sh
+│   └── run_integration.sh
+├── workspaces/
+│   └── <this document’s file name>/
+├── verifications/
+└── memory/
+    ├── exceptions/
+    ├── ways/
     └── records/
+```
 
 ### Tools
 
@@ -1339,46 +1342,48 @@ Instructions for future visitors to review the index for instruction\_documents 
 
 The following maps the structure of the repository following bootstrapping.
 
-/  
-├── \<this-document-name\>.md  
-├── AGENTS.md  
-├── checks.sh  
-│  
-├── instruction\_documents/  
-│   ├── mindset\_prompts/  
-│   │   ├── \<this-document-name\>\_impl\_hinter\_prompt.md  
-│   │   ├── \<this-document-name\>\_impl\_tasker\_prompt.md  
-│   │   ├── \<this-document-name\>\_impl\_phenomener\_prompt.md  
-│   │   ├── \<this-document-name\>\_impl\_expecter\_prompt.md  
-│   │   ├── \<this-document-name\>\_impl\_implementer\_prompt.md  
-│   │   └── index.md  
-│   │  
-│   ├── \<this-document-name\>\_impl\_master\_prompt\_important.md  
-│   ├── \<this-document-name\>\_impl\_bootstraps.md  
-│   ├── \<this-document-name\>\_impl\_repository\_structure.md  
-│   ├── \<this-document-name\>\_impl\_code\_structure.md  
-│   ├── \<this-document-name\>\_impl\_schedule\_of\_work.md  
-│   ├── \<this-document-name\>\_impl\_table\_of\_contents.md  
-│   ├── \<this-document-name\>\_impl\_theory.md  
-│   ├── \<this-document-name\>\_impl\_system\_design.md  
-│   ├── \<this-document-name\>\_impl\_component\_design.md  
-│   ├── \<this-document-name\>\_impl\_implementation\_guidelines.md  
-│   ├── \<this-document-name\>\_impl\_table\_of\_contents.md  
-│   ├── \<this-file-in-original-form\>.md  
-│   └── index.md  
-│  
-├── tools/  
-│   ├── index.md  
-│   ├── upload.sh  
-│   └── capture.sh  
-│  
-├── workspaces/  
-│   └── \<simulation-name\>/  
-│  
-└── memory/  
-    ├── exceptions/  
-    ├── ways/  
+```text
+/
+├── <this-document-name>.md
+├── AGENTS.md
+├── checks.sh
+│
+├── instruction_documents/
+│   ├── mindset_prompts/
+│   │   ├── <this-document-name>_impl_hinter_prompt.md
+│   │   ├── <this-document-name>_impl_tasker_prompt.md
+│   │   ├── <this-document-name>_impl_phenomener_prompt.md
+│   │   ├── <this-document-name>_impl_expecter_prompt.md
+│   │   ├── <this-document-name>_impl_implementer_prompt.md
+│   │   └── index.md
+│   │
+│   ├── <this-document-name>_impl_master_prompt_important.md
+│   ├── <this-document-name>_impl_bootstraps.md
+│   ├── <this-document-name>_impl_repository_structure.md
+│   ├── <this-document-name>_impl_code_structure.md
+│   ├── <this-document-name>_impl_schedule_of_work.md
+│   ├── <this-document-name>_impl_table_of_contents.md
+│   ├── <this-document-name>_impl_theory.md
+│   ├── <this-document-name>_impl_system_design.md
+│   ├── <this-document-name>_impl_component_design.md
+│   ├── <this-document-name>_impl_implementation_guidelines.md
+│   ├── <this-document-name>_impl_table_of_contents.md
+│   ├── <this-file-in-original-form>.md
+│   └── index.md
+│
+├── tools/
+│   ├── index.md
+│   ├── upload.sh
+│   └── capture.sh
+│
+├── workspaces/
+│   └── <simulation-name>/
+│
+└── memory/
+    ├── exceptions/
+    ├── ways/
     └── records/
+```
 
 ### Tools
 
@@ -1460,31 +1465,33 @@ Important instruction documents: System Design, Component Design, Ch. 1 API Map
 
 The structure of the workspace for implementations is greatly simplified from simeval as the intent is to house plugin definitions. Test files and directories may be created at discretion.
 
-\<simulation-name\>/  
-├── world\_desc/  
-│   └── \<descriptions of world\>  
-│  
-├── verification/  
-│   ├── verifier.sh  
-│   └── \<helper-files\>  
-│  
-├── memory/  
-│   └── phenomena/  
-│       └── phenomena.md  
-│  
-└── src/  
-    └── plugins/  
-        ├── simulation/  
-        │   ├── components/  
-        │   │   └── (simulation components)  
-        │   └── systems/  
-        │       └── (simulation systems)  
-        │  
-        └── evaluation/  
-            ├── components/  
-            │   └── (evaluation components)  
-            └── systems/  
+```text
+<simulation-name>/
+├── world_desc/
+│   └── <descriptions of world>
+│
+├── verification/
+│   ├── verifier.sh
+│   └── <helper-files>
+│
+├── memory/
+│   └── phenomena/
+│       └── phenomena.md
+│
+└── src/
+    └── plugins/
+        ├── simulation/
+        │   ├── components/
+        │   │   └── (simulation components)
+        │   └── systems/
+        │       └── (simulation systems)
+        │
+        └── evaluation/
+            ├── components/
+            │   └── (evaluation components)
+            └── systems/
                 └── (evaluation systems)
+```
 
 #### 
 
@@ -1618,4 +1625,3 @@ This proposition for the values of the levers is generated by an LLM (Soln. 1.1)
 | Cooling method | forced air |
 
 **Table 1.2**: Lever values to solve Case 1
-
