@@ -1,3 +1,7 @@
+- H1 Describing Simulation
+  - H2 An approach to building & evaluating simulations
+  - H2 intended for human and LLM agent consumption
+- H1 Contents
 - H1 Ch. 1. Describing Simulation
   - H2 Summary of Assumptions
 - H1 Describing Hypotheticals
@@ -85,7 +89,6 @@
       - H4 Status
   - H2 Integration
     - H3 Artifacts
-- H1 
 - H1 Agentic Instructions
   - H2 Discoverability
   - H2 Bootstraps
@@ -106,21 +109,44 @@
     - H3 Aligner
     - H3 Optimizer
     - H3 Master Prompt
-- H1 
 - H1 Implementation Guidelines
   - H2 Methodology
     - H3 Test-driven Development
   - H2 Schedule of Work
-- H1 Ch. 2. Implementing Simulations
+- H1 Ch. 2. Implementing Simulation
   - H2 System Design
   - H2 Component Design
   - H2 Testing
     - H3 On Absolute Validation
     - H3 Causal Validation
     - H3 Boundaries of Veracity
+  - H2 World Description
+    - H3 World Layout Language
+      - H4 Schema
+      - H4 Rules Header
+    - H3 Perfect Methodology
+    - H3 Explanatory Worlds From Observations
+      - H4 High-Mix Manufacturing
 - H1 Agentic Instructions
   - H2 Bootstraps
-- H1 Problems
+    - H3 Repository Structure
+    - H3 Tools
+      - H4 capture.sh
+      - H4 upload.sh
+    - H3 Workspaces
+    - H3 Memory
+  - H2 Agent Prompts
+    - H3 Tasker
+    - H3 Hinter
+    - H3 Phenomener
+    - H3 Expecter
+    - H3 Implementer
+    - H3 Master Prompt
+  - H2 Implementation Guidelines
+    - H3 Code Structure
+      - H4 Memory
+    - H3 Schedule of Work
+- H1 Ch. 3. Applying Simulation
     - H3 Analytical Intractability
     - H3 Computational Representability
     - H3 Topology of Questions

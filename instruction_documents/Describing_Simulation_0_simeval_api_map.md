@@ -2,30 +2,29 @@
 
 For readability, this is an enumeration of all the available endpoints of a sim-eval server, followed by reiteration of their functions covered in Checkpoint IX.
 
-```
-(1)   GET    /                                      
-(2)   GET    /information/Describing_Simulation.md   
-(3)   GET    /information/api.md                    
-(4)   POST   /simulation/start                      
-(5)   POST   /simulation/pause                      
-(6)   POST   /simulation/stop                       
-(7)   POST   /simulation/system                     
-(8)   DELETE /simulation/system/:id                 
-(9)   POST   /simulation/component                  
-(10)  DELETE /simulation/component/:id              
-(11)  GET    /simulation/stream                     
-(12)  POST   /evaluation/frame                      
-(13)  POST   /evaluation/system                     
-(14)  DELETE /evaluation/system/:id                 
-(15)  POST   /evaluation/component                  
-(16)  DELETE /evaluation/component/:id              
-(17)  GET    /evaluation/stream                     
-(18)  GET    /codebase/tree                         
-(19)  GET    /codebase/file?path=<filepath>         
-(20)  POST   /codebase/plugin                       
-(21)  GET    /health                                
+(1)   GET    /                                        
+(2)   GET    /information/Describing\_Simulation.md     
+(3)   GET    /information/api.md                      
+(4)   POST   /simulation/start                        
+(5)   POST   /simulation/pause                        
+(6)   POST   /simulation/stop                         
+(7)   POST   /simulation/system                       
+(8)   DELETE /simulation/system/:id                   
+(9)   POST   /simulation/component                    
+(10)  DELETE /simulation/component/:id                
+(11)  GET    /simulation/stream                       
+(12)  POST   /evaluation/frame                        
+(13)  POST   /evaluation/system                       
+(14)  DELETE /evaluation/system/:id                   
+(15)  POST   /evaluation/component                    
+(16)  DELETE /evaluation/component/:id                
+(17)  GET    /evaluation/stream                       
+(18)  GET    /codebase/tree                           
+(19)  GET    /codebase/file?path=\<filepath\>           
+(20)  POST   /codebase/plugin                         
+(21)  GET    /health                                  
 (22)  GET    /status  
-```
+
 ### Root Domain
 
 (1) The root domain returns a node with maximal discoverability, being semantically dense but minimal in redundancy. From the information returned here, we can navigate through the universe of knowledge around sim-eval. Concretely it reveals the existence of a path for informational files.

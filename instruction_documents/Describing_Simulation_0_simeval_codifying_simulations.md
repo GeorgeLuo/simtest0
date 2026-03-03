@@ -1,6 +1,6 @@
 # Codifying Simulations
 
-In the above section we described an implementation of entity component system architecture. Much of the preference over an object-oriented approach comes from the intention to have LLMs implement simulations.
+In the above section we described an implementation of entity component system architecture. Much of the preference over an object-oriented approach comes from the intention to have LLMs implement simulations. 
 
 In a feedback loop between user and agent, supporting changes for object-oriented code involves potentially breaking method signatures and constructors whereas ECS systems are modular. We can disable effects and add new ones, and bad changes are isolated. Changes to object-oriented code are not *re-writable* in a sense, bad code compounds if the user is not actively pruning unintended effects.
 
@@ -24,9 +24,9 @@ In summary, a metrics aggregator should be considered part of scaffolding, as we
 
 ### Realtime Commands
 
-The temporal nature of the engine lends to playback controls of starting, pausing, and ending.
+The temporal nature of the engine lends to playback controls of starting, pausing, and ending. 
 
-An engine controller with an event bus outside of the system evaluation loop should suffice to support real-time communication. An api defines supported meta commands.
+An engine controller with an event bus outside of the system evaluation loop should suffice to support real-time communication. An api defines supported meta commands. 
 
 ### Server
 
@@ -38,7 +38,7 @@ The following sections serve as guidelines for code layout and principles for im
 
 ### Code Structure
 
-```
+```text
 project/
 ├── src/
 │   ├── core/
@@ -84,7 +84,6 @@ project/
 │   │           ├── MessageHandler.ts
 │   │           └── InboundHandlerRegistry.ts
 │   │
-│   │
 │   ├── routes/
 │   │   ├── router.ts
 │   │   ├── simulation.ts
@@ -117,41 +116,30 @@ project/
 ├── package.json
 └── README.md
 ```
+
 ### Summary of Scope
 
 This service is only responsible for managing the simulator. To give some idea of where we’re going with this:
 
-1. User provides a hypothetical
-
-2. Agent writes form D transformation of hypothetical
-
-3. Agent develops specialized plugin systems from form D transformation
-
-4. Agent starts service
-
-5. Agent initializes the engine through the service, pinging the service until ready
-
-6. Agent starts the simulation
-
+1. User provides a hypothetical  
+2. Agent writes form D transformation of hypothetical  
+3. Agent develops specialized plugin systems from form D transformation  
+4. Agent starts service  
+5. Agent initializes the engine through the service, pinging the service until ready  
+6. Agent starts the simulation  
 7. Agent pings status and handles user queries on state of simulation
 
 Only from step 4 is the engine and service involved. Agent behavior will be defined in later sections. We will continue to describe the scaffold in greater detail towards the clarity of a spec.
 
 The descriptions that follow are intended to provide descriptions with enough specificity for coding agents to use and some decisions are informed by this idea:
 
-- Favor decisions that limit changes across multiple files when writing plugins
-
-- Strict adherence to ECS principles
-
-- Development path favors completeness of flows within the engine
-
-- Implement up to testable/implementable checkpoints where context is sufficient
-
-- Favor testable code
-
-- Instantiable base classes
-
-- Maximally expose signals over information hiding
+* Favor decisions that limit changes across multiple files when writing plugins  
+  * Strict adherence to ECS principles   
+* Development path favors completeness of flows within the engine  
+  * Implement up to testable/implementable checkpoints where context is sufficient  
+* Favor testable code  
+  * Instantiable base classes  
+  * Maximally expose signals over information hiding
 
 We will attempt to present language-agnostic descriptions, with the bet that sufficient logic can be rendered into code of slight variation. 
 
@@ -171,7 +159,7 @@ A component is a describer of an entity. ComponentType serves to distinguish kin
 
 Each kind of ComponentType links to an interface which defines the shape of the attribute data (for example color is represented by r, b, and g integer values), serving as a contract during instantiation of a component.
 
-Practically, coding agents will define new component types with a contract interface for the shape of the data, and the new ComponentType with the contract, in a new file under the plugins directory of component implementations.
+Practically, coding agents will define new component types with a contract interface for the shape of the data, and the new ComponentType with the contract, in a new file under the plugins directory of component implementations.  
 
 #### EntityManager
 
@@ -179,7 +167,7 @@ The entity manager holds the collection of entities within the simulation. The m
 
 #### ComponentManager
 
-The component manager retrieves, creates, and removes components within the simulation.
+The component manager retrieves, creates, and removes components within the simulation. 
 
 It can retrieve all components linked to an entity, or a component of an entity given a ComponentType. It can retrieve all entities with a component of a given ComponentType. The component manager can link a component to an entity, given an entity can only have one component per ComponentType. The component manager can remove either all the components from an entity or a specific component, given a ComponentType.
 
@@ -205,7 +193,7 @@ The time system on instantiation creates an entity with a time component. On upd
 
 ### IV. Orchestration
 
-We now have the materials to approach orchestration, enough for a basic, perpetually updating environment: a TimeSystem with its update method being called in a loop. Before we implement that player, we want to be sure all the dependencies are in place.
+We now have the materials to approach orchestration, enough for a basic, perpetually updating environment: a TimeSystem with its update method being called in a loop. Before we implement that player, we want to be sure all the dependencies are in place. 
 
 Note configuration is not a part of scaffolding and it is still our intention to have checkpoints built sequentially without revisiting past definitions. Configuration is left to branches of the scaffold in source code, with this section defining the core operations of engine management that can be modified. In this sense, we have something closer to a self-contained script than a production-grade micro-service.
 
@@ -227,7 +215,7 @@ In this checkpoint, we will define the necessary files for the player to send a 
 
 This lightweight file describes a bus with a callback register and send function. The player is instantiated with an input bus and an output bus. The calling layer subscribes to the output bus in order to receive messages from the player and the player subscribes to the inbound bus to receive messages.
 
-Messages on the bus need typing in order to trigger specific reactions (for example, pause messages sent to the player), and handlers need to be defined for each type.
+Messages on the bus need typing in order to trigger specific reactions (for example, pause messages sent to the player), and handlers need to be defined for each type. 
 
 ### VI. IO Player
 
@@ -269,7 +257,7 @@ A frame filter is used to process frame objects to disclude components prior to 
 
 #### IOPlayer
 
-The input-output player synthesizes the above for an extension of the player that accepts inbound messages and outputs the state of the simulation on every cycle as frames.
+The input-output player synthesizes the above for an extension of the player that accepts inbound messages and outputs the state of the simulation on every cycle as frames. 
 
 The input-output player is intended as the base version for multi-player use cases. The following simulation player builds on top of the IOPlayer by simply concretizing operations suited for simulations. Extensions of the IOPlayer simply define data protocols; new components define signals, new systems produce the components, and consumers decide how to extract value from the components.
 
@@ -293,7 +281,7 @@ The simulation player synthesizes the above for an extension of the input-output
 
 ### VIII. Evaluation Player
 
-By this point, the input-output player can be initialized and controlled, producing a flow of simulation data. This works well enough for general observation or producing time-series volumes for analysis.
+By this point, the input-output player can be initialized and controlled, producing a flow of simulation data. This works well enough for general observation or producing time-series volumes for analysis. 
 
 In this section we will define the evaluation player, an extension of the input-output player with operations to catalog frames. The player is useful for building derivations or signals such as condition evaluations.
 
@@ -311,14 +299,10 @@ We conclude this checkpoint by stating derivation logic is intended to be captur
 
 Towards usability, the simulation evaluation player network will be front-ended with a basic http server, with an api exposing operations of both players. In this section we will define interoperability between the players with a server control surface. By the end, we should be able to support this flow:
 
-1. On program start, evaluation and simulation players are initialized, piping simulation outbound frames to evaluation inbound bus, server is listening
-
-2. Upload a system plugin and component plugin for the simulation player
-
-3. Upload a system plugin and component plugin for the evaluation player
-
-4. Start simulation
-
+1. On program start, evaluation and simulation players are initialized, piping simulation outbound frames to evaluation inbound bus, server is listening  
+2. Upload a system plugin and component plugin for the simulation player  
+3. Upload a system plugin and component plugin for the evaluation player  
+4. Start simulation  
 5. Fetch most recent frame of the evaluation player
 
 This flow simplifies initialization; when the server is up, the simulation is ready. The api is intended to return actionable information with error responses and simple probes, directing clients to an information route, with basic acknowledgements otherwise.
@@ -333,7 +317,7 @@ The server file initializes the two players and links their messaging buses. Eac
 
 #### Router
 
-The router channels requests to control and read from the sim-eval environment. The root path returns an index of informational endpoints, where each endpoint maps to a markdown file defined in this section.
+The router channels requests to control and read from the sim-eval environment. The root path returns an index of informational endpoints, where each endpoint maps to a markdown file defined in this section. 
 
 #### Simulation
 
@@ -351,7 +335,7 @@ The codebase routes file defines an endpoint to crawl through the source code de
 
 The api markdown file documents all the endpoints implemented in this checkpoint.
 
-#### Describing_Simulation.md
+#### Describing\_Simulation.md
 
 The entire source documentation is copied here.
 
@@ -359,16 +343,3 @@ The entire source documentation is copied here.
 
 Real-time injection of operations, system and component source code is a two-step process. First the source code is uploaded and plugin files are placed into the appropriate directory. Once acknowledged as a success response with system identifier, a further api call will add the system to the sequence of player evaluation.
 
-## Integration
-
-Following the implementation of the codebase described in codifying simulations, we implement an integration test to reveal gaps in execution and prove usability from the vantage of a user without prior knowledge. Usage can be knowable through probing the service.
-
-This stage is intended to massage the codebase towards spec alignment and the general pattern should be to test and make changes to the source code; an outsider makes observations and the implementer makes changes based on feedback.
-
-The big picture is we are assuming the role of a first-time user evaluating the project with a simulation in mind: temperature regulation. The user is curious and technically capable in modeling complex systems and hypothesizing their intermittent states. The user expects to be able to validate outputs of the product, that the simulation emits data approximately matching expectations.
-
-The start script within the tools directory is considered prior knowledge. The outsider knows by running the script, the product is ready for testing.
-
-### Artifacts
-
-The steps to run integration should also be captured in the *tools/dev/run_integration.sh* script with comments for each step enumerated below.

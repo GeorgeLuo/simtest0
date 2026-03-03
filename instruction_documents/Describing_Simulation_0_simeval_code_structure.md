@@ -1,6 +1,6 @@
 ### Code Structure
 
-```
+```text
 project/
 ├── src/
 │   ├── core/
@@ -46,7 +46,6 @@ project/
 │   │           ├── MessageHandler.ts
 │   │           └── InboundHandlerRegistry.ts
 │   │
-│   │
 │   ├── routes/
 │   │   ├── router.ts
 │   │   ├── simulation.ts
@@ -79,3 +78,4 @@ project/
 ├── package.json
 └── README.md
 ```
+

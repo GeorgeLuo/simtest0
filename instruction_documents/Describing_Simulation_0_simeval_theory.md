@@ -1,6 +1,20 @@
 # Describing Simulation
 
-Suppose we were to define an agent responsible for solving hypotheticals with quantitative approaches. The general strategy would be to model the relevant systems, determine the values to set in the systems, and compute the result.
+## An approach to building & evaluating simulations
+
+## intended for human and LLM agent consumption
+
+# 
+
+# Contents
+
+Chapter 1\. Describing Simulation  
+Chapter 2\. Implementing Simulation  
+Chapter 3\. Applying Simulation
+
+# Ch. 1\. Describing Simulation
+
+Suppose we were to define an agent responsible for solving hypotheticals with quantitative approaches. The general strategy would be to model the relevant systems, determine the values to set in the systems, and compute the result. 
 
 This paper seeks to define an approach to build such simulations from natural language prompts, from validation to intent extraction, to codification. We define a specific methodology of building simulations for a specific problem space. The intent is not to address the universe of open-ended questions, but hopefully will address some problems worth solving.
 
@@ -24,11 +38,9 @@ This section will enumerate classifications of hypothetical statements to transl
 
 Naively mapping the explicit and implicit quantities in a hypothetical:
 
-- X: an observable phenomenon in the environment
-
-- E: the environment as a system
-
-- Y: the change in the environment outside of the phenomenon
+* X: an observable phenomenon in the environment  
+* E: the environment as a system  
+* Y: the change in the environment outside of the phenomenon
 
 Another approach to framing hypotheticals might be (**B**):
 
@@ -50,21 +62,21 @@ X informs the time boundary of observation, we are observing the environment as 
 
 “What was the behavior of E during T?”
 
-- T: derived from the lifetime of the phenomenon X, a point in time distanced from T~0~ the beginning of the observation
+* T: derived from the lifetime of the phenomenon X, a point in time distanced from T0 the beginning of the observation
 
 Note the exemption of X from the prompt. X is only as useful as a proxy of time if the solution is endogenous. X is now a part of the environment.
 
 Retaining X (**C2**):
 
-“Given X~0~ at T~0~ what is the behavior of E as we approach X~T~?”
+“Given X0 at T0 what is the behavior of E as we approach XT?”
 
 Implied here is a set of conditions to be fulfilled in order to conclude observation (**D**):
 
 “What is the behavior of E until C is fulfilled?”
 
-- C: a set of conditions described with signals of the environment
+* C: a set of conditions described with signals of the environment
 
-This distinction is useful when X~T~ is ambiguous in cases where a number of events are the condition for bounding the hypothetical. Radically, we’ve included T as part of the environment.
+This distinction is useful when XT is ambiguous in cases where a number of events are the condition for bounding the hypothetical. Radically, we’ve included T as part of the environment.
 
 ### Temporality
 
@@ -82,11 +94,11 @@ This introduces another point on temporality; if the intent of hypotheticals is 
 
 #### Static Problems
 
-Here we should pause to say temporality is not required for all simulations.
+Here we should pause to say temporality is not required for all simulations. 
 
 "What happens to humidity as it rains?"
 
-This lies in the static problem space, it is possible to model the relationship in a sweep of values. Such evaluations are piecewise components of temporal problems: when “*x is less than X*~0~*”  *allows for the static component to exist, but in simulation the question eventually arises of when the change in* x* occurs.
+This lies in the static problem space, it is possible to model the relationship in a sweep of values. Such evaluations are piecewise components of temporal problems: when “*x is less than X0”*  allows for the static component to exist, but in simulation the question eventually arises of when the change in *x* occurs.
 
 We will proceed to establish that the following sections on modeling addresses problems with temporality, effectively that time will always be an input variable.
 
@@ -96,9 +108,9 @@ From above, removing the reference to humidity:
 
 “What happens when it rains?”
 
-The prompt provides that we will need to account for rain in the environment, there’s at least an E to define. We could model clouds and how much water is contained in the cloud. Another approach is rainfall is measured in depth, depth implies an area that the rain falls over, and time can indicate a fall rate.
+The prompt provides that we will need to account for rain in the environment, there’s at least an E to define. We could model clouds and how much water is contained in the cloud. Another approach is rainfall is measured in depth, depth implies an area that the rain falls over, and time can indicate a fall rate. 
 
-Ultimately the usefulness of signals is dubious as we have no idea what to extract based on the prompt. Exit conditions inform the path to environment design. Tautologically, the more constrained a hypothesis can be formed around a hypothetical, the more successfully a simulation can be designed.
+Ultimately the usefulness of signals is dubious as we have no idea what to extract based on the prompt. Exit conditions inform the path to environment design. Tautologically, the more constrained a hypothesis can be formed around a hypothetical, the more successfully a simulation can be designed. 
 
 What this means is we cannot proceed without at least one condition to observe that is not the phenomenon itself. The Y in form A can not be X and the topic of C in form D can not be the only entity within E.
 
@@ -108,15 +120,15 @@ Up to this point, the variables used have been somewhat loosely defined (what is
 
 ### Environment (E)
 
-Representation of the environment takes the form of a collection of *systems* which affect the *component* values of *entities* within the environment. An entity is something uniquely observable through its component values; anything observable is an entity. An instance of a component must be linked to only one entity. Entities have no behavior. Only systems *do *things in an environment.
+Representation of the environment takes the form of a collection of *systems* which affect the *component* values of *entities* within the environment. An entity is something uniquely observable through its component values; anything observable is an entity. An instance of a component must be linked to only one entity. Entities have no behavior. Only systems *do* things in an environment.
 
-Practically, component values are the signals to extract, they are what convey state, and their changing is the progression in the environment.
+Practically, component values are the signals to extract, they are what convey state, and their changing is the progression in the environment. 
 
 For example, time itself can be an entity, with a time counter component value tracking increments and a system can be responsible for incrementing the component value on every clock cycle. In a time bounded experiment, we would read the component value from the one entity with a time counter component, and check its value on every clock cycle.
 
 ### Time (T)
 
-A discrete incrementation of time affects a resampling of states within the environment. The foundational variable, the one from which all changes cascades, is time.
+A discrete incrementation of time affects a resampling of states within the environment. The foundational variable, the one from which all changes cascades, is time. 
 
 "What happens to humidity as it rains?"
 
@@ -130,8 +142,7 @@ That which can be evaluated through signals of the environment for a boolean sta
 
 In order to build a simulation from natural language prompts, we need to be confident form D both:
 
-1. Sufficiently captures the intent of natural language hypotheses
-
+1. Sufficiently captures the intent of natural language hypotheses  
 2. Provides sufficient information to execute a simulation
 
 Or, natural language hypotheticals should be compilable into form D, and a form D compilation needs to be compilable into a simulation as executable code.
