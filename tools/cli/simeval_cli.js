@@ -154,6 +154,9 @@ async function main() {
       return handleFleet(rest);
     case 'log':
       return handleLog(rest);
+    case 'information':
+    case 'info':
+      return handleInformation(rest);
     case 'codebase':
       return handleCodebase(rest);
     default:
@@ -4053,6 +4056,62 @@ async function handleCodebase(argvRest) {
   }
 
   throw new Error(`Unknown codebase subcommand: ${subcommand}`);
+}
+
+async function handleInformation(argvRest) {
+  let [subcommand, ...rest] = argvRest;
+
+  if (!subcommand || subcommand.startsWith('-')) {
+    subcommand = 'list';
+    rest = argvRest;
+  }
+
+  if (subcommand === 'list') {
+    const { options } = parseArgs(rest);
+    if (options.help) {
+      printUsage('information');
+      return;
+    }
+
+    const server = resolveServerUrl(options);
+    const authHeader = resolveAuthHeader(options);
+    const url = buildUrl(server, '/information');
+    const response = await requestJson(url, { method: 'GET' }, authHeader);
+    printJson(response);
+    return;
+  }
+
+  if (subcommand === 'get' || subcommand === 'doc') {
+    const { options, positional } = parseArgs(rest);
+    if (options.help) {
+      printUsage('information');
+      return;
+    }
+
+    const docId = options.id ?? options.doc ?? options.file ?? positional[0];
+    if (!docId) {
+      throw new Error('Missing document id. Use `information get --id <doc-id>`.');
+    }
+
+    const server = resolveServerUrl(options);
+    const authHeader = resolveAuthHeader(options);
+    const url = buildUrl(server, `/information/${encodeURIComponent(String(docId))}`);
+    const response = await requestJson(url, { method: 'GET' }, authHeader);
+    printJson(response);
+    return;
+  }
+
+  if (!subcommand.startsWith('-')) {
+    const { options } = parseArgs(rest);
+    const server = resolveServerUrl(options);
+    const authHeader = resolveAuthHeader(options);
+    const url = buildUrl(server, `/information/${encodeURIComponent(String(subcommand))}`);
+    const response = await requestJson(url, { method: 'GET' }, authHeader);
+    printJson(response);
+    return;
+  }
+
+  throw new Error(`Unknown information subcommand: ${subcommand}`);
 }
 
 async function handleFleet(argvRest) {
@@ -12222,6 +12281,7 @@ function printUsage(command) {
   console.log('  morphcloud <command>           Manage Morphcloud fleets via the distributor');
   console.log('  fleet [scaffold]               Run Morphcloud deployments or write a config scaffold');
   console.log('  log list|view                  Inspect CLI log files');
+  console.log('  information list|get|<doc-id>  Read discoverability docs from /information');
   console.log('  codebase tree|file             Explore the server codebase tree/files');
   console.log('  wait                          Poll /status until a state is reached\n');
   console.log('Global options:');
@@ -12387,6 +12447,10 @@ function printUsage(command) {
   console.log('  --interval     Poll interval in ms (default: 500)\n');
   console.log('Codebase options:');
   console.log('  --path         Path for tree/file (or --file for file)\n');
+  console.log('Information options:');
+  console.log('  --id           Information document id (e.g. api.md)');
+  console.log('  --doc          Alias for --id');
+  console.log('  --file         Alias for --id\n');
   console.log('Deploy start options:');
   console.log('  --port         Port to bind (default: 3000)');
   console.log('  --host         Host to bind (default: 127.0.0.1)');
@@ -12528,5 +12592,7 @@ function printUsage(command) {
   console.log('  simeval morphcloud list');
   console.log('  simeval fleet scaffold --out fleet.json');
   console.log('  simeval fleet --config fleet.json --ui ws://localhost:5050/ws/control');
+  console.log('  simeval information list');
+  console.log('  simeval info api.md');
   console.log('  simeval codebase tree --server http://127.0.0.1:3000/api');
 }
