@@ -12477,7 +12477,7 @@ function printUsage(command) {
   console.log('  simeval stream forward --stream evaluation --frames 50 --ui ws://localhost:5050/ws/control');
   console.log('  simeval stream upload --file capture.jsonl --ui http://localhost:5050');
   console.log('  simeval ui serve --ui-dir Stream-Metrics-UI');
-  console.log('  simeval ui serve --ui-data-root /Volumes/samsung_usb/metrics-ui');
+  console.log('  simeval ui serve --ui-data-root /path/to/metrics-ui');
   console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui metric-axis --capture-id live-a --full-path 1.highmix.metrics.shift_capacity_pressure.overall --axis y2 --ui ws://localhost:5050/ws/control');

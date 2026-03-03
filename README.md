@@ -122,13 +122,13 @@ Example:
   "uiHost": "127.0.0.1",
   "uiPort": 5050,
   "uiMode": "dev",
-  "uiDataRoot": "/Volumes/samsung_usb/metrics-ui",
-  "uiUploadRoot": "/Volumes/samsung_usb/metrics-ui/uploads",
-  "uiUploadIndexFile": "/Volumes/samsung_usb/metrics-ui/uploads/index.json",
-  "uiDerivationPluginRoot": "/Volumes/samsung_usb/metrics-ui/derivation-plugins",
-  "uiDerivationPluginIndexFile": "/Volumes/samsung_usb/metrics-ui/derivation-plugins/plugins.json",
-  "uiCaptureSourcesFile": "/Volumes/samsung_usb/metrics-ui/capture-sources.json",
-  "uiDashboardStateFile": "/Volumes/samsung_usb/metrics-ui/dashboard-state.json"
+  "uiDataRoot": "/path/to/metrics-ui",
+  "uiUploadRoot": "/path/to/metrics-ui/uploads",
+  "uiUploadIndexFile": "/path/to/metrics-ui/uploads/index.json",
+  "uiDerivationPluginRoot": "/path/to/metrics-ui/derivation-plugins",
+  "uiDerivationPluginIndexFile": "/path/to/metrics-ui/derivation-plugins/plugins.json",
+  "uiCaptureSourcesFile": "/path/to/metrics-ui/capture-sources.json",
+  "uiDashboardStateFile": "/path/to/metrics-ui/dashboard-state.json"
 }
 ```
 
@@ -143,7 +143,7 @@ Notes:
 You can also manage the file via CLI:
 ```bash
 simeval config set --token "$SIMEVAL_API_TOKEN" --snapshot SNAPSHOT_ID --fleet-config verification/fleet_highmix.json \
-  --workspace /path/to/workspaces/Describing_Simulation_0 --ui-data-root /Volumes/samsung_usb/metrics-ui
+  --workspace /path/to/workspaces/Describing_Simulation_0 --ui-data-root /path/to/metrics-ui
 simeval config show
 ```
 This writes to `~/.simeval/config.json` unless you pass `--cli-config`.
@@ -198,7 +198,7 @@ Notes:
 Start the Metrics UI (auto-starts if not already running):
 ```bash
 simeval ui serve --ui-dir Stream-Metrics-UI
-simeval ui serve --ui-data-root /Volumes/samsung_usb/metrics-ui
+simeval ui serve --ui-data-root /path/to/metrics-ui
 ```
 
 Capture to file:

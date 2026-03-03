@@ -6,7 +6,7 @@
 
 ## Actions
 - Staged `.gitignore`, `README.md`, `tools/index.md`, `tools/morphcloud_distributor.js`, `tools/simeval_cli.js`, `tools/cli_config.js`, `simeval.config.example.json`, memory records, and `tools/verification/` outputs.
-- Swapped `snapshot_abc` placeholders to `SNAPSHOT_ID` in docs, example config, and CLI scaffold defaults.
+- Swapped `SNAPSHOT_ID` placeholders to `SNAPSHOT_ID` in docs, example config, and CLI scaffold defaults.
 - Committed as `e7a4e20` and pushed to `main`.
 
 ## Validation

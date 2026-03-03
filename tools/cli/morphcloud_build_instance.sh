@@ -20,7 +20,7 @@ Provisions a new Morphcloud VM from a snapshot, installs Node.js, clones the Sim
 codebase, builds/tests the workspace, configures a systemd service, and exposes it.
 
 Required:
-  --snapshot ID           Snapshot ID to boot (e.g., snapshot_h4shdjt4)
+  --snapshot ID           Snapshot ID to boot (e.g., SNAPSHOT_ID)
 
 Optional:
   --name NAME             Metadata name for the instance (default: sim-eval-<timestamp>)

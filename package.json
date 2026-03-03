@@ -1,6 +1,6 @@
 {
   "name": "@georgeluo/simeval-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SimEval CLI for ECS deployments, stream capture, UI control, and Morphcloud orchestration.",
   "license": "MIT",
   "homepage": "https://github.com/GeorgeLuo/simtest0#readme",
