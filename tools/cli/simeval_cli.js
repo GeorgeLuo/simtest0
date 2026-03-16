@@ -2427,6 +2427,180 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'subapp' || subcommand === 'sidebar-app') {
+      const app = String(options.app ?? options.subapp ?? '').trim().toLowerCase();
+      if (app !== 'metrics' && app !== 'equations') {
+        throw new Error('Provide --app metrics|equations for ui subapp.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_sidebar_app',
+        app,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, { app });
+      return;
+    }
+
+    if (subcommand === 'equations-pane' || subcommand === 'equations-set') {
+      const bootstrap = parseEquationsPaneBootstrap(
+        options.bootstrap,
+        options['bootstrap-file'] ?? options.bootstrapFile,
+        options['bootstrap-dir'] ?? options.bootstrapDir,
+      );
+      const preset = parseEquationsPanePreset(options.preset, options);
+      const patch = parseOptionalJsonInput(
+        options.patch ?? options.json,
+        options['patch-file'] ?? options.patchFile,
+        'patch',
+      );
+      const content = parseOptionalJsonInput(
+        options.content,
+        options['content-file'] ?? options.contentFile,
+        'content',
+      );
+      const dimensions = parseOptionalJsonInput(
+        options.dimensions,
+        options['dimensions-file'] ?? options.dimensionsFile,
+        'dimensions',
+      );
+      const document = parseOptionalJsonInput(
+        options.document,
+        options['document-file'] ?? options.documentFile,
+        'document',
+      );
+      const context = parseOptionalJsonInput(
+        options.context,
+        options['context-file'] ?? options.contextFile,
+        'context',
+      );
+      const replaceOption = options.replace;
+      const replace = replaceOption === undefined
+        ? undefined
+        : parseBooleanOption(replaceOption, undefined);
+      const activateOption = options.activate ?? options.show ?? options['switch-to-equations'];
+      const activate = activateOption === undefined
+        ? Boolean(bootstrap || preset)
+        : parseBooleanOption(activateOption, undefined);
+
+      if (patch !== null && !isPlainObject(patch)) {
+        throw new Error('Invalid --patch JSON. Expected an object.');
+      }
+      if (content !== null && !isPlainObject(content)) {
+        throw new Error('Invalid --content JSON. Expected an object.');
+      }
+      if (dimensions !== null && !isPlainObject(dimensions)) {
+        throw new Error('Invalid --dimensions JSON. Expected an object.');
+      }
+      if (document !== null && !isPlainObject(document)) {
+        throw new Error('Invalid --document JSON. Expected an object.');
+      }
+      if (context !== null && !isPlainObject(context)) {
+        throw new Error('Invalid --context JSON. Expected an object.');
+      }
+      if (replaceOption !== undefined && typeof replace !== 'boolean') {
+        throw new Error('Invalid --replace value. Use true or false.');
+      }
+      if (activateOption !== undefined && typeof activate !== 'boolean') {
+        throw new Error('Invalid --activate value. Use true or false.');
+      }
+      if (
+        bootstrap === null
+        &&
+        preset === null
+        && patch === null
+        && content === null
+        && dimensions === null
+        && document === null
+        && context === null
+        && replace === undefined
+      ) {
+        throw new Error(
+          'Provide --bootstrap/--bootstrap-file/--bootstrap-dir and/or --preset and/or --patch/--patch-file and/or --content/--content-file and/or --dimensions/--dimensions-file and/or --document/--document-file and/or --context/--context-file and/or --replace true|false for ui equations-pane.',
+        );
+      }
+
+      const payload = {};
+      if (bootstrap) {
+        Object.assign(payload, bootstrap);
+      }
+      if (preset) {
+        Object.assign(payload, preset.payload);
+      }
+      if (patch) {
+        Object.assign(payload, patch);
+      }
+      if (content !== null) {
+        payload.content = content;
+      }
+      if (dimensions !== null) {
+        payload.dimensions = dimensions;
+      }
+      if (document !== null) {
+        payload.document = document;
+      }
+      if (context !== null) {
+        payload.context = context;
+      }
+      if (payload.content !== undefined && !isPlainObject(payload.content)) {
+        throw new Error('Equations pane payload content must be an object.');
+      }
+      if (payload.dimensions !== undefined && !isPlainObject(payload.dimensions)) {
+        throw new Error('Equations pane payload dimensions must be an object.');
+      }
+      if (payload.document !== undefined && !isPlainObject(payload.document)) {
+        throw new Error('Equations pane payload document must be an object.');
+      }
+      if (payload.context !== undefined && !isPlainObject(payload.context)) {
+        throw new Error('Equations pane payload context must be an object.');
+      }
+      if (replace !== undefined) {
+        payload.replace = replace;
+      }
+
+      if (activate === true) {
+        const activateRequestId = `${requestId}-subapp`;
+        sendWsMessage(socket, {
+          type: 'set_sidebar_app',
+          app: 'equations',
+          request_id: activateRequestId,
+        });
+        await waitForUiAckOrThrow(socket, {
+          requestId: activateRequestId,
+          timeoutMs,
+          errorMessage: 'Timed out waiting for UI ack (set_sidebar_app).',
+        });
+      }
+
+      sendWsMessage(socket, {
+        type: 'set_equations_pane',
+        ...payload,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, {
+        activate: activate === true ? true : undefined,
+        bootstrap:
+          options.bootstrap
+          ?? options['bootstrap-file']
+          ?? options.bootstrapFile
+          ?? options['bootstrap-dir']
+          ?? options.bootstrapDir
+          ?? undefined,
+        preset: preset ? preset.preset : undefined,
+        patch: payload,
+      });
+      return;
+    }
+
     if (
       subcommand === 'visualization-use'
       || subcommand === 'visualization-set'
@@ -2758,6 +2932,37 @@ async function handleUi(argvRest) {
           status: 'failed',
           checkedAt: new Date().toISOString(),
           visualization: null,
+          failures: [
+            {
+              type: 'frontend-debug-unavailable',
+              message: error instanceof Error ? error.message : 'Unable to fetch visualization debug payload.',
+            },
+          ],
+          warnings: [],
+        };
+      }
+      printJson(report);
+      if (report.status !== 'ok') {
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    if (subcommand === 'visualization-values') {
+      let report;
+      try {
+        const debug = await collectUiDebugSnapshot(socket, {
+          timeoutMs,
+          requestIdBase: requestId,
+          scope: 'visualization',
+        });
+        report = buildUiVisualizationValuesReport(debug);
+      } catch (error) {
+        report = {
+          status: 'failed',
+          checkedAt: new Date().toISOString(),
+          visualization: null,
+          frameValues: null,
           failures: [
             {
               type: 'frontend-debug-unavailable',
@@ -6859,6 +7064,169 @@ function parseOptionalJson(value, label) {
   }
 }
 
+function parseOptionalJsonFile(filePath, label) {
+  if (filePath === undefined || filePath === null || filePath === '') {
+    return null;
+  }
+  const resolvedPath = path.resolve(process.cwd(), String(filePath));
+  let raw;
+  try {
+    raw = fs.readFileSync(resolvedPath, 'utf8');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read --${label}-file ${resolvedPath}: ${message}`);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid --${label}-file JSON (${resolvedPath}): ${message}`);
+  }
+}
+
+function parseOptionalJsonInput(value, filePath, label) {
+  const inlineValue = parseOptionalJson(value, label);
+  const fileValue = parseOptionalJsonFile(filePath, label);
+  if (inlineValue !== null && fileValue !== null) {
+    throw new Error(`Provide either --${label} or --${label}-file, not both.`);
+  }
+  return fileValue !== null ? fileValue : inlineValue;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+const EQUATIONS_PANE_PRESET_NAMES = [
+  'epistemic-kuramoto',
+  'kuramoto-epistemic',
+  'kuramoto-2x3',
+];
+
+function readJsonFileAbsolute(filename, label) {
+  let raw;
+  try {
+    raw = fs.readFileSync(filename, 'utf8');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read ${label} ${filename}: ${message}`);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid ${label} JSON (${filename}): ${message}`);
+  }
+}
+
+function normalizeEquationsBootstrapPayloadObject(parsed, sourceLabel) {
+  if (!isPlainObject(parsed)) {
+    throw new Error(`Invalid equations bootstrap at ${sourceLabel}: expected a JSON object.`);
+  }
+  if (isPlainObject(parsed.spec) || Array.isArray(parsed.items)) {
+    return {
+      replace: true,
+      document: parsed,
+    };
+  }
+  return {
+    replace: true,
+    ...parsed,
+  };
+}
+
+function loadEquationsBootstrapFromDirectory(directoryPath) {
+  const paneFile = path.join(directoryPath, 'equations-pane.json');
+  if (fs.existsSync(paneFile) && fs.statSync(paneFile).isFile()) {
+    return normalizeEquationsBootstrapPayloadObject(
+      readJsonFileAbsolute(paneFile, 'equations bootstrap file'),
+      paneFile,
+    );
+  }
+
+  const payload = { replace: true };
+  const candidates = [
+    ['document', path.join(directoryPath, 'equations-framegrid.json')],
+    ['document', path.join(directoryPath, 'equations-document.json')],
+    ['content', path.join(directoryPath, 'equations-content.json')],
+    ['dimensions', path.join(directoryPath, 'equations-layout.json')],
+    ['dimensions', path.join(directoryPath, 'equations-dimensions.json')],
+    ['context', path.join(directoryPath, 'equations-context.json')],
+    ['cells', path.join(directoryPath, 'equations-cells.json')],
+  ];
+
+  let found = false;
+  for (const [key, candidatePath] of candidates) {
+    if (!fs.existsSync(candidatePath) || !fs.statSync(candidatePath).isFile()) {
+      continue;
+    }
+    payload[key] = readJsonFileAbsolute(candidatePath, `equations ${key} file`);
+    found = true;
+  }
+
+  if (!found) {
+    throw new Error(
+      `No equations bootstrap files found in ${directoryPath}. ` +
+        'Expected equations-pane.json or one of equations-framegrid.json, equations-document.json, equations-content.json, equations-layout.json, equations-dimensions.json, equations-context.json, equations-cells.json.',
+    );
+  }
+  return payload;
+}
+
+function loadEquationsBootstrapFromPath(bootstrapPath) {
+  const resolvedPath = path.resolve(process.cwd(), String(bootstrapPath));
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`Equations bootstrap path not found: ${resolvedPath}`);
+  }
+  const stats = fs.statSync(resolvedPath);
+  if (stats.isDirectory()) {
+    return loadEquationsBootstrapFromDirectory(resolvedPath);
+  }
+  if (stats.isFile()) {
+    return normalizeEquationsBootstrapPayloadObject(
+      readJsonFileAbsolute(resolvedPath, 'equations bootstrap file'),
+      resolvedPath,
+    );
+  }
+  throw new Error(`Equations bootstrap path is neither a file nor a directory: ${resolvedPath}`);
+}
+
+function parseEquationsPaneBootstrap(value, filePath, dirPath) {
+  const sources = [
+    value !== undefined && value !== null && value !== '' ? { value } : null,
+    filePath !== undefined && filePath !== null && filePath !== '' ? { value: filePath } : null,
+    dirPath !== undefined && dirPath !== null && dirPath !== '' ? { value: dirPath } : null,
+  ].filter(Boolean);
+
+  if (sources.length > 1) {
+    throw new Error('Provide only one of --bootstrap, --bootstrap-file, or --bootstrap-dir.');
+  }
+  if (sources.length === 0) {
+    return null;
+  }
+  return loadEquationsBootstrapFromPath(sources[0].value);
+}
+
+function parseEquationsPanePreset(value, options = {}) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (EQUATIONS_PANE_PRESET_NAMES.includes(normalized)) {
+    const uiDir = resolveUiDirectory(options['ui-dir'], CLI_CONFIG?.data?.uiDir);
+    return {
+      preset: 'epistemic-kuramoto',
+      payload: loadEquationsBootstrapFromPath(path.join(uiDir, 'examples', 'kuramoto')),
+    };
+  }
+  throw new Error(
+    `Unknown --preset value "${value}". Available presets: ${EQUATIONS_PANE_PRESET_NAMES.join(', ')}.`,
+  );
+}
+
 function parsePathInput(value) {
   if (value === undefined || value === null) {
     return null;
@@ -8492,6 +8860,79 @@ function buildUiVisualizationCheckReport(debug) {
     status: failures.length > 0 ? 'failed' : (warnings.length > 0 ? 'warning' : 'ok'),
     checkedAt: new Date().toISOString(),
     visualization: visualization || null,
+    failures,
+    warnings,
+  };
+}
+
+function buildUiVisualizationValuesReport(debug) {
+  const failures = [];
+  const warnings = [];
+  const visualization =
+    debug
+    && debug.refs
+    && typeof debug.refs === 'object'
+    && debug.refs.visualization
+    && typeof debug.refs.visualization === 'object'
+      ? debug.refs.visualization
+      : null;
+
+  if (!visualization) {
+    failures.push({
+      type: 'missing-visualization-debug',
+      message: 'Visualization debug payload is missing.',
+    });
+  }
+
+  const frameValues =
+    visualization
+    && visualization.pluginFrameValues
+    && typeof visualization.pluginFrameValues === 'object'
+    && !Array.isArray(visualization.pluginFrameValues)
+      ? visualization.pluginFrameValues
+      : null;
+  let fallbackFrameValues = null;
+  if (!frameValues && visualization) {
+    const kind = typeof visualization.pluginReportKind === 'string'
+      ? visualization.pluginReportKind.trim().toLowerCase()
+      : '';
+    const statusRaw = typeof visualization.pluginReportStatus === 'string'
+      ? visualization.pluginReportStatus.trim()
+      : '';
+    if (kind === 'frame_values' && statusRaw.startsWith('{') && statusRaw.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(statusRaw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          fallbackFrameValues = parsed;
+        }
+      } catch (_error) {
+        // Ignore parse failure and preserve the missing-frame-values failure below.
+      }
+    }
+  }
+
+  const resolvedFrameValues = frameValues || fallbackFrameValues;
+
+  if (!resolvedFrameValues) {
+    failures.push({
+      type: 'missing-frame-values',
+      message: 'Visualization plugin did not publish frame values.',
+    });
+  }
+
+  if (visualization && visualization.mode !== 'plugin') {
+    warnings.push({
+      type: 'visualization-mode-not-plugin',
+      mode: visualization.mode ?? null,
+      message: 'Visualization is not in plugin mode.',
+    });
+  }
+
+  return {
+    status: failures.length > 0 ? 'failed' : (warnings.length > 0 ? 'warning' : 'ok'),
+    checkedAt: new Date().toISOString(),
+    visualization: visualization || null,
+    frameValues: resolvedFrameValues,
     failures,
     warnings,
   };
@@ -12344,6 +12785,7 @@ function printUsage(command) {
   console.log('  --skip-install Skip npm install for ui serve');
   console.log('  --path         Metric path (JSON array recommended for dotted keys)');
   console.log('  --full-path    Full metric path for ui deselect');
+  console.log('  --app          UI sub-app for ui subapp (metrics|equations)');
   console.log('  --axis         Axis assignment for ui metric-axis (y1|y2)');
   console.log('  --group-id     Derivation group id (ui derivation-group-*)');
   console.log('  --new-group-id New derivation group id (ui derivation-group-update)');
@@ -12372,6 +12814,22 @@ function printUsage(command) {
   console.log('  --min          Numeric minimum for ui y-range / y2-range');
   console.log('  --max          Numeric maximum for ui y-range / y2-range');
   console.log('  --enabled      Enable/disable ui auto-scroll/fullscreen (true|false)');
+  console.log('  --replace      Replace/reset equations pane state before applying patch (true|false)');
+  console.log('  --activate     Switch to the Equations sub-app before ui equations-pane (true|false)');
+  console.log('  --bootstrap    Equations bootstrap path (JSON file or directory)');
+  console.log('  --bootstrap-file JSON file containing a full equations pane patch or FrameGrid document');
+  console.log('  --bootstrap-dir Directory containing equations-pane.json or equations-* bootstrap files');
+  console.log('  --preset       Named equations pane preset from Metrics UI examples (epistemic-kuramoto)');
+  console.log('  --patch        Full equations pane patch JSON object');
+  console.log('  --patch-file   File path containing full equations pane patch JSON');
+  console.log('  --content      Equations pane content patch JSON object');
+  console.log('  --content-file File path containing equations pane content patch JSON');
+  console.log('  --dimensions   Equations pane dimensions patch JSON object');
+  console.log('  --dimensions-file File path containing equations pane dimensions patch JSON');
+  console.log('  --document     Equations FrameGrid document JSON object');
+  console.log('  --document-file File path containing an Equations FrameGrid document JSON');
+  console.log('  --context      Equations interaction context patch JSON object');
+  console.log('  --context-file File path containing equations interaction context patch JSON');
   console.log('  --annotation-id Annotation id for ui annotation commands');
   console.log('  --subtitle-id  Subtitle id for ui subtitle commands');
   console.log('  --start-tick   Subtitle start tick');
@@ -12419,13 +12877,14 @@ function printUsage(command) {
   console.log('  [Hybrid HTTP+WS, frontend required] bootstrap-verify');
   console.log('  [WebSocket, frontend required] capabilities | state | components | mode | live-source | live-start | live-stop');
   console.log('  [WebSocket, frontend required] select | deselect | metric-axis | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures');
+  console.log('  [WebSocket, frontend required] subapp | sidebar-app | equations-pane | equations-set');
   console.log('  [WebSocket, frontend required] play | pause | stop | seek | speed | window-size | window-start | window-end | window-range | y-range | y2-range | auto-scroll | fullscreen');
   console.log('  [WebSocket, frontend required] derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update | derivation-group-display | derivation-group-reorder');
   console.log('  [WebSocket, frontend required] derivation-run | derivation-plugins | derivation-plugin-run');
   console.log('  [WebSocket, frontend required] visualization-use | visualization-reset | visualization-set');
   console.log('  [WebSocket, frontend required] add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  [WebSocket, frontend required] add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  [WebSocket, frontend required] display-snapshot | series-window | render-table | render-debug | debug | visualization-check | memory-stats | metric-coverage | check | verify-flow | trace | doctor\n');
+  console.log('  [WebSocket, frontend required] display-snapshot | series-window | render-table | render-debug | debug | visualization-check | visualization-values | memory-stats | metric-coverage | check | verify-flow | trace | doctor\n');
   console.log('  note: WS commands require an active frontend session connected to /ws/control.');
   console.log('        If no frontend is connected, WS commands may time out or return "Frontend not connected".');
   console.log('  note: ui verify is server-driven (HTTP) and does not require a connected frontend session.');
@@ -12544,7 +13003,14 @@ function printUsage(command) {
   console.log('  simeval ui serve --ui-data-root /path/to/metrics-ui');
   console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --bootstrap ./examples/kuramoto --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --document-file ./equations-framegrid.json --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --preset epistemic-kuramoto --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --context \'{\"selectedHitBox\":{\"itemId\":\"workspace\",\"hitBox\":{\"id\":\"omega_i\",\"label\":\"ω_i\",\"sequence\":\"ω_i\",\"category\":\"term\",\"latex\":\"\\\\omega_{i}\"}}}\' --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui metric-axis --capture-id live-a --full-path 1.highmix.metrics.shift_capacity_pressure.overall --axis y2 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui subapp --app equations --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --activate true --content \'{\"workspace\":{\"title\":\"Solver\",\"body\":\"y = mx + b\"}}\' --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --dimensions-file ./equations-layout.json --content-file ./equations-content.json --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui y-range --min 0 --max 120 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui y2-range --min 0.8 --max 1.0 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui analysis-select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
@@ -12560,6 +13026,7 @@ function printUsage(command) {
   console.log('  simeval ui visualization-plugin-source --plugin-id factory_view --ui http://localhost:5050');
   console.log('  simeval ui visualization-reset --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui visualization-check --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui visualization-values --ui ws://localhost:5050/ws/control');
   console.log('  simeval --message-id trace-123 ui derivation-plugin-run --group-id compare_pending_jobs --plugin-id diff --output-capture-id pending_diff --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui trace --request-id trace-123 --timeout 30000 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui trace --request-id trace-123 --send \'{"type":"run_derivation_plugin","groupId":"compare_pending_jobs","pluginId":"diff","outputCaptureId":"pending_diff"}\' --timeout 30000 --ui ws://localhost:5050/ws/control');
