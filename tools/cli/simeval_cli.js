@@ -1060,7 +1060,7 @@ async function handleStream(argvRest) {
 async function handleUi(argvRest) {
   const [subcommandRaw, ...rest] = argvRest;
   const subcommand = typeof subcommandRaw === 'string' ? subcommandRaw.trim() : '';
-  const { options } = parseArgs(rest);
+  const { options, positional } = parseArgs(rest);
   if (
     options.help
     || !subcommand
@@ -1079,6 +1079,11 @@ async function handleUi(argvRest) {
 
   if (subcommand === 'shutdown') {
     await handleUiShutdown(options);
+    return;
+  }
+
+  if ((subcommand === 'equations-pane' || subcommand === 'equations-set') && positional[0] === 'validate') {
+    await handleUiEquationsPaneValidate(options);
     return;
   }
 
@@ -2429,8 +2434,8 @@ async function handleUi(argvRest) {
 
     if (subcommand === 'subapp' || subcommand === 'sidebar-app') {
       const app = String(options.app ?? options.subapp ?? '').trim().toLowerCase();
-      if (app !== 'metrics' && app !== 'equations') {
-        throw new Error('Provide --app metrics|equations for ui subapp.');
+      if (app !== 'metrics' && app !== 'equations' && app !== 'play') {
+        throw new Error('Provide --app metrics|equations|play for ui subapp.');
       }
       sendWsMessage(socket, {
         type: 'set_sidebar_app',
@@ -2446,7 +2451,40 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'play-game-action' || subcommand === 'play-action') {
+      const actionId = options['action-id'] ?? options.actionId ?? options.action ?? options.id;
+      if (!actionId) {
+        throw new Error('Provide --action-id for ui play-game-action.');
+      }
+      const value = parsePlayGameActionValue(options);
+      const command = {
+        type: 'play_game_action',
+        actionId: String(actionId),
+        request_id: requestId,
+      };
+      if (value !== undefined) {
+        command.value = value;
+      }
+      sendWsMessage(socket, command);
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, {
+        actionId: String(actionId),
+        value,
+      });
+      return;
+    }
+
     if (subcommand === 'equations-pane' || subcommand === 'equations-set') {
+      const contentFileInput = options['content-file'] ?? options.contentFile;
+      const documentFileInput = options['document-file'] ?? options.documentFile;
+      const fileBackedEquationsSwap = (
+        (contentFileInput !== undefined && contentFileInput !== null && contentFileInput !== '')
+        || (documentFileInput !== undefined && documentFileInput !== null && documentFileInput !== '')
+      );
       const bootstrap = parseEquationsPaneBootstrap(
         options.bootstrap,
         options['bootstrap-file'] ?? options.bootstrapFile,
@@ -2480,7 +2518,7 @@ async function handleUi(argvRest) {
       );
       const replaceOption = options.replace;
       const replace = replaceOption === undefined
-        ? undefined
+        ? (fileBackedEquationsSwap ? true : undefined)
         : parseBooleanOption(replaceOption, undefined);
       const activateOption = options.activate ?? options.show ?? options['switch-to-equations'];
       const activate = activateOption === undefined
@@ -2598,6 +2636,171 @@ async function handleUi(argvRest) {
         preset: preset ? preset.preset : undefined,
         patch: payload,
       });
+      return;
+    }
+
+    if (subcommand === 'equations-topic') {
+      const topicId = options['topic-id'] ?? options.topicId ?? options.topic ?? options.id;
+      if (!topicId) {
+        throw new Error('Provide --topic-id for ui equations-topic.');
+      }
+      const preserveViewModeOption = options['preserve-view-mode'] ?? options.preserveViewMode;
+      const preserveViewMode = parseBooleanOption(preserveViewModeOption, undefined);
+      if (preserveViewModeOption !== undefined && typeof preserveViewMode !== 'boolean') {
+        throw new Error('Invalid --preserve-view-mode value. Use true or false.');
+      }
+      const command = {
+        type: 'set_equations_topic',
+        topicId: String(topicId),
+        request_id: requestId,
+      };
+      if (preserveViewMode !== undefined) {
+        command.preserveViewMode = preserveViewMode;
+      }
+      sendWsMessage(socket, command);
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, {
+        topicId: String(topicId),
+        preserveViewMode,
+      });
+      return;
+    }
+
+    if (subcommand === 'equations-view' || subcommand === 'equations-view-mode') {
+      const viewMode = String(options['view-mode'] ?? options.viewMode ?? options.mode ?? '').trim().toLowerCase();
+      if (viewMode !== 'topic' && viewMode !== 'textbook') {
+        throw new Error('Provide --view-mode topic|textbook for ui equations-view.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_equations_view_mode',
+        viewMode,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, { viewMode });
+      return;
+    }
+
+    if (subcommand === 'equations-catalog') {
+      const catalogId = options['catalog-id'] ?? options.catalogId ?? options.catalog ?? options.id;
+      const source = options.source;
+      if (!catalogId && !source) {
+        throw new Error('Provide --catalog-id or --source for ui equations-catalog.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_equations_catalog',
+        catalogId: catalogId ? String(catalogId) : undefined,
+        source: source ? String(source) : undefined,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, {
+        catalogId: catalogId ? String(catalogId) : undefined,
+        source: source ? String(source) : undefined,
+      });
+      return;
+    }
+
+    if (subcommand === 'equations-meta' || subcommand === 'equations-meta-document') {
+      const documentId = options['document-id'] ?? options.documentId ?? options.document ?? options.id;
+      if (!documentId) {
+        throw new Error('Provide --document-id for ui equations-meta.');
+      }
+      sendWsMessage(socket, {
+        type: 'set_equations_meta_document',
+        documentId: String(documentId),
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, { documentId: String(documentId) });
+      return;
+    }
+
+    if (subcommand === 'equations-refresh' || subcommand === 'refresh-equations-topic') {
+      sendWsMessage(socket, {
+        type: 'refresh_equations_topic',
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId);
+      return;
+    }
+
+    if (subcommand === 'equations-highlight-hidden' || subcommand === 'equations-highlight-hide') {
+      const highlightId = parseOptionalInteger(
+        options['highlight-id'] ?? options.highlightId ?? options.id,
+        'highlight-id',
+        { min: 0 },
+      );
+      if (!Number.isInteger(highlightId)) {
+        throw new Error('Provide --highlight-id for ui equations-highlight-hidden.');
+      }
+      const hiddenOption = options.hidden ?? options.enabled;
+      const hidden = parseBooleanOption(hiddenOption, undefined);
+      if (hiddenOption !== undefined && typeof hidden !== 'boolean') {
+        throw new Error('Invalid --hidden value. Use true or false.');
+      }
+      const command = {
+        type: 'set_equations_highlight_hidden',
+        highlightId,
+        request_id: requestId,
+      };
+      if (hidden !== undefined) {
+        command.hidden = hidden;
+      }
+      sendWsMessage(socket, command);
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, {
+        highlightId,
+        hidden,
+      });
+      return;
+    }
+
+    if (subcommand === 'equations-highlight-delete' || subcommand === 'delete-equations-highlight') {
+      const highlightId = parseOptionalInteger(
+        options['highlight-id'] ?? options.highlightId ?? options.id,
+        'highlight-id',
+        { min: 0 },
+      );
+      if (!Number.isInteger(highlightId)) {
+        throw new Error('Provide --highlight-id for ui equations-highlight-delete.');
+      }
+      sendWsMessage(socket, {
+        type: 'delete_equations_highlight',
+        highlightId,
+        request_id: requestId,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for UI ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, { highlightId });
       return;
     }
 
@@ -2905,7 +3108,10 @@ async function handleUi(argvRest) {
     }
 
     if (subcommand === 'debug') {
-      sendWsMessage(socket, { type: 'get_ui_debug', request_id: requestId });
+      const scope = typeof options.scope === 'string' && options.scope.trim()
+        ? options.scope.trim()
+        : undefined;
+      sendWsMessage(socket, { type: 'get_ui_debug', scope, request_id: requestId });
       const response = await waitForWsResponse(socket, {
         requestId,
         types: ['ui_debug'],
@@ -2915,6 +3121,86 @@ async function handleUi(argvRest) {
         throw new Error('Timed out waiting for UI debug.');
       }
       printJson(response.payload ?? response);
+      return;
+    }
+
+    if (subcommand === 'play-debug' || subcommand === 'play-debug-frame') {
+      sendWsMessage(socket, { type: 'get_play_debug', request_id: requestId });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['play_debug'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for Play debug.');
+      }
+      const payload = response.payload ?? response;
+      if (parseBooleanOption(options.summary, false) === true) {
+        printPlayDebugSummary(payload);
+        return;
+      }
+      printJson(payload);
+      return;
+    }
+
+    if (subcommand === 'play-perf' || subcommand === 'play-chase-perf') {
+      const perfOptions = parseUiPlayPerfOptions(options);
+      for (let index = 0; index < perfOptions.actions.length; index += 1) {
+        const action = perfOptions.actions[index];
+        const actionRequestId = `${requestId}-action-${index + 1}`;
+        sendWsMessage(socket, {
+          type: 'play_game_action',
+          request_id: actionRequestId,
+          actionId: action.actionId,
+          value: action.value,
+        });
+        await waitForUiAckOrThrow(socket, {
+          requestId: actionRequestId,
+          timeoutMs,
+          errorMessage: `Timed out waiting for play action ack: ${action.actionId}`,
+        });
+      }
+      if (perfOptions.actions.length > 0 && perfOptions.settleMs > 0) {
+        await delay(perfOptions.settleMs);
+      }
+
+      let iteration = 0;
+      while (iteration < perfOptions.count) {
+        const performanceSnapshot = await collectUiPlayPerformanceSnapshot(socket, {
+          requestIdBase: `${requestId}-perf-${iteration + 1}`,
+          timeoutMs,
+        });
+        if (perfOptions.json) {
+          printJson({
+            ui: uiUrl,
+            performance: performanceSnapshot,
+            diagnosis: diagnoseUiPlayPerformance(performanceSnapshot),
+          });
+        } else {
+          printUiPlayPerformanceHuman(performanceSnapshot);
+        }
+        iteration += 1;
+        if (iteration < perfOptions.count) {
+          await delay(perfOptions.intervalMs);
+        }
+      }
+      return;
+    }
+
+    if (subcommand === 'framegrid-check' || subcommand === 'framegrid-debug-check') {
+      const scope = typeof options.scope === 'string' && options.scope.trim()
+        ? options.scope.trim()
+        : undefined;
+      const debug = await collectUiDebugSnapshot(socket, {
+        timeoutMs,
+        requestIdBase: `${requestId}-framegrid`,
+        scope,
+      });
+      const summary = evaluateUiFrameGridDebug(debug, { ui: uiUrl });
+      printJson(summary);
+      if (summary.status !== 'ok') {
+        process.exitCode = 1;
+      }
       return;
     }
 
@@ -3607,6 +3893,60 @@ async function handleUiShutdown(options) {
     saveUiState(uiStateFile, uiState);
   }
   printJson({ url: uiUrl, response });
+}
+
+function buildForwardedCliOptions(options, keys) {
+  const args = [];
+  keys.forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(options, key)) {
+      return;
+    }
+    const value = options[key];
+    args.push(`--${key}`);
+    if (value !== true) {
+      args.push(String(value));
+    }
+  });
+  return args;
+}
+
+async function handleUiEquationsPaneValidate(options) {
+  const uiDir = resolveUiDirectory(options['ui-dir'], CLI_CONFIG?.data?.uiDir);
+  const skipInstall = Boolean(options['skip-install'] ?? options['no-install']);
+  await ensureUiDependencies(uiDir, skipInstall);
+
+  const tsxCliPath = path.join(uiDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  if (!fs.existsSync(tsxCliPath) || !fs.statSync(tsxCliPath).isFile()) {
+    throw new Error(`Missing tsx CLI runtime at ${tsxCliPath}. Run npm install in ${uiDir}.`);
+  }
+
+  const validatorScriptPath = path.join(uiDir, 'scripts', 'equations-validate.ts');
+  if (!fs.existsSync(validatorScriptPath) || !fs.statSync(validatorScriptPath).isFile()) {
+    throw new Error(`Equations validator script not found: ${validatorScriptPath}`);
+  }
+
+  const forwardedArgs = buildForwardedCliOptions(options, [
+    'bootstrap',
+    'bootstrap-file',
+    'bootstrap-dir',
+    'preset',
+    'patch',
+    'patch-file',
+    'content',
+    'content-file',
+    'dimensions',
+    'dimensions-file',
+    'document',
+    'document-file',
+    'context',
+    'context-file',
+    'replace',
+    'json',
+  ]);
+
+  await runCommand('node', [tsxCliPath, validatorScriptPath, ...forwardedArgs], {
+    cwd: process.cwd(),
+  });
 }
 
 function resolveUiServeOptionsForUrl(options, uiHttpUrl) {
@@ -7093,6 +7433,34 @@ function parseOptionalJsonInput(value, filePath, label) {
   return fileValue !== null ? fileValue : inlineValue;
 }
 
+function parsePlayGameActionValue(options) {
+  const hasValue = Object.prototype.hasOwnProperty.call(options, 'value')
+    || Object.prototype.hasOwnProperty.call(options, 'value-json')
+    || Object.prototype.hasOwnProperty.call(options, 'valueJson');
+  const hasValueFile = Object.prototype.hasOwnProperty.call(options, 'value-file')
+    || Object.prototype.hasOwnProperty.call(options, 'valueFile');
+  const hasEnabled = Object.prototype.hasOwnProperty.call(options, 'enabled');
+  const valueOptionCount = [hasValue, hasValueFile, hasEnabled].filter(Boolean).length;
+  if (valueOptionCount > 1) {
+    throw new Error('Provide only one of --value, --value-file, or --enabled for ui play-game-action.');
+  }
+  if (hasEnabled) {
+    const enabled = parseBooleanOption(options.enabled, undefined);
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Invalid --enabled value. Use true or false.');
+    }
+    return enabled;
+  }
+  if (hasValue || hasValueFile) {
+    return parseOptionalJsonInput(
+      options.value ?? options['value-json'] ?? options.valueJson,
+      options['value-file'] ?? options.valueFile,
+      'value',
+    );
+  }
+  return undefined;
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -7219,7 +7587,13 @@ function parseEquationsPanePreset(value, options = {}) {
     const uiDir = resolveUiDirectory(options['ui-dir'], CLI_CONFIG?.data?.uiDir);
     return {
       preset: 'epistemic-kuramoto',
-      payload: loadEquationsBootstrapFromPath(path.join(uiDir, 'examples', 'kuramoto')),
+      payload: {
+        replace: true,
+        content: readJsonFileAbsolute(
+          path.join(uiDir, 'examples', 'kuramoto', 'equations-content.model.json'),
+          'equations content file',
+        ),
+      },
     };
   }
   throw new Error(
@@ -8187,6 +8561,348 @@ async function collectUiDebugSnapshot(
     throw new Error('Timed out waiting for UI debug.');
   }
   return response.payload ?? response;
+}
+
+function formatPlayDebugNumber(value, digits = 3) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue.toFixed(digits) : 'n/a';
+}
+
+function formatPlayDebugVector(vector) {
+  return vector
+    ? `(${formatPlayDebugNumber(vector.x)}, ${formatPlayDebugNumber(vector.z)})`
+    : '(n/a)';
+}
+
+function printPlayDebugSummary(debug) {
+  const consensus = debug?.predictionConsensus ?? {};
+  const firstFrame = consensus.firstConsensusFrame ?? null;
+  const patternUnits = Object.values(consensus.patternUnits ?? {});
+
+  console.log(`frame=${debug?.frameIndex ?? 'n/a'} phase=${debug?.phase ?? 'unknown'} pending=${Boolean(debug?.pendingActionFrame)}`);
+  console.log(`chaser=${formatPlayDebugVector(debug?.world?.chaserPosition)} evader=${formatPlayDebugVector(debug?.world?.evaderPosition)}`);
+  console.log(
+    `consensus strategy=${consensus.prediction?.strategy ?? 'none'} `
+    + `actionable=${Boolean(consensus.actionable)} confidence=${formatPlayDebugNumber(consensus.consensus)}`,
+  );
+  console.log(`sources=${(consensus.sourcePatternIds ?? []).join(',') || 'none'}`);
+  console.log(
+    `firstConsensusFrame=${firstFrame?.framesAhead ?? 'n/a'} `
+    + `pos=${formatPlayDebugVector(firstFrame?.position)} confidence=${formatPlayDebugNumber(firstFrame?.confidence)}`,
+  );
+  console.log('patterns:');
+  patternUnits.forEach((unit) => {
+    console.log(
+      `- ${unit.id ?? 'unknown'} status=${unit.status ?? 'unknown'} `
+      + `confidence=${formatPlayDebugNumber(unit.confidence)} predictions=${unit.predictionCount ?? 0}`,
+    );
+  });
+}
+
+function parseUiPlayPerfOptions(options) {
+  const actions = [];
+  const maybePushAction = (flag, actionId, value) => {
+    if (parseBooleanOption(options[flag], false) === true) {
+      actions.push({ actionId, value });
+    }
+  };
+
+  maybePushAction('open-debug', 'idae-debug', true);
+  maybePushAction('close-debug', 'idae-debug', false);
+  if (parseBooleanOption(options['open-views'], false) === true) {
+    actions.push({ actionId: 'chaser-view', value: true });
+    actions.push({ actionId: 'evader-view', value: true });
+  }
+  if (parseBooleanOption(options['close-views'], false) === true) {
+    actions.push({ actionId: 'chaser-view', value: false });
+    actions.push({ actionId: 'evader-view', value: false });
+  }
+  if (options.fps !== undefined && options.fps !== null && options.fps !== '') {
+    if (options.fps === true) {
+      throw new Error('Provide a value for --fps.');
+    }
+    actions.push({ actionId: 'simulation-fps', value: String(options.fps) });
+  }
+
+  const watch = parseBooleanOption(options.watch, false) === true;
+  const settleMsInput = options['settle-ms'];
+  const settleMs = settleMsInput === undefined || settleMsInput === null || settleMsInput === ''
+    ? 750
+    : Math.max(0, Number(settleMsInput) || 0);
+  const count = watch
+    ? Number.POSITIVE_INFINITY
+    : Math.max(1, parseOptionalNumber(options.count, 'count') ?? 1);
+  return {
+    actions,
+    count,
+    intervalMs: Math.max(
+      100,
+      parseOptionalNumber(options['interval-ms'] ?? options.interval, 'interval-ms') ?? 1000,
+    ),
+    settleMs,
+    json: parseBooleanOption(options.json, false) === true,
+  };
+}
+
+async function collectUiPlayPerformanceSnapshot(socket, {
+  timeoutMs = 5000,
+  requestIdBase = null,
+} = {}) {
+  const debug = await collectUiDebugSnapshot(socket, {
+    timeoutMs,
+    requestIdBase: requestIdBase || buildMessageId(null, 'ui-play-perf'),
+  });
+  return debug?.refs?.playChasePerformance ?? null;
+}
+
+function formatUiPlayPerfMs(value) {
+  return Number.isFinite(value) ? `${value.toFixed(2)}ms` : 'n/a';
+}
+
+function rankUiPlayPerfSegments(latest) {
+  return Object.entries(latest?.segments ?? {})
+    .map(([name, value]) => ({ name, ms: Number(value) || 0 }))
+    .sort((first, second) => second.ms - first.ms);
+}
+
+function diagnoseUiPlayPerformance(performanceSnapshot) {
+  if (!performanceSnapshot) {
+    return [
+      'No chase performance snapshot is available. Open the Play app, select Chase, and let it run.',
+    ];
+  }
+
+  const latest = performanceSnapshot.latest ?? {};
+  const summary = performanceSnapshot.summary ?? {};
+  const causes = performanceSnapshot.suspectedCauses ?? {};
+  const messages = [];
+  const totalP95 = summary.totalTick?.p95Ms ?? 0;
+  const rafGapP95 = summary.rafGap?.p95Ms ?? 0;
+  const stepP95 = summary.simulationStep?.p95Ms ?? 0;
+  const catchupCount = summary.catchupTickCount ?? 0;
+  const topSegment = latest.topSegment ?? rankUiPlayPerfSegments(latest)[0] ?? null;
+
+  if (catchupCount > 0 || (causes.catchup ?? 0) > 0) {
+    messages.push('Catch-up stepping is occurring: the loop sometimes advances multiple simulation frames before one paint.');
+  }
+  if (rafGapP95 > 24) {
+    messages.push('RAF gaps are high: the browser/main thread is not calling the game loop consistently.');
+  }
+  if (stepP95 > 8) {
+    messages.push('Simulation/IDAE step time is high enough to contribute directly.');
+  }
+  if (totalP95 > 16.7 && topSegment?.name) {
+    messages.push(`Total tick p95 exceeds a 60Hz visual budget; latest largest segment is ${topSegment.name}.`);
+  }
+  if (messages.length === 0) {
+    messages.push('No obvious stutter source in the current sample window.');
+  }
+  return messages;
+}
+
+function printUiPlayPerformanceHuman(performanceSnapshot) {
+  if (!performanceSnapshot) {
+    console.log('No chase performance snapshot found.');
+    console.log('Open the UI, select Play -> Chase, and keep the tab active.');
+    return;
+  }
+
+  const latest = performanceSnapshot.latest ?? {};
+  const summary = performanceSnapshot.summary ?? {};
+  const causes = performanceSnapshot.suspectedCauses ?? {};
+  const rankedSegments = rankUiPlayPerfSegments(latest).slice(0, 5);
+
+  console.log(`[play-chase-perf] ${performanceSnapshot.generatedAt}`);
+  console.log(`samples=${performanceSnapshot.sampleCount} threshold=${performanceSnapshot.slowFrameThresholdMs}ms`);
+  console.log(
+    `latest frame=${latest.frameIndex ?? 'n/a'} total=${formatUiPlayPerfMs(latest.totalTickMs)} `
+      + `rafGap=${formatUiPlayPerfMs(latest.elapsedMs)} steps=${latest.stepsThisTick ?? 'n/a'} `
+      + `step=${formatUiPlayPerfMs(latest.stepMs)}`,
+  );
+  console.log(
+    `p95 total=${formatUiPlayPerfMs(summary.totalTick?.p95Ms)} rafGap=${formatUiPlayPerfMs(summary.rafGap?.p95Ms)} `
+      + `step=${formatUiPlayPerfMs(summary.simulationStep?.p95Ms)} render=${formatUiPlayPerfMs(summary.mainRender?.p95Ms)} `
+      + `debug=${formatUiPlayPerfMs(summary.idaeDebug?.p95Ms)} sidebar=${formatUiPlayPerfMs(summary.sidebar?.p95Ms)}`,
+  );
+  console.log(
+    `counts catchup=${summary.catchupTickCount ?? 0} overVisual=${summary.overVisualBudgetCount ?? 0} `
+      + `slowTick=${causes.slowTick ?? 0} rafGap=${causes.rafGap ?? 0}`,
+  );
+  console.log(`latest top segments: ${rankedSegments.map((entry) => `${entry.name}=${formatUiPlayPerfMs(entry.ms)}`).join(', ') || 'none'}`);
+  console.log('diagnosis:');
+  diagnoseUiPlayPerformance(performanceSnapshot).forEach((message) => {
+    console.log(`- ${message}`);
+  });
+}
+
+function approxEqual(value, expected, epsilon = 1e-6) {
+  return Math.abs(value - expected) <= epsilon;
+}
+
+function assertFrameGridApprox(label, actual, expected, failures, epsilon = 1e-6) {
+  if (!approxEqual(actual, expected, epsilon)) {
+    failures.push({
+      type: 'approx-mismatch',
+      label,
+      actual,
+      expected,
+      delta: actual - expected,
+      epsilon,
+    });
+  }
+}
+
+function assertFrameGridTrue(label, condition, failures, context) {
+  if (!condition) {
+    failures.push({
+      type: 'assertion-failed',
+      label,
+      context: context ?? null,
+    });
+  }
+}
+
+function evaluateUiFrameGridDebug(debugPayload, context = {}) {
+  const refs = debugPayload?.refs ?? {};
+  const equationsFrame = refs.equationsFrame ?? null;
+  if (!equationsFrame) {
+    return {
+      status: 'failed',
+      ui: context.ui ?? null,
+      message: 'Equations FrameGrid debug is unavailable. Ensure the frontend is open and Equations sub-app is active.',
+      context: { hasRefs: Boolean(debugPayload?.refs) },
+    };
+  }
+
+  const {
+    spec,
+    container,
+    expectedCellCount,
+    renderedCellCount,
+    layout,
+    checks,
+    showCellGrid,
+    showOuterFrame,
+    showContentFrame,
+  } = equationsFrame;
+
+  if (!layout) {
+    return {
+      status: 'failed',
+      ui: context.ui ?? null,
+      message: 'FrameGrid layout is null (container likely has zero size).',
+      context: { container, spec },
+    };
+  }
+
+  const [frameBorderDivX, frameBorderDivY] = spec.frameBorderDiv;
+  const [gridCols, gridRows] = spec.grid;
+  const [cellBorderDivX, cellBorderDivY] = spec.cellBorderDiv;
+  const expectedFrameBorderX = frameBorderDivX === 0 ? 0 : layout.frame.width / frameBorderDivX;
+  const expectedFrameBorderY = frameBorderDivY === 0 ? 0 : layout.frame.height / frameBorderDivY;
+  const expectedContentWidth = layout.frame.width - 2 * layout.frameBorderX;
+  const expectedContentHeight = layout.frame.height - 2 * layout.frameBorderY;
+  const expectedCellWidth = layout.content.width / gridCols;
+  const expectedCellHeight = layout.content.height / gridRows;
+  const expectedCellBorderX = cellBorderDivX === 0 ? 0 : layout.cellWidth / cellBorderDivX;
+  const expectedCellBorderY = cellBorderDivY === 0 ? 0 : layout.cellHeight / cellBorderDivY;
+  const expectedCount = gridCols * gridRows;
+  const centerDeltaX = layout.frame.x + layout.frame.width / 2 - container.width / 2;
+  const centerDeltaY = layout.frame.y + layout.frame.height / 2 - container.height / 2;
+  const failures = [];
+
+  assertFrameGridTrue('container.width > 0', container.width > 0, failures, { container });
+  assertFrameGridTrue('container.height > 0', container.height > 0, failures, { container });
+  assertFrameGridApprox('frameBorderX', layout.frameBorderX, expectedFrameBorderX, failures);
+  assertFrameGridApprox('frameBorderY', layout.frameBorderY, expectedFrameBorderY, failures);
+  assertFrameGridApprox('contentWidth', layout.content.width, expectedContentWidth, failures);
+  assertFrameGridApprox('contentHeight', layout.content.height, expectedContentHeight, failures);
+  assertFrameGridApprox('cellWidth', layout.cellWidth, expectedCellWidth, failures);
+  assertFrameGridApprox('cellHeight', layout.cellHeight, expectedCellHeight, failures);
+  assertFrameGridApprox('cellBorderX', layout.cellBorderX, expectedCellBorderX, failures);
+  assertFrameGridApprox('cellBorderY', layout.cellBorderY, expectedCellBorderY, failures);
+  assertFrameGridTrue(
+    'cellCount === gridCols * gridRows',
+    layout.cellCount === expectedCount && expectedCellCount === expectedCount,
+    failures,
+    { layoutCellCount: layout.cellCount, expectedCellCount, expectedCount },
+  );
+  if (showCellGrid) {
+    assertFrameGridTrue(
+      'renderedCellCount === expectedCount',
+      renderedCellCount === expectedCount,
+      failures,
+      { renderedCellCount, expectedCount },
+    );
+  }
+  assertFrameGridApprox('frame center X', centerDeltaX, 0, failures, 1e-3);
+  assertFrameGridApprox('frame center Y', centerDeltaY, 0, failures, 1e-3);
+
+  if (spec.fitMode === 'contain') {
+    assertFrameGridTrue(
+      'contain fit inside container',
+      layout.frame.width <= container.width + 1e-6
+        && layout.frame.height <= container.height + 1e-6,
+      failures,
+      { frame: layout.frame, container },
+    );
+  }
+
+  if (checks) {
+    [
+      ['checks.frameBorderXDelta', checks.frameBorderXDelta],
+      ['checks.frameBorderYDelta', checks.frameBorderYDelta],
+      ['checks.contentWidthDelta', checks.contentWidthDelta],
+      ['checks.contentHeightDelta', checks.contentHeightDelta],
+      ['checks.cellWidthDelta', checks.cellWidthDelta],
+      ['checks.cellHeightDelta', checks.cellHeightDelta],
+      ['checks.cellBorderXDelta', checks.cellBorderXDelta],
+      ['checks.cellBorderYDelta', checks.cellBorderYDelta],
+    ].forEach(([label, value]) => {
+      if (value !== null) {
+        assertFrameGridApprox(label, value, 0, failures);
+      }
+    });
+  }
+
+  return {
+    status: failures.length === 0 ? 'ok' : 'failed',
+    ui: context.ui ?? null,
+    spec,
+    container,
+    flags: {
+      showCellGrid,
+      showOuterFrame,
+      showContentFrame,
+    },
+    extracted: {
+      frame: layout.frame,
+      content: layout.content,
+      frameBorderX: layout.frameBorderX,
+      frameBorderY: layout.frameBorderY,
+      cellWidth: layout.cellWidth,
+      cellHeight: layout.cellHeight,
+      cellBorderX: layout.cellBorderX,
+      cellBorderY: layout.cellBorderY,
+      expectedCellCount,
+      renderedCellCount,
+      layoutCellCount: layout.cellCount,
+    },
+    calculated: {
+      expectedFrameBorderX,
+      expectedFrameBorderY,
+      expectedContentWidth,
+      expectedContentHeight,
+      expectedCellWidth,
+      expectedCellHeight,
+      expectedCellBorderX,
+      expectedCellBorderY,
+      expectedCount,
+      centerDeltaX,
+      centerDeltaY,
+    },
+    failures,
+  };
 }
 
 function normalizeMetricPathParts(pathValue) {
@@ -12785,7 +13501,7 @@ function printUsage(command) {
   console.log('  --skip-install Skip npm install for ui serve');
   console.log('  --path         Metric path (JSON array recommended for dotted keys)');
   console.log('  --full-path    Full metric path for ui deselect');
-  console.log('  --app          UI sub-app for ui subapp (metrics|equations)');
+  console.log('  --app          UI sub-app for ui subapp (metrics|equations|play)');
   console.log('  --axis         Axis assignment for ui metric-axis (y1|y2)');
   console.log('  --group-id     Derivation group id (ui derivation-group-*)');
   console.log('  --new-group-id New derivation group id (ui derivation-group-update)');
@@ -12813,9 +13529,18 @@ function printUsage(command) {
   console.log('  --window-end   Window end tick for ui window range');
   console.log('  --min          Numeric minimum for ui y-range / y2-range');
   console.log('  --max          Numeric maximum for ui y-range / y2-range');
-  console.log('  --enabled      Enable/disable ui auto-scroll/fullscreen (true|false)');
-  console.log('  --replace      Replace/reset equations pane state before applying patch (true|false)');
+  console.log('  --enabled      Enable/disable ui auto-scroll/fullscreen or boolean play action value (true|false)');
+  console.log('  --action-id    Play game action id for ui play-game-action');
+  console.log('  --value        JSON value for ui play-game-action');
+  console.log('  --value-file   File path containing JSON value for ui play-game-action');
+  console.log('  --replace      Replace/reset equations pane state before applying patch (true|false). Defaults to true for --content-file and --document-file');
   console.log('  --activate     Switch to the Equations sub-app before ui equations-pane (true|false)');
+  console.log('  --topic-id     Equations topic id for ui equations-topic');
+  console.log('  --view-mode    Equations view mode for ui equations-view (topic|textbook)');
+  console.log('  --catalog-id   Equations catalog id for ui equations-catalog');
+  console.log('  --document-id  Equations meta document id for ui equations-meta');
+  console.log('  --highlight-id Equations highlight id for highlight hide/delete commands');
+  console.log('  --hidden       Hide/show an Equations highlight (true|false); omit to toggle');
   console.log('  --bootstrap    Equations bootstrap path (JSON file or directory)');
   console.log('  --bootstrap-file JSON file containing a full equations pane patch or FrameGrid document');
   console.log('  --bootstrap-dir Directory containing equations-pane.json or equations-* bootstrap files');
@@ -12823,13 +13548,14 @@ function printUsage(command) {
   console.log('  --patch        Full equations pane patch JSON object');
   console.log('  --patch-file   File path containing full equations pane patch JSON');
   console.log('  --content      Equations pane content patch JSON object');
-  console.log('  --content-file File path containing equations pane content patch JSON');
+  console.log('  --content-file File path containing equations pane content patch JSON (replaces by default)');
   console.log('  --dimensions   Equations pane dimensions patch JSON object');
   console.log('  --dimensions-file File path containing equations pane dimensions patch JSON');
   console.log('  --document     Equations FrameGrid document JSON object');
-  console.log('  --document-file File path containing an Equations FrameGrid document JSON');
+  console.log('  --document-file File path containing an Equations FrameGrid document JSON (replaces by default)');
   console.log('  --context      Equations interaction context patch JSON object');
   console.log('  --context-file File path containing equations interaction context patch JSON');
+  console.log('  --json         Print JSON diagnostics for ui equations-pane validate');
   console.log('  --annotation-id Annotation id for ui annotation commands');
   console.log('  --subtitle-id  Subtitle id for ui subtitle commands');
   console.log('  --start-tick   Subtitle start tick');
@@ -12851,6 +13577,17 @@ function printUsage(command) {
   console.log('  --continue-on-error Continue ui regress execution after a failed case');
   console.log('  --auto-serve   Auto-start Metrics UI if not running (ui verify / ui verify-regression / ui verify-live-remove / ui verify-annotations / ui verify-session-detect / ui regress)');
   console.log('  --shutdown-on-exit Shutdown auto-started Metrics UI after verify (ui verify / ui verify-regression / ui verify-live-remove / ui verify-annotations / ui verify-session-detect / ui regress)');
+  console.log('  --scope        Optional scope for ui debug, e.g. play or equations');
+  console.log('  --summary      Print compact summary for ui play-debug');
+  console.log('  --watch        Keep polling for ui play-perf');
+  console.log('  --count        Poll count for ui play-perf');
+  console.log('  --interval-ms  Poll interval for ui play-perf');
+  console.log('  --settle-ms    Delay after play-perf setup actions before sampling');
+  console.log('  --open-debug   Open the Chase IDAE debug pane before play-perf sampling');
+  console.log('  --close-debug  Close the Chase IDAE debug pane before play-perf sampling');
+  console.log('  --open-views   Open Chase actor views before play-perf sampling');
+  console.log('  --close-views  Close Chase actor views before play-perf sampling');
+  console.log('  --fps          Set Chase playback FPS before play-perf sampling');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
   console.log('UI serve options:');
   console.log('  --ui-dir       Metrics UI project directory (default: ./Stream-Metrics-UI)');
@@ -12875,16 +13612,18 @@ function printUsage(command) {
   console.log('  [HTTP verify suite, no frontend required] verify | verify-regression | verify-live-remove | verify-session-detect | regress | verify-suite');
   console.log('  [Hybrid verify, frontend required] verify-annotations');
   console.log('  [Hybrid HTTP+WS, frontend required] bootstrap-verify');
+  console.log('  [Local validation, no frontend required] equations-pane validate');
   console.log('  [WebSocket, frontend required] capabilities | state | components | mode | live-source | live-start | live-stop');
   console.log('  [WebSocket, frontend required] select | deselect | metric-axis | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures');
-  console.log('  [WebSocket, frontend required] subapp | sidebar-app | equations-pane | equations-set');
+  console.log('  [WebSocket, frontend required] subapp | sidebar-app | play-game-action | play-action');
+  console.log('  [WebSocket, frontend required] equations-pane | equations-set | equations-topic | equations-view | equations-catalog | equations-meta | equations-refresh | equations-highlight-hidden | equations-highlight-delete');
   console.log('  [WebSocket, frontend required] play | pause | stop | seek | speed | window-size | window-start | window-end | window-range | y-range | y2-range | auto-scroll | fullscreen');
   console.log('  [WebSocket, frontend required] derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update | derivation-group-display | derivation-group-reorder');
   console.log('  [WebSocket, frontend required] derivation-run | derivation-plugins | derivation-plugin-run');
   console.log('  [WebSocket, frontend required] visualization-use | visualization-reset | visualization-set');
   console.log('  [WebSocket, frontend required] add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  [WebSocket, frontend required] add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  [WebSocket, frontend required] display-snapshot | series-window | render-table | render-debug | debug | visualization-check | visualization-values | memory-stats | metric-coverage | check | verify-flow | trace | doctor\n');
+  console.log('  [WebSocket, frontend required] display-snapshot | series-window | render-table | render-debug | debug | play-debug | play-debug-frame | play-perf | play-chase-perf | framegrid-check | framegrid-debug-check | visualization-check | visualization-values | memory-stats | metric-coverage | check | verify-flow | trace | doctor\n');
   console.log('  note: WS commands require an active frontend session connected to /ws/control.');
   console.log('        If no frontend is connected, WS commands may time out or return "Frontend not connected".');
   console.log('  note: ui verify is server-driven (HTTP) and does not require a connected frontend session.');
@@ -13003,14 +13742,26 @@ function printUsage(command) {
   console.log('  simeval ui serve --ui-data-root /path/to/metrics-ui');
   console.log('  simeval ui live-start --source /path/to/capture.jsonl --capture-id live-a --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
-  console.log('  simeval ui equations-pane --bootstrap ./examples/kuramoto --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --content-file ./examples/kuramoto/equations-content.model.json --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --content-file ./examples/kuramoto/equations-content.eq9.json --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-pane --document-file ./equations-framegrid.json --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --document-file ./examples/kuramoto/equations-document.eq5-eq9-to-eq10.json --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane validate --document-file ./examples/kuramoto/equations-document.eq10-variables.json --ui-dir ./Stream-Metrics-UI');
   console.log('  simeval ui equations-pane --preset epistemic-kuramoto --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-pane --context \'{\"selectedHitBox\":{\"itemId\":\"workspace\",\"hitBox\":{\"id\":\"omega_i\",\"label\":\"ω_i\",\"sequence\":\"ω_i\",\"category\":\"term\",\"latex\":\"\\\\omega_{i}\"}}}\' --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui metric-axis --capture-id live-a --full-path 1.highmix.metrics.shift_capacity_pressure.overall --axis y2 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui subapp --app equations --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui subapp --app play --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui play-game-action --action-id show-target-projection --enabled true --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui play-game-action --action-id target-projection-frames --value 180 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-topic --topic-id kuramoto-eq-17 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-view --view-mode textbook --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-catalog --catalog-id kuramoto --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-meta --document-id guidance --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-highlight-hidden --highlight-id 1 --hidden true --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-highlight-delete --highlight-id 1 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-pane --activate true --content \'{\"workspace\":{\"title\":\"Solver\",\"body\":\"y = mx + b\"}}\' --ui ws://localhost:5050/ws/control');
-  console.log('  simeval ui equations-pane --dimensions-file ./equations-layout.json --content-file ./equations-content.json --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui equations-pane --dimensions-file ./equations-layout.json --content-file ./examples/kuramoto/equations-content.model.json --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui y-range --min 0 --max 120 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui y2-range --min 0.8 --max 1.0 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui analysis-select --capture-id live-a --path \'[\"1\",\"highmix.metrics\",\"shift_capacity_pressure\",\"overall\"]\' --ui ws://localhost:5050/ws/control');
@@ -13031,7 +13782,10 @@ function printUsage(command) {
   console.log('  simeval ui trace --request-id trace-123 --timeout 30000 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui trace --request-id trace-123 --send \'{"type":"run_derivation_plugin","groupId":"compare_pending_jobs","pluginId":"diff","outputCaptureId":"pending_diff"}\' --timeout 30000 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui derivation-plugin-delete --plugin-id diff --ui http://localhost:5050');
-  console.log('  simeval ui debug --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui debug --scope play --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui play-debug --summary --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui play-perf --open-debug --fps 60 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui framegrid-check --scope equations --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui check --capture-id live-a --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui verify --observe-ms 5000 --interval 1000 --require-selected true --ui http://localhost:5050');
   console.log('  simeval ui verify-regression --frames 24000 --observe-ms 8000 --interval 400 --auto-serve true --shutdown-on-exit true --ui http://localhost:5050');
