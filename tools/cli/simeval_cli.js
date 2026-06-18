@@ -3143,6 +3143,36 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'play-front-view-snapshot' || subcommand === 'play-snapshot') {
+      const actorId = options.actor === 'evader' || options['actor-id'] === 'evader'
+        ? 'evader'
+        : 'chaser';
+      const width = parseOptionalNumber(options.width, 'width');
+      const height = parseOptionalNumber(options.height, 'height');
+      sendWsMessage(socket, {
+        type: 'get_play_front_view_snapshot',
+        actorId,
+        width: width ?? undefined,
+        height: height ?? undefined,
+        request_id: requestId,
+      });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['play_front_view_snapshot'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for Play front-view snapshot.');
+      }
+      const payload = response.payload ?? response;
+      const written = writeUiPlayFrontViewSnapshot(payload, {
+        out: options['out-dir'] ?? options.out,
+        name: options.name,
+      });
+      printJson(written);
+      return;
+    }
+
     if (subcommand === 'play-perf' || subcommand === 'play-chase-perf') {
       const perfOptions = parseUiPlayPerfOptions(options);
       for (let index = 0; index < perfOptions.actions.length; index += 1) {
@@ -7463,6 +7493,102 @@ function parsePlayGameActionValue(options) {
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function sanitizeSnapshotFileBase(value, fallback) {
+  const raw = String(value || fallback || 'front-view-snapshot').trim();
+  const sanitized = raw
+    .replace(/\.[a-zA-Z0-9]+$/u, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return sanitized || 'front-view-snapshot';
+}
+
+function cloneJsonValue(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function extensionForContentType(contentType) {
+  const normalized = String(contentType || '').toLowerCase();
+  if (normalized === 'image/png') {
+    return 'png';
+  }
+  if (normalized === 'image/jpeg' || normalized === 'image/jpg') {
+    return 'jpg';
+  }
+  if (normalized === 'image/svg+xml') {
+    return 'svg';
+  }
+  return 'img';
+}
+
+function readSnapshotImagePayload(image) {
+  const svg = typeof image.svg === 'string' ? image.svg : '';
+  if (svg.trim()) {
+    return {
+      content: svg,
+      encoding: 'utf8',
+      extension: 'svg',
+    };
+  }
+
+  const dataUrl = typeof image.dataUrl === 'string' ? image.dataUrl : '';
+  const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s);
+  if (!match) {
+    throw new Error('Play front-view snapshot payload is missing rendered image data.');
+  }
+  const contentType = match[1] || image.contentType || 'application/octet-stream';
+  const isBase64 = Boolean(match[2]);
+  const raw = match[3] || '';
+  return {
+    content: isBase64 ? Buffer.from(raw, 'base64') : decodeURIComponent(raw),
+    encoding: isBase64 ? undefined : 'utf8',
+    extension: extensionForContentType(contentType),
+  };
+}
+
+function writeUiPlayFrontViewSnapshot(payload, { out, name } = {}) {
+  if (!isPlainObject(payload) || !isPlainObject(payload.record) || !isPlainObject(payload.image)) {
+    throw new Error('Play front-view snapshot payload is missing record or image metadata.');
+  }
+  const imagePayload = readSnapshotImagePayload(payload.image);
+  if (!out) {
+    throw new Error('Provide --out-dir or --out for ui play-front-view-snapshot.');
+  }
+
+  const outputDirectory = path.resolve(process.cwd(), String(out));
+  const frameIndex = payload.frameIndex ?? payload.record.frameIndex ?? 'unknown';
+  const actorId = payload.actorId ?? payload.record.actorId ?? 'actor';
+  const baseName = sanitizeSnapshotFileBase(
+    name,
+    `chase-${actorId}-front-view-frame-${frameIndex}`,
+  );
+  const metadataPath = path.join(outputDirectory, `${baseName}.json`);
+  const imagePath = path.join(outputDirectory, `${baseName}.${imagePayload.extension}`);
+  const metadata = cloneJsonValue(payload);
+  if (metadata?.image) {
+    delete metadata.image.svg;
+    delete metadata.image.dataUrl;
+    metadata.image.file = path.basename(imagePath);
+  }
+  metadata.files = {
+    metadata: path.basename(metadataPath),
+    image: path.basename(imagePath),
+  };
+
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  fs.writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(imagePath, imagePayload.content, imagePayload.encoding);
+
+  return {
+    status: 'written',
+    snapshotType: metadata.snapshotType ?? 'manual-front-view',
+    actorId: metadata.actorId ?? actorId,
+    frameIndex: metadata.frameIndex ?? frameIndex,
+    referenceable: Boolean(metadata.referenceable),
+    metadataPath,
+    imagePath,
+  };
 }
 
 const EQUATIONS_PANE_PRESET_NAMES = [
@@ -13588,6 +13714,10 @@ function printUsage(command) {
   console.log('  --open-views   Open Chase actor views before play-perf sampling');
   console.log('  --close-views  Close Chase actor views before play-perf sampling');
   console.log('  --fps          Set Chase playback FPS before play-perf sampling');
+  console.log('  --actor        Actor for ui play-front-view-snapshot (chaser|evader)');
+  console.log('  --width        Snapshot image width for ui play-front-view-snapshot');
+  console.log('  --height       Snapshot image height for ui play-front-view-snapshot');
+  console.log('  --out-dir      Directory for ui play-front-view-snapshot output files');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
   console.log('UI serve options:');
   console.log('  --ui-dir       Metrics UI project directory (default: ./Stream-Metrics-UI)');
@@ -13623,7 +13753,7 @@ function printUsage(command) {
   console.log('  [WebSocket, frontend required] visualization-use | visualization-reset | visualization-set');
   console.log('  [WebSocket, frontend required] add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  [WebSocket, frontend required] add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  [WebSocket, frontend required] display-snapshot | series-window | render-table | render-debug | debug | play-debug | play-debug-frame | play-perf | play-chase-perf | framegrid-check | framegrid-debug-check | visualization-check | visualization-values | memory-stats | metric-coverage | check | verify-flow | trace | doctor\n');
+  console.log('  [WebSocket, frontend required] display-snapshot | series-window | render-table | render-debug | debug | play-debug | play-debug-frame | play-front-view-snapshot | play-snapshot | play-perf | play-chase-perf | framegrid-check | framegrid-debug-check | visualization-check | visualization-values | memory-stats | metric-coverage | check | verify-flow | trace | doctor\n');
   console.log('  note: WS commands require an active frontend session connected to /ws/control.');
   console.log('        If no frontend is connected, WS commands may time out or return "Frontend not connected".');
   console.log('  note: ui verify is server-driven (HTTP) and does not require a connected frontend session.');
@@ -13754,6 +13884,7 @@ function printUsage(command) {
   console.log('  simeval ui subapp --app play --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-game-action --action-id show-target-projection --enabled true --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-game-action --action-id target-projection-frames --value 180 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui play-front-view-snapshot --actor chaser --out-dir ./snapshots --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-topic --topic-id kuramoto-eq-17 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-view --view-mode textbook --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-catalog --catalog-id kuramoto --ui ws://localhost:5050/ws/control');
