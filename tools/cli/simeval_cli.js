@@ -2478,6 +2478,63 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'play-chaser-control' || subcommand === 'play-chaser-input') {
+      const motionRaw = options.motion ?? options.throttle ?? options.move;
+      const motion = motionRaw === undefined || motionRaw === null || motionRaw === ''
+        ? undefined
+        : String(motionRaw).trim().toLowerCase();
+      const steering = parseOptionalFiniteNumber(options.steering ?? options.steer, 'steering');
+      const command = {
+        type: 'set_play_chaser_input',
+        request_id: requestId,
+      };
+      if (motion) {
+        command.motion = motion;
+      }
+      if (steering !== undefined && steering !== null) {
+        command.steering = steering;
+      }
+      if (Object.prototype.hasOwnProperty.call(options, 'forward')) {
+        command.forward = parseBooleanOption(options.forward, true) !== false;
+      }
+      if (Object.prototype.hasOwnProperty.call(options, 'reverse')) {
+        command.reverse = parseBooleanOption(options.reverse, true) !== false;
+      }
+      sendWsMessage(socket, command);
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for Play chaser control ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, {
+        motion: command.motion ?? null,
+        forward: command.forward ?? null,
+        reverse: command.reverse ?? null,
+        steering: command.steering ?? null,
+      });
+      return;
+    }
+
+    if (subcommand === 'play-chaser-source' || subcommand === 'play-chaser-control-source') {
+      const source = String(options.source ?? options.value ?? options.mode ?? '').trim();
+      if (!source) {
+        throw new Error('Provide --source programmatic|keyboard|ws for ui play-chaser-source.');
+      }
+      sendWsMessage(socket, {
+        type: 'play_game_action',
+        request_id: requestId,
+        actionId: 'chaser-control-source',
+        value: source,
+      });
+      await waitForUiAckOrThrow(socket, {
+        requestId,
+        timeoutMs,
+        errorMessage: 'Timed out waiting for Play chaser control source ack.',
+      });
+      printUiSuccess(subcommand, uiUrl, requestId, { source });
+      return;
+    }
+
     if (subcommand === 'equations-pane' || subcommand === 'equations-set') {
       const contentFileInput = options['content-file'] ?? options.contentFile;
       const documentFileInput = options['document-file'] ?? options.documentFile;
@@ -7406,6 +7463,17 @@ function parseOptionalNumber(value, label) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     throw new Error(`Invalid --${label} value. Expected a positive number.`);
+  }
+  return parsed;
+}
+
+function parseOptionalFiniteNumber(value, label) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid --${label} value. Expected a finite number.`);
   }
   return parsed;
 }
@@ -13714,6 +13782,9 @@ function printUsage(command) {
   console.log('  --open-views   Open Chase actor views before play-perf sampling');
   console.log('  --close-views  Close Chase actor views before play-perf sampling');
   console.log('  --fps          Set Chase playback FPS before play-perf sampling');
+  console.log('  --source       Chaser control source for ui play-chaser-source (programmatic|keyboard|ws)');
+  console.log('  --motion       Chaser motion for ui play-chaser-control (forward|reverse|none)');
+  console.log('  --steering     Chaser steering for ui play-chaser-control (-1 right, 1 left)');
   console.log('  --actor        Actor for ui play-front-view-snapshot (chaser|evader)');
   console.log('  --width        Snapshot image width for ui play-front-view-snapshot');
   console.log('  --height       Snapshot image height for ui play-front-view-snapshot');
@@ -13745,7 +13816,7 @@ function printUsage(command) {
   console.log('  [Local validation, no frontend required] equations-pane validate');
   console.log('  [WebSocket, frontend required] capabilities | state | components | mode | live-source | live-start | live-stop');
   console.log('  [WebSocket, frontend required] select | deselect | metric-axis | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures');
-  console.log('  [WebSocket, frontend required] subapp | sidebar-app | play-game-action | play-action');
+  console.log('  [WebSocket, frontend required] subapp | sidebar-app | play-game-action | play-action | play-chaser-source | play-chaser-control-source | play-chaser-control | play-chaser-input');
   console.log('  [WebSocket, frontend required] equations-pane | equations-set | equations-topic | equations-view | equations-catalog | equations-meta | equations-refresh | equations-highlight-hidden | equations-highlight-delete');
   console.log('  [WebSocket, frontend required] play | pause | stop | seek | speed | window-size | window-start | window-end | window-range | y-range | y2-range | auto-scroll | fullscreen');
   console.log('  [WebSocket, frontend required] derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update | derivation-group-display | derivation-group-reorder');
@@ -13884,6 +13955,8 @@ function printUsage(command) {
   console.log('  simeval ui subapp --app play --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-game-action --action-id show-target-projection --enabled true --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-game-action --action-id target-projection-frames --value 180 --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui play-chaser-source --source ws --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui play-chaser-control --motion forward --steering -0.35 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-front-view-snapshot --actor chaser --out-dir ./snapshots --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-topic --topic-id kuramoto-eq-17 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-view --view-mode textbook --ui ws://localhost:5050/ws/control');
