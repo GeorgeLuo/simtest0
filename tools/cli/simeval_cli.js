@@ -2484,21 +2484,24 @@ async function handleUi(argvRest) {
         ? undefined
         : String(motionRaw).trim().toLowerCase();
       const steering = parseOptionalFiniteNumber(options.steering ?? options.steer, 'steering');
+      const payload = {};
       const command = {
-        type: 'set_play_chaser_input',
+        type: 'play_game_command',
         request_id: requestId,
+        commandId: 'set-chaser-input',
+        payload,
       };
       if (motion) {
-        command.motion = motion;
+        payload.motion = motion;
       }
       if (steering !== undefined && steering !== null) {
-        command.steering = steering;
+        payload.steering = steering;
       }
       if (Object.prototype.hasOwnProperty.call(options, 'forward')) {
-        command.forward = parseBooleanOption(options.forward, true) !== false;
+        payload.forward = parseBooleanOption(options.forward, true) !== false;
       }
       if (Object.prototype.hasOwnProperty.call(options, 'reverse')) {
-        command.reverse = parseBooleanOption(options.reverse, true) !== false;
+        payload.reverse = parseBooleanOption(options.reverse, true) !== false;
       }
       sendWsMessage(socket, command);
       await waitForUiAckOrThrow(socket, {
@@ -2507,10 +2510,11 @@ async function handleUi(argvRest) {
         errorMessage: 'Timed out waiting for Play chaser control ack.',
       });
       printUiSuccess(subcommand, uiUrl, requestId, {
-        motion: command.motion ?? null,
-        forward: command.forward ?? null,
-        reverse: command.reverse ?? null,
-        steering: command.steering ?? null,
+        commandId: command.commandId,
+        motion: payload.motion ?? null,
+        forward: payload.forward ?? null,
+        reverse: payload.reverse ?? null,
+        steering: payload.steering ?? null,
       });
       return;
     }
@@ -2521,10 +2525,10 @@ async function handleUi(argvRest) {
         throw new Error('Provide --source programmatic|keyboard|ws for ui play-chaser-source.');
       }
       sendWsMessage(socket, {
-        type: 'play_game_action',
+        type: 'play_game_command',
         request_id: requestId,
-        actionId: 'chaser-control-source',
-        value: source,
+        commandId: 'set-chaser-control-source',
+        payload: { source },
       });
       await waitForUiAckOrThrow(socket, {
         requestId,
@@ -3178,6 +3182,30 @@ async function handleUi(argvRest) {
         throw new Error('Timed out waiting for UI debug.');
       }
       printJson(response.payload ?? response);
+      return;
+    }
+
+    if (
+      subcommand === 'play-game-usage'
+      || subcommand === 'play-usage'
+      || subcommand === 'play-help'
+      || subcommand === 'play-chase-help'
+    ) {
+      sendWsMessage(socket, { type: 'get_play_game_usage', request_id: requestId });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['play_game_usage'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for Play game usage.');
+      }
+      const payload = response.payload ?? response;
+      if (parseBooleanOption(options.json, false) === true) {
+        printJson(payload);
+        return;
+      }
+      printPlayGameUsage(payload);
       return;
     }
 
@@ -8768,6 +8796,80 @@ function formatPlayDebugVector(vector) {
     : '(n/a)';
 }
 
+function formatUsageCommand(command) {
+  if (typeof command?.command === 'string' && command.command.trim()) {
+    return command.command.trim();
+  }
+  if (typeof command?.cliAlias === 'string' && command.cliAlias.trim()) {
+    return command.cliAlias.trim();
+  }
+  return '';
+}
+
+function printPlayGameUsage(usage) {
+  const game = usage?.game ?? {};
+  const title = game.label || game.id || 'Loaded Play game';
+  const idSuffix = game.id ? ` (${game.id})` : '';
+  console.log(`${title}${idSuffix}`);
+  if (game.description) {
+    console.log(String(game.description));
+  }
+
+  const setup = Array.isArray(usage?.setup) ? usage.setup : [];
+  if (setup.length > 0) {
+    console.log('\nSetup:');
+    setup.forEach((step, index) => {
+      const label = step?.label ? String(step.label) : `Step ${index + 1}`;
+      console.log(`${index + 1}. ${label}`);
+      const command = formatUsageCommand(step);
+      if (command) {
+        console.log(`   ${command}`);
+      }
+    });
+  }
+
+  const cliGroups = Array.isArray(usage?.cli) ? usage.cli : [];
+  cliGroups.forEach((group) => {
+    const commands = Array.isArray(group?.commands) ? group.commands : [];
+    if (commands.length === 0) {
+      return;
+    }
+    console.log(`\n${group?.group || 'Commands'}:`);
+    commands.forEach((command) => {
+      const text = formatUsageCommand(command);
+      if (!text) {
+        return;
+      }
+      console.log(`  ${text}`);
+      if (command?.description) {
+        console.log(`    ${command.description}`);
+      }
+    });
+  });
+
+  const wireCommands = Array.isArray(usage?.wireCommands) ? usage.wireCommands : [];
+  if (wireCommands.length > 0) {
+    console.log('\nGame command ids:');
+    wireCommands.forEach((command) => {
+      console.log(`  ${command?.commandId || 'unknown'}`);
+      if (command?.summary) {
+        console.log(`    ${command.summary}`);
+      }
+      if (command?.cliAlias) {
+        console.log(`    CLI: ${command.cliAlias}`);
+      }
+    });
+  }
+
+  const notes = Array.isArray(usage?.notes) ? usage.notes : [];
+  if (notes.length > 0) {
+    console.log('\nNotes:');
+    notes.forEach((note) => {
+      console.log(`  - ${note}`);
+    });
+  }
+}
+
 function printPlayDebugSummary(debug) {
   const consensus = debug?.predictionConsensus ?? {};
   const firstFrame = consensus.firstConsensusFrame ?? null;
@@ -13749,7 +13851,7 @@ function printUsage(command) {
   console.log('  --document-file File path containing an Equations FrameGrid document JSON (replaces by default)');
   console.log('  --context      Equations interaction context patch JSON object');
   console.log('  --context-file File path containing equations interaction context patch JSON');
-  console.log('  --json         Print JSON diagnostics for ui equations-pane validate');
+  console.log('  --json         Print JSON diagnostics or machine-readable play game usage');
   console.log('  --annotation-id Annotation id for ui annotation commands');
   console.log('  --subtitle-id  Subtitle id for ui subtitle commands');
   console.log('  --start-tick   Subtitle start tick');
@@ -13816,7 +13918,7 @@ function printUsage(command) {
   console.log('  [Local validation, no frontend required] equations-pane validate');
   console.log('  [WebSocket, frontend required] capabilities | state | components | mode | live-source | live-start | live-stop');
   console.log('  [WebSocket, frontend required] select | deselect | metric-axis | analysis-select | analysis-deselect | analysis-clear | remove-capture | clear | clear-captures');
-  console.log('  [WebSocket, frontend required] subapp | sidebar-app | play-game-action | play-action | play-chaser-source | play-chaser-control-source | play-chaser-control | play-chaser-input');
+  console.log('  [WebSocket, frontend required] subapp | sidebar-app | play-game-usage | play-usage | play-help | play-chase-help | play-game-action | play-action | play-chaser-source | play-chaser-control-source | play-chaser-control | play-chaser-input');
   console.log('  [WebSocket, frontend required] equations-pane | equations-set | equations-topic | equations-view | equations-catalog | equations-meta | equations-refresh | equations-highlight-hidden | equations-highlight-delete');
   console.log('  [WebSocket, frontend required] play | pause | stop | seek | speed | window-size | window-start | window-end | window-range | y-range | y2-range | auto-scroll | fullscreen');
   console.log('  [WebSocket, frontend required] derivation-group-create | derivation-group-delete | derivation-group-active | derivation-group-update | derivation-group-display | derivation-group-reorder');
@@ -13953,6 +14055,7 @@ function printUsage(command) {
   console.log('  simeval ui metric-axis --capture-id live-a --full-path 1.highmix.metrics.shift_capacity_pressure.overall --axis y2 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui subapp --app equations --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui subapp --app play --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui play-game-usage --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-game-action --action-id show-target-projection --enabled true --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-game-action --action-id target-projection-frames --value 180 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-chaser-source --source ws --ui ws://localhost:5050/ws/control');
