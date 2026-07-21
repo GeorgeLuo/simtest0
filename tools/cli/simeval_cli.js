@@ -3258,6 +3258,42 @@ async function handleUi(argvRest) {
       return;
     }
 
+    if (subcommand === 'play-evaluation-capture') {
+      const actorId = options.actor === 'evader' || options['actor-id'] === 'evader'
+        ? 'evader'
+        : 'chaser';
+      const width = parseOptionalNumber(options.width, 'width');
+      const height = parseOptionalNumber(options.height, 'height');
+      sendWsMessage(socket, {
+        type: 'play_game_query',
+        queryId: 'atomic-evaluation-capture',
+        payload: {
+          actorId,
+          width: width ?? undefined,
+          height: height ?? undefined,
+        },
+        request_id: requestId,
+      });
+      const response = await waitForWsResponse(socket, {
+        requestId,
+        types: ['play_game_query_result'],
+        timeoutMs: timeoutMs + 2000,
+      });
+      if (!response) {
+        throw new Error('Timed out waiting for Play evaluation capture.');
+      }
+      const payload = response.payload ?? response;
+      if (payload.queryId !== 'atomic-evaluation-capture') {
+        throw new Error('Play evaluation capture response has an unexpected query id.');
+      }
+      const written = writeUiPlayEvaluationCapture(payload.result, {
+        out: options['out-dir'] ?? options.out,
+        name: options.name,
+      });
+      printJson(written);
+      return;
+    }
+
     if (subcommand === 'play-perf' || subcommand === 'play-chase-perf') {
       const perfOptions = parseUiPlayPerfOptions(options);
       for (let index = 0; index < perfOptions.actions.length; index += 1) {
@@ -7631,7 +7667,7 @@ function readSnapshotImagePayload(image) {
   const dataUrl = typeof image.dataUrl === 'string' ? image.dataUrl : '';
   const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s);
   if (!match) {
-    throw new Error('Play front-view snapshot payload is missing rendered image data.');
+    throw new Error('Play image payload is missing rendered image data.');
   }
   const contentType = match[1] || image.contentType || 'application/octet-stream';
   const isBase64 = Boolean(match[2]);
@@ -7682,6 +7718,70 @@ function writeUiPlayFrontViewSnapshot(payload, { out, name } = {}) {
     actorId: metadata.actorId ?? actorId,
     frameIndex: metadata.frameIndex ?? frameIndex,
     referenceable: Boolean(metadata.referenceable),
+    metadataPath,
+    imagePath,
+  };
+}
+
+function writeUiPlayEvaluationCapture(payload, { out, name } = {}) {
+  if (
+    !isPlainObject(payload)
+    || !isPlainObject(payload.frameIdentity)
+    || !isPlainObject(payload.sensor)
+    || !isPlainObject(payload.sensor.image)
+    || !isPlainObject(payload.evaluator)
+    || !isPlainObject(payload.evaluator.shadow)
+  ) {
+    throw new Error('Play evaluation capture payload is missing identity, sensor, or evaluator data.');
+  }
+  if (payload.contractVersion !== 1) {
+    throw new Error('Play evaluation capture uses an unsupported contract version.');
+  }
+  if (payload.evaluator.classification !== 'non-sensor') {
+    throw new Error('Play evaluation capture evaluator data must be classified as non-sensor.');
+  }
+  if (payload.playback?.advanced !== false) {
+    throw new Error('Play evaluation capture must report playback.advanced=false.');
+  }
+  const gameId = String(payload.frameIdentity.gameId || '').trim();
+  const simulationEpoch = String(payload.frameIdentity.simulationEpoch || '').trim();
+  const frameIndex = payload.frameIdentity.frameIndex;
+  if (!gameId || !simulationEpoch || !Number.isInteger(frameIndex) || frameIndex < 0) {
+    throw new Error('Play evaluation capture has an invalid frame identity.');
+  }
+  const imagePayload = readSnapshotImagePayload(payload.sensor.image);
+  if (!out) {
+    throw new Error('Provide --out-dir or --out for ui play-evaluation-capture.');
+  }
+
+  const outputDirectory = path.resolve(process.cwd(), String(out));
+  const actorId = String(payload.actorId || 'actor');
+  const baseName = sanitizeSnapshotFileBase(
+    name,
+    payload.captureId || `${gameId}-${actorId}-evaluation-${simulationEpoch}-${frameIndex}`,
+  );
+  const metadataPath = path.join(outputDirectory, `${baseName}.json`);
+  const imagePath = path.join(outputDirectory, `${baseName}.${imagePayload.extension}`);
+  const metadata = cloneJsonValue(payload);
+  if (metadata?.sensor?.image) {
+    delete metadata.sensor.image.svg;
+    delete metadata.sensor.image.dataUrl;
+    metadata.sensor.image.file = path.basename(imagePath);
+  }
+  metadata.files = {
+    metadata: path.basename(metadataPath),
+    image: path.basename(imagePath),
+  };
+
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  fs.writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(imagePath, imagePayload.content, imagePayload.encoding);
+
+  return {
+    status: 'written',
+    captureId: metadata.captureId,
+    actorId: metadata.actorId ?? actorId,
+    frameIdentity: metadata.frameIdentity,
     metadataPath,
     imagePath,
   };
@@ -13887,10 +13987,10 @@ function printUsage(command) {
   console.log('  --source       Chaser control source for ui play-chaser-source (programmatic|keyboard|ws)');
   console.log('  --motion       Chaser motion for ui play-chaser-control (forward|reverse|none)');
   console.log('  --steering     Chaser steering for ui play-chaser-control (-1 right, 1 left)');
-  console.log('  --actor        Actor for ui play-front-view-snapshot (chaser|evader)');
-  console.log('  --width        Snapshot image width for ui play-front-view-snapshot');
-  console.log('  --height       Snapshot image height for ui play-front-view-snapshot');
-  console.log('  --out-dir      Directory for ui play-front-view-snapshot output files');
+  console.log('  --actor        Actor for Play front-view or evaluation capture (chaser|evader)');
+  console.log('  --width        Image width for Play front-view or evaluation capture');
+  console.log('  --height       Image height for Play front-view or evaluation capture');
+  console.log('  --out-dir      Directory for Play front-view or evaluation capture files');
   console.log('  --timeout      WebSocket wait timeout in ms\n');
   console.log('UI serve options:');
   console.log('  --ui-dir       Metrics UI project directory (default: ./Stream-Metrics-UI)');
@@ -13926,7 +14026,7 @@ function printUsage(command) {
   console.log('  [WebSocket, frontend required] visualization-use | visualization-reset | visualization-set');
   console.log('  [WebSocket, frontend required] add-annotation | remove-annotation | clear-annotations | jump-annotation');
   console.log('  [WebSocket, frontend required] add-subtitle | remove-subtitle | clear-subtitles');
-  console.log('  [WebSocket, frontend required] display-snapshot | series-window | render-table | render-debug | debug | play-debug | play-debug-frame | play-front-view-snapshot | play-snapshot | play-perf | play-chase-perf | framegrid-check | framegrid-debug-check | visualization-check | visualization-values | memory-stats | metric-coverage | check | verify-flow | trace | doctor\n');
+  console.log('  [WebSocket, frontend required] display-snapshot | series-window | render-table | render-debug | debug | play-debug | play-debug-frame | play-front-view-snapshot | play-snapshot | play-evaluation-capture | play-perf | play-chase-perf | framegrid-check | framegrid-debug-check | visualization-check | visualization-values | memory-stats | metric-coverage | check | verify-flow | trace | doctor\n');
   console.log('  note: WS commands require an active frontend session connected to /ws/control.');
   console.log('        If no frontend is connected, WS commands may time out or return "Frontend not connected".');
   console.log('  note: ui verify is server-driven (HTTP) and does not require a connected frontend session.');
@@ -14061,6 +14161,7 @@ function printUsage(command) {
   console.log('  simeval ui play-chaser-source --source ws --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-chaser-control --motion forward --steering -0.35 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui play-front-view-snapshot --actor chaser --out-dir ./snapshots --ui ws://localhost:5050/ws/control');
+  console.log('  simeval ui play-evaluation-capture --actor chaser --out-dir ./evaluation-captures --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-topic --topic-id kuramoto-eq-17 --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-view --view-mode textbook --ui ws://localhost:5050/ws/control');
   console.log('  simeval ui equations-catalog --catalog-id kuramoto --ui ws://localhost:5050/ws/control');
