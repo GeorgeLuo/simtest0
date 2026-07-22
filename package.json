@@ -23,6 +23,9 @@
     "simeval-morphcloud": "tools/cli/morphcloud_distributor.js",
     "morphcloud-distributor": "tools/cli/morphcloud_distributor.js"
   },
+  "scripts": {
+    "test:cli": "node --test tests/cli/*.test.js"
+  },
   "files": [
     "README.md",
     "tools/cli/simeval_cli.js",
